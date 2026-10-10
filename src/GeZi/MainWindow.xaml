@@ -682,6 +682,7 @@
                                     <ListBox x:Name="FileList" SelectionMode="Extended"
                                              Style="{StaticResource PlainListBox}"
                                              ItemContainerStyle="{StaticResource FileListItem}"
+                                             IsTextSearchEnabled="False"
                                              PreviewMouseLeftButtonDown="OnListPreviewMouseDown"
                                              MouseDoubleClick="OnFileListDoubleClick"
                                              MouseRightButtonUp="OnFileListRightClick">
@@ -941,6 +942,7 @@
                             <ListBox x:Name="TaskList" SelectionMode="Extended"
                                      Style="{StaticResource PlainListBox}"
                                      ItemContainerStyle="{StaticResource TaskListItem}"
+                                     IsTextSearchEnabled="False"
                                      PreviewMouseLeftButtonDown="OnListPreviewMouseDown"
                                      MouseRightButtonUp="OnTaskListRightClick"
                                      MouseDoubleClick="OnTaskListDoubleClick">
