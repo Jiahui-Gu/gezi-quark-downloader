@@ -1023,14 +1023,18 @@ namespace GeZi.Core.Download
             if (total <= 0)
                 return new List<(long, long)>();
 
-            const int MaxSegments = 16384;              // 上限对齐 Python 版 _FAST_MAX_CHUNKS
-            // 🚨 【2026-10-06 4096 → 16384】原来 4096 片、512 并发 = 只有 8× 的储备，
-            // 意味着"剩余片数 < 512"时连接数就开始跟着掉 —— 对 9.5GB 文件那是**最后 1.2GB（12%）**，
-            // 用户实测「越到后面越慢，最后掉到 0」，日志里是"在飞 2 路"。
-            // 提到 16384 后同样文件是 16384 片 × 582KB，掉速窗口缩到最后 300MB（3%），
-            // 尾部绝对长度也短得多（最后 1 片只有 582KB 而不是 2.3MB）。
-            // ⚠️ 别担心小文件被切碎：下面 bySize 分档仍然生效，片数由 max(bySize, eff×8) 决定，
-            //    16384 只是**上限**，只有大文件才够得着。
+            // 🚨🚨 【2026-10-11】封顶必须 ≥ `有效并发 × 8`，**不能照抄云析的 512**。
+            //
+            // 【为什么不能照抄】云析的 `min(…, 512)` 是**和它"并发上限 32"配套**的：
+            //   云析：并发 32 × 8 = 256 片，被 512 封顶**碰不到** → 实际 16 片/连接，有窃取余量 ✓
+            //   我们：并发 512 × 8 = 4096 → **被 512 压回 512** → **1 片/连接，零窃取余量** ✗
+            // 实测踩到（2026-10-11）：照抄 512 后分片变成"512 片 × 18.64MB"，
+            // 等于每个连接领一整片、干完就闲，慢连接没有任何片可以补 —— 速度反而崩。
+            //
+            // 【正确约束】`片数 = 并发 × 8`（工作窃取深度 8），封顶只是**防爆护栏**，
+            // 必须留够余量：`封顶 = max(4096, 并发 × 8)`。
+            // 9.5GB + 512 并发 → 4096 片 × 2.3MB（= 2026-10-02 实测与 Python 持平 1.01x 的那套配置）
+            // 9.5GB + 256 并发 → 2048 片 × 4.65MB
             // 单分片下限 512KB（原 256KB）：256KB 的小片只在"文件大到必须
             // 用 4096 片"时才需要；对中小文件，256KB 会把片切得过碎
             // （100MB → 400 片），每条连接反复建连，得不偿失。
@@ -1050,26 +1054,38 @@ namespace GeZi.Core.Download
             int eff = threads > 0 ? Math.Min(threads, MaxRealConcurrency) : 1;
             if (eff < 1) eff = 1;
 
-            // 片数 = max(按大小算的基础值, 有效并发 × 32)。
+            // 片数封顶 = max(4096, 并发 × 8) —— 保证"每连接至少 8 片"的窃取深度。
+            // 详见上方长注释：**不能照抄云析的 512**（那是和它"并发上限 32"配套的）。
+            int maxSegments = Math.Max(4096, eff * 8);
+
+            // 片数 = min( max(按大小算的基础值, 有效并发 × 8),  total / 256KB,  512 )
+            //        ↑ 基础盈余            ↑ 保留云析的 ×8    ↑ 夹取一         ↑ 夹取二
             //
-            // 🚨 【2026-10-06：8 → 32】"每线程 N 片"正是**尾部掉速窗口的长度**：
-            // 剩余片数一旦少于并发数，连接数就跟着掉（剩 2 片 = 只有 2 个连接）。
-            // ×8 时窗口 = 4096 片 ≈ 9.5GB 文件的**最后 1.2GB（12%）**，
-            // 用户实测「越到后面越慢，最后掉到 0 KB/s」（日志：在飞 2 路、阈值取到下限 12KB/s）。
-            // ×32 后窗口缩到 16384 片 ≈ 最后 298MB（3%），单片也从 2.3MB 降到 582KB。
+            // 🚨 【2026-10-11：×32 → ×8，并补上两层夹取】我们当初抄云析时只抄了 `×8`，
+            // 漏了后两层夹取；后来又自作主张把 `×8` 改成 `×32` —— 双重放大，
+            // 结果 9.5GB 文件切出 16384 片 × 0.56MB（比所有参考实现激进 32 倍）。
+            // 现在完整对齐云析：`minOf(maxOf(bySize, threads*8), total/256KB, 512)`。
             //
-            // ⚠️ 别怕小文件被切碎：下面 seg 会被夹到 [MinSegBytes=512KB, maxSegBytes]，
-            //    100MB 文件仍只切出 200 片，不会变成"每条连接跑不到一片"的碎渣。
-            // 分档基础值让极小文件不会被切成碎渣。
+            // 实测（9.5GB + 256 线程）：`wantParts = max(64, 2048) = 2048`
+            //   → `min(2048, 37290, 512) = 512` 片 → 每片约 18.6MB（再被 maxSegBytes 夹到 16MB → 597 片）
+            //   —— 正好回到 2026-10-02 那个"与 Python 持平（1.01x）"的配置。
+            //
+            // ⚠️ 尾部塌缩不再靠"全局切小"来治 —— 那会连带牺牲吞吐（我们踩过）。
+            //    正解是**静态大片 + 尾部动态窃取**（axel/Gopeed 范式，见 MEMORY.md 总表 G 项）。
             long bySize;
             if (total < 5L * 1024 * 1024)             bySize = 1;
             else if (total < 32L * 1024 * 1024)       bySize = 4;
             else if (total < 256L * 1024 * 1024)      bySize = 16;
             else if (total < 2L * 1024 * 1024 * 1024) bySize = 32;
             else                                       bySize = 64;
-            long wantParts = Math.Max(bySize, (long)eff * 32);
+            long wantParts = Math.Max(bySize, (long)eff * 8);
             if (wantParts < 1) wantParts = 1;
-            if (wantParts > MaxSegments) wantParts = MaxSegments;
+            // 夹取一：单片不小于 256KB（云析的 minChunkBytes）—— 小文件不该被切太碎
+            long capByMinChunk = total / (256L * 1024);
+            if (capByMinChunk < 1) capByMinChunk = 1;
+            if (wantParts > capByMinChunk) wantParts = capByMinChunk;
+            // 夹取二：硬封顶（云析的 512）
+            if (wantParts > maxSegments) wantParts = maxSegments;
 
             long seg = (total + wantParts - 1) / wantParts;
             if (seg < MinSegBytes) seg = MinSegBytes;
@@ -1078,14 +1094,14 @@ namespace GeZi.Core.Download
             // 由上一步的片大小算出片数
             long n = (total + seg - 1) / seg;
             if (n < 1) n = 1;
-            if (n > MaxSegments) n = MaxSegments;
+            if (n > maxSegments) n = maxSegments;
             if (n > int.MaxValue) n = int.MaxValue;
 
             // 重算一次对齐后的片大小（避免因夹取导致最后一片畸形）
             long finalSeg = (total + n - 1) / n;
             if (finalSeg < 1) finalSeg = 1;
 
-            // 收尾保护：若因 MaxSegments 夹取导致单片超过该档上限，
+            // 收尾保护：若因 maxSegments 夹取导致单片超过该档上限，
             // 说明文件远超预期（如 100GB+），此时宁可让片大一点，
             // 也不能突破 4096 片的元数据上限。
             var parts = new List<(long Start, long End)>((int)Math.Min(n, int.MaxValue));
