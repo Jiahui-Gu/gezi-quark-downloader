@@ -50,11 +50,26 @@ namespace GeZi
         public bool AutoClean { get; set; } = true;
 
         /// <summary>
-        /// 分片落盘方式。SharedFile = 直写同一文件（默认，峰值 1×）；
-        /// SegmentedFiles = 独立分片 + 边合并（可边下边播，峰值 1×+单片）。
-        /// 老配置文件里没有这个字段，反序列化后保持默认值 SharedFile，行为与旧版一致。
+        /// 分片落盘方式。SharedFile = 直写同一文件（峰值 1×）；SegmentedFiles = 独立分片 + 边合并。
+        ///
+        /// 🚨 【2026-10-11：默认 SharedFile → **SegmentedFiles**】
+        /// 依据用户实测反馈：「2.0 后版本都会导致**磁盘占用 100%**，改独立分片就好了」。
+        ///
+        /// 【为什么共写会打满磁盘】512 个 worker **各自 seek 到目标文件的分散偏移**写同一个
+        /// 预分配大文件 —— 这是**随机 I/O**。机械盘上磁头疯狂寻道，磁盘利用率直接 100%，
+        /// 而且写盘成了瓶颈后**下载速度也会被拖住**。
+        /// 独立分片则是**每个分片写自己的文件、纯顺序追加**，是顺序 I/O，磁盘占用正常。
+        ///
+        /// 【为什么改默认值而不是只加提示】默认值是大多数用户唯一的体验 ——
+        /// 让他们先踩坑再自己找到设置项去改，不合理。
+        ///
+        /// ⚠️ **只影响新用户，老用户行为不变** —— 机制要说清楚：
+        ///    `XmlSerializer` **反序列化时不执行字段初始化器**，老配置里没有 `<WriteMode>` 节点
+        ///    ⇒ 读到的是 `default(WriteMode)` = **`SharedFile`（枚举第 0 项）** ⇒ 老用户仍是共写。
+        ///    只有**全新配置**才会用到这里写的 `SegmentedFiles`。
+        /// ⚠️ 代价（可接受）：会多出分片文件、末尾有合并阶段；换来的是磁盘不打满 + **能边下边播**。
         /// </summary>
-        public GeZi.Core.Download.WriteMode WriteMode { get; set; } = GeZi.Core.Download.WriteMode.SharedFile;
+        public GeZi.Core.Download.WriteMode WriteMode { get; set; } = GeZi.Core.Download.WriteMode.SegmentedFiles;
 
         /// <summary>
         /// 分片/续传元数据的根目录。留空 = 与目标文件同级（`{目标}.qparts`），即原有行为。

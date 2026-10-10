@@ -42,7 +42,14 @@ namespace GeZi.Core.Download
         /// <summary>
         /// 每个分片写独立文件，再由合并线程按序 append 到目标文件并删除分片。
         /// 目标文件从偏移 0 起连续增长，因此可「边下边播」；峰值 1×+单片。
-        /// 速度与 SharedFile 相当（瓶颈在 CDN 限速，不在写入方式）。
+        ///
+        /// ⚠️ 【2026-10-11 修正】原来这里写「速度与 SharedFile 相当（瓶颈在 CDN 限速，
+        /// 不在写入方式）」—— **这句是错的，已删**。实测用户反馈：
+        /// 「2.0 后版本都会导致**磁盘占用 100%**，改独立分片就好了」。
+        /// 真相：`SharedFile` 是 512 个 worker **各自 seek 写同一文件 = 随机 I/O**，
+        /// 机械盘上磁头疯狂寻道 → 磁盘打满、**下载速度也被拖住**；
+        /// 本模式是**顺序追加**，磁盘占用正常。两者在 I/O 形态上有本质差异。
+        /// ⇒ 因此把本模式改成了**默认值**（见 `Settings.WriteMode`）。
         /// </summary>
         SegmentedFiles,
     }
@@ -141,6 +148,16 @@ namespace GeZi.Core.Download
 
         /// <summary>直链 TTL 的保守估计（秒）。宁可估小 —— 估小了只是多留几次机会，估大了会提前放弃。</summary>
         private const int LinkTtlSeconds = 300;
+
+        /// <summary>
+        /// 【2026-10-11】动态窃取的最小粒度（字节）。
+        ///
+        /// 移植自 **Gopeed 的 `stealMinChunkSize = 512 * 1024`**（其注释：`Min steal size: 512KB
+        /// (avoid tiny chunks)`）与 **axel 的 `MIN_CHUNK_WORTH = 100 * 1024`**。
+        /// 为什么要有下限：把片切得比这还小，新连接光是握手+慢启动就不划算 ——
+        /// 窃取是为了"让空闲连接有活干"，不是把片切碎。
+        /// </summary>
+        private const long MinStealBytes = 512 * 1024;
 
         /// <summary>
         /// 按文件大小推算"这次任务最多允许换几次链"。
@@ -483,6 +500,52 @@ namespace GeZi.Core.Download
         /// （若直接写死 α，采样一快就等于把平滑削弱了一半，属于隐蔽的行为漂移。）
         /// τ 的物理含义：速度发生阶跃后约 τ 秒追上 63%，约 3τ 秒追上 95%。
         /// </summary>
+        /// <summary>
+        /// 分批开连接（移植 **Gopeed 的 `slowStartController`** 思路）。
+        ///
+        /// 【为什么光有"时间错峰"不够】时间错峰只保证各 worker 的**发起**时间不同，
+        /// 不保证前一批**已经建好连接**。若前一批握手慢（TLS 实测可达 1~4 秒），
+        /// 后一批会在它们还没就绪时就涌上来 —— 结果仍是"一大群连接同时处于慢启动、
+        /// 互相争抢带宽"，每个的拥塞窗口都涨不起来（实测「512 比 256 慢」就是这个）。
+        ///
+        /// 【做法】把 worker 分成若干批；第 k 批在开跑前先等**前一批有一半连接就绪**
+        /// （或等满超时 —— 避免前一批全军覆没时后面永远不动）。
+        /// "就绪"的定义是**首次成功拿到 HTTP 响应**，那意味着 TCP+TLS 握手已完成。
+        /// </summary>
+        private sealed class SlowStartGate
+        {
+            private readonly int _batchSize;
+            private int _ready;                    // 已就绪连接数（首次响应成功）
+
+            public SlowStartGate(int total)
+            {
+                // 批大小 = 总数的 1/8，夹在 [4, 64]：太小放行太慢，太大等于没分批。
+                int b = total / 8;
+                if (b < 4) b = 4;
+                if (b > 64) b = 64;
+                _batchSize = b;
+            }
+
+            /// <summary>第 index 个 worker 在开跑前等自己的批次放行。</summary>
+            public async Task WaitTurnAsync(int index, CancellationToken ct)
+            {
+                int batch = index / _batchSize;
+                if (batch == 0) return;            // 第一批直接放行
+
+                // 等前一批的一半就绪；最多 3 秒（前一批全挂时也要放行，否则任务卡死）
+                int need = Math.Max(1, batch * _batchSize / 2);
+                var deadline = DateTime.UtcNow.AddSeconds(3);
+                while (Volatile.Read(ref _ready) < need && DateTime.UtcNow < deadline)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await Task.Delay(50, ct).ConfigureAwait(false);
+                }
+            }
+
+            /// <summary>某个连接首次拿到响应时调用（每个 worker 只调一次）。</summary>
+            public void MarkReady() { Interlocked.Increment(ref _ready); }
+        }
+
         private sealed class SpeedMeter
         {
             private readonly double _tau;
@@ -1386,7 +1449,11 @@ namespace GeZi.Core.Download
             // 分片"已完成"标记（仅 mergeMode 使用）：合并线程据此判断能不能安全删掉
             // 某个分片文件 —— 必须等 worker 关闭文件流之后才能删，否则 worker 后续的
             // 写入会落进一个已删除的文件，数据静默丢失。
-            int[] partDone = new int[plan.Parts.Count];
+            // 【2026-10-11】动态窃取会往 plan.Parts 里**追加**新片（见 SplitLongestPartIfNeeded），
+            // 所以这些按索引访问的数组必须**预留容量** —— 只按当前片数分配的话，
+            // 新片一被访问就 IndexOutOfRange。
+            int partCapacity = plan.Parts.Count * 4;
+            int[] partDone = new int[partCapacity];
 
             if (mergeMode)
             {
@@ -1593,13 +1660,16 @@ namespace GeZi.Core.Download
                 wLastIdx[i] = -1;
             }
             // 按分片索引：该片被抢过几次、上次何时被抢
-            var partPreempt = new int[plan.Parts.Count];
-            var partLastPreempt = new long[plan.Parts.Count];
+            var partPreempt = new int[partCapacity];
+            var partLastPreempt = new long[partCapacity];
             // 【2026-10-11 新增】上次抢占时该片的已写字节数。
             // 用来判断"这次重连有没有真的拿到数据"—— 有进展就重置 partPreempt，
             // 让它继续享有抢占机会（详见抢占循环里的说明）。
-            var partPreemptAtW = new long[plan.Parts.Count];
+            var partPreemptAtW = new long[partCapacity];
+            // 【2026-10-11】动态窃取时改 plan.Parts / 入队要串行化（多个 worker 可能同时切）
+            var splitLock = new object();
             int preemptedCount = 0;   // 累计抢占次数（收尾诊断用）
+            int splitCount = 0;       // 【2026-10-11】累计"动态窃取"切分次数（诊断用）
             // 各路瞬时速度（两遍扫描用：第一遍采样、第二遍按结果抢占）
             var wInstBps = new long[MaxRealConcurrency];
             bool overallSlowLogged = false;   // "整体限速"提示只打一次，避免刷屏
@@ -2048,7 +2118,7 @@ namespace GeZi.Core.Download
                             return;
                         }
                         var mbuf = new byte[1024 * 1024];
-                        int next = mergedCount;
+                        int next = mergedCount;      // 仅作日志/初值；真正的定位在循环头按 S 做
                         long inPart = mergedInHead;
                         // 收到收尾信号后还要连续多少轮"读不到新数据"才真的退出。
                         // 见下面收尾分支的注释 —— 这个宽限期是必须的。
@@ -2057,8 +2127,27 @@ namespace GeZi.Core.Download
                         {
                             while (true)
                             {
-                                if (next >= plan.Parts.Count)
-                                    break;                        // 全部分片合并完毕
+                                // 🚨🚨 【2026-10-11】每轮按"区间起点 S == 目标文件当前长度"**重新定位**下一片。
+                                //
+                                // 【为什么不能按 idx 递增】动态窃取（见 SplitLongestPartIfNeeded）会往
+                                // `plan.Parts` **追加**新片 —— 新片的 idx 排在最后，但它的区间落在
+                                // 被切那片的后半段。若仍按 idx 递增合并，就会把"后半段"拼到"前半段"之前，
+                                // **目标文件直接损坏**（而且是静默损坏，比报错更糟）。
+                                //
+                                // 【为什么用 mfs.Length 定位】目标文件永远是"从 0 起的连续前缀"
+                                // （合并线程只追加、从不回写）—— 所以"下一个该合并的片"就是
+                                // `S == 已合并长度` 的那一片。这个判据天然容忍追加，
+                                // 也天然兼容断点续传（不再依赖 next/inPart 的旧断点值）。
+                                long target = mfs.Length;
+                                int pick = -1;
+                                for (int i = 0; i < plan.Parts.Count; i++)
+                                {
+                                    if (plan.Parts[i].S == target) { pick = i; break; }
+                                }
+                                if (pick < 0)
+                                    break;                    // 找不到起点匹配的片 → 全合并完毕（或还没轮到）
+                                next = pick;
+                                inPart = target - plan.Parts[next].S;
 
                                 long sz = plan.Parts[next].E - plan.Parts[next].S + 1;
                                 string pp = PartPath(partsDir, next);
@@ -2144,8 +2233,9 @@ namespace GeZi.Core.Download
                                     }
                                     stallRounds = 0;
                                     try { File.Delete(pp); } catch { }
-                                    next++;
-                                    inPart = 0;
+                                    // 【2026-10-11】不再 `next++` / `inPart = 0` ——
+                                    // 循环头会按"区间起点 S == 目标文件长度"重新定位下一片。
+                                    // （动态窃取会追加新片，idx 顺序 ≠ 区间顺序，不能靠递增。）
                                     continue;                     // 立刻看下一片，可能已经就绪
                                 }
 
@@ -2284,6 +2374,9 @@ namespace GeZi.Core.Download
                 }
 
                 var workers = new Task[workerCount];
+                // 【2026-10-11】分批开连接的闸门（Gopeed slowStartController 思路）。
+                // 见 SlowStartGate 的注释：光靠时间错峰不保证前一批已建好连接。
+                var slowStartGate = new SlowStartGate(workerCount);
                 for (int w = 0; w < workerCount; w++)
                 {
                     int workerNo = w;
@@ -2295,6 +2388,10 @@ namespace GeZi.Core.Download
                         int bufSize = Math.Max(64 * 1024,
                             Math.Min(QuarkConstants.DownloadChunk, 64 * 1024 * 1024 / Math.Max(1, workerCount)));
                         var buf = new byte[bufSize];
+
+                        // 【2026-10-11】本 worker 是否已经拿到过首个响应。
+                        // 拿到就意味着 TCP+TLS 握手完成 —— 那一刻通知分批闸门放行下一批。
+                        bool firstResponseSeen = false;
 
                         // 冷启动错峰：多个 worker 同时发起首请求会挤在一起做 TLS 握手，
                         // 不仅拖慢首个字节时间，还更容易触发服务端限流。
@@ -2312,6 +2409,10 @@ namespace GeZi.Core.Download
                             await Task.Delay(TimeSpan.FromMilliseconds(staggerMs), cancelToken).ConfigureAwait(false);
                         }
 
+                        // 【2026-10-11】分批闸门：等前一批有连接**真正就绪**（首次响应成功）再开跑。
+                        // 与上面的时间错峰互补 —— 错峰管"发起时间不同"，闸门管"前一批已建好连接"。
+                        await slowStartGate.WaitTurnAsync(workerNo, cancelToken).ConfigureAwait(false);
+
                         while (queue.TryDequeue(out int idx))
                         {
                             await gate.WaitAsync(cancelToken).ConfigureAwait(false);
@@ -2321,6 +2422,38 @@ namespace GeZi.Core.Download
                             try
                             {
                                 var part = plan.Parts[idx];
+
+                                // 【2026-10-11】动态窃取（移植 axel 的 `reactivate_connection` /
+                                // Gopeed 的 steal 思路）。
+                                //
+                                // 【治什么】尾部塌缩 —— 最后几片落到慢节点时，只有几条连接在磨，
+                                // 总速度必然崩。做法是把大片**切一半放回队列**，让更多连接参与。
+                                //
+                                // 【为什么在这个位置切】此刻 worker **刚领到片、还没开始下** ——
+                                // 天然无竞态（下面算 segSize 用的就是切完的新边界）。
+                                // ⚠️ 刻意**不掐断正在下载的连接**：那种做法要处理
+                                //    「改边界 vs worker 正读 part.E」的竞态，还要防止被掐的 worker
+                                //    把已切过的片重复入队 —— 复杂度高得多，收益却一样。
+                                //
+                                // 【触发条件】"待领的片"少于并发数的一半 —— 说明队列快见底、
+                                // 再不动手就要进入"只有几条连接在磨"的尾部了。
+                                if (queue.Count < workerCount / 2 && plan.Parts.Count < partCapacity)
+                                {
+                                    long remainHere = (part.E - part.S + 1) - part.W;
+                                    if (remainHere >= 2 * MinStealBytes)
+                                    {
+                                        long mid = part.S + part.W + remainHere / 2;
+                                        long oldEnd = part.E;
+                                        part.E = mid - 1;          // 自己留前半
+                                        lock (splitLock)
+                                        {
+                                            plan.Parts.Add(new PartPlan { S = mid, E = oldEnd, W = 0 });
+                                            queue.Enqueue(plan.Parts.Count - 1);
+                                        }
+                                        Interlocked.Increment(ref splitCount);
+                                    }
+                                }
+
                                 long segSize = part.E - part.S + 1;
                                 if (part.W >= segSize)
                                 {
@@ -2405,6 +2538,13 @@ namespace GeZi.Core.Download
                                         using (var req = BuildRequest(HttpMethod.Get, url, h))
                                         using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, partToken).ConfigureAwait(false))
                                         {
+                                            // 【2026-10-11】首个响应到达 = TCP+TLS 握手已完成
+                                            // → 通知分批闸门，放行下一批 worker。
+                                            if (!firstResponseSeen)
+                                            {
+                                                firstResponseSeen = true;
+                                                slowStartGate.MarkReady();
+                                            }
                                             int code = (int)resp.StatusCode;
                                             if (code == 200 && !(reqStart == 0 && part.E >= total - 1))
                                             {
