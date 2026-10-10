@@ -162,10 +162,15 @@
                         </StackPanel>
 
                         <!-- 导航（ListBox，与 Tabs 用 SelectedIndex 双向同步） -->
+                        <!-- 🚨 【2026-10-10】必须关掉 WPF 自带的「首字母定位」（TextSearch）：
+                             它是一个 ListBox 就会自带 —— 焦点在导航上时按 s 会跳到「设置」、
+                             按 r 跳到「任务」……选中一变页面就切了，用户会以为"某个字母键是快捷键"。
+                             这不是我们的快捷键，是框架行为，所以显式关掉。 -->
                         <ListBox x:Name="NavList" Grid.Row="1"
                                  Style="{StaticResource NavListBox}"
                                  ItemContainerStyle="{StaticResource NavListItem}"
                                  SelectionChanged="OnNavSelectionChanged"
+                                 IsTextSearchEnabled="False"
                                  Margin="12,4,12,0"
                                  VerticalAlignment="Top">
                             <ListBoxItem>
