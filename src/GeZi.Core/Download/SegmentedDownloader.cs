@@ -129,6 +129,45 @@ namespace GeZi.Core.Download
         private const int MaxLinkRefreshes = 5;
 
         /// <summary>
+        /// 重新取链次数的**硬上限**（防死循环）。真正的上限由 <see cref="ComputeMaxLinkRefreshes"/> 按文件大小算。
+        ///
+        /// 🚨 【2026-10-11 为什么改成动态】原来写死 5，注释自陈依据是
+        /// 「9GB 文件按实测 ~9MB/s 要跑 17 分钟，直链 TTL 5~10 分钟，可能碰上 2~4 次过期」。
+        /// **但那个前提是 9MB/s** —— 用户实测速度会掉到 2.5MB/s，同一个 9GB 文件要跑 **60+ 分钟**，
+        /// 需要 **6~12 次**刷新 → **5 次根本不够 → 刷新用尽 → 卡在 99%**（用户报的头号问题）。
+        /// ⇒ 改成按"文件大小 / 保守速度"估算，速度慢就自动多给几次机会。
+        /// </summary>
+        private const int MaxLinkRefreshesCap = 60;
+
+        /// <summary>直链 TTL 的保守估计（秒）。宁可估小 —— 估小了只是多留几次机会，估大了会提前放弃。</summary>
+        private const int LinkTtlSeconds = 300;
+
+        /// <summary>
+        /// 按文件大小推算"这次任务最多允许换几次链"。
+        ///
+        /// 算法：`需要次数 = ceil(预计时长 / 直链TTL) + 1`，再夹到 `[5, 60]`。
+        /// 预计时长按**最差速度 2MB/s** 估（用户实测最低 ~2.5MB/s，再留点余量）——
+        /// **刻意悲观**：宁可多给几次机会（每次刷新只花 ~0.3 秒接口调用），也不要因为省事而提前放弃。
+        /// </summary>
+        private static int ComputeMaxLinkRefreshes(long totalBytes)
+        {
+            if (totalBytes <= 0) return MaxLinkRefreshes;
+            const double worstSpeedBps = 2.0 * 1024 * 1024;      // 2 MB/s
+            double estSeconds = totalBytes / worstSpeedBps;
+            int need = (int)Math.Ceiling(estSeconds / LinkTtlSeconds) + 1;
+            if (need < MaxLinkRefreshes) need = MaxLinkRefreshes;
+            if (need > MaxLinkRefreshesCap) need = MaxLinkRefreshesCap;
+            return need;
+        }
+
+        /// <summary>
+        /// 最近一次 <see cref="ProbeAsync"/> 探到的文件总大小（0 = 未知）。
+        /// 用于 <see cref="ComputeMaxLinkRefreshes"/> —— 刷新上限必须在主循环里算，
+        /// 而 total 是 AttemptAsync 内部探测出来的，所以在这里带出来。
+        /// </summary>
+        private long _lastProbedTotal;
+
+        /// <summary>
         /// 合并线程收到收尾信号后，还要连续多少轮读不到新数据才真的退出。
         /// 每轮约 100ms，10 轮 ≈ 1 秒宽限 —— 用来覆盖"worker 最后一段还在它自己的
         /// 文件缓冲里、尚未落到盘上"这个窗口。详见合并循环里收尾分支的注释。
@@ -213,23 +252,26 @@ namespace GeZi.Core.Download
         /// <summary>单个分片最多被抢 3 次（全站都慢时防止无限重连）。</summary>
         private const int PreemptMax = 3;
         /// <summary>
-        /// 【2026-10-06 新增】收尾阶段（在飞 ≤ <see cref="PreemptEndgameInflight"/>）的单分片抢占上限。
+        /// 收尾阶段（在飞 ≤ <see cref="PreemptEndgameInflight"/>）的单分片抢占上限。
         ///
-        /// 🚨 为什么收尾期要放宽：用户实测日志 ——
+        /// 【为什么收尾期要放宽】用户实测日志 ——
         ///   「慢连接抢占: 本轮掐掉 1 路（阈值 12.0 KB/s，在飞 2 路，收尾阶段）」
-        ///   隔 10 秒又一条，然后**再也没有了** —— 因为每片 3 次机会在 30 秒内就烧完了，
+        ///   隔 10 秒又一条，然后**再也没有了** —— 每片 3 次机会在 30 秒内就烧完，
         ///   剩下的两片只能干等 → 速度掉到 0 → 45 秒后被看门狗判"网络阻断"中止。
         ///
-        /// 收尾期的成本极低（只剩几路在跑，多抢几次不会造成重连风暴），
-        /// 而收益是"任务能下完" —— 所以这里给足机会（30 次 × 3 秒冷却 ≈ 90 秒）。
-        /// ⚠️ 非收尾阶段仍然用 3 —— 那里并发高，抢太多次会变成"每轮空掐几路"。
+        /// 🚨 【2026-10-11：30 → 10，冷却 3s → 8s】原来的 30 次 / 3 秒太激进：
+        ///   30 次 × 3 秒 = **90 秒内可以掐同一片 30 次** —— 那就是**重连风暴**，
+        ///   每个连接刚握手就被掐，服务端看到的全是异常连接，反而更容易触发反制。
+        ///   现在 10 次 / 8 秒 ≈ **80 秒窗口**，配合上面新增的"有进展就重置计数"，
+        ///   既能救活落在坏节点上的片，又不会打成风暴。
         /// </summary>
-        private const int PreemptMaxEndgame = 30;
+        private const int PreemptMaxEndgame = 10;
         /// <summary>
-        /// 【2026-10-06 新增】收尾阶段的抢占冷却（比常规的 10 秒短）。
-        /// 只剩几路时，干等的代价远大于重连，所以冷却也一起缩短。
+        /// 收尾阶段的抢占冷却（比常规的 10 秒短一点，但不再激进到 3 秒）。
+        /// 只剩几路时干等的代价大于重连，所以适度缩短；但重连本身要付 TLS 握手的代价，
+        /// 3 秒连握手都不够 —— 8 秒是"给足重连时间"和"别干等太久"之间的折中。
         /// </summary>
-        private const long PreemptEndgameCooldownMs = 3_000;
+        private const long PreemptEndgameCooldownMs = 8_000;
 
         /// <summary>每轮最多抢 2 路，避免同时掐掉一大片连接。</summary>
         private const int PreemptPerTick = 2;
@@ -560,14 +602,27 @@ namespace GeZi.Core.Download
                     return new DownloadResult { Ok = true };
                 msg = m;
 
-                if (LinkRefresher == null || refreshed >= MaxLinkRefreshes || !IsSignatureExpired(msg))
+                if (LinkRefresher == null || !IsSignatureExpired(msg))
                     break;
+
+                // 【2026-10-11】刷新上限**按文件大小动态算**，不再写死 5。
+                // 原来写死 5 的依据是"9MB/s 跑 17 分钟"；但速度掉到 2.5MB/s 时同一文件要 60+ 分钟，
+                // 需要 6~12 次刷新 → 5 次不够 → 刷新用尽 → **卡在 99%**。
+                // ⚠️ 必须在第一次 AttemptAsync **之后**算 —— 那时 _lastProbedTotal 才探到值。
+                int maxRefreshes = ComputeMaxLinkRefreshes(_lastProbedTotal);
+                if (refreshed >= maxRefreshes)
+                {
+                    Log?.Invoke(string.Format(
+                        "直链已连续失效 {0} 次（本文件按大小允许 {1} 次），本次任务中止，断点与已下载部分已保留。",
+                        refreshed, maxRefreshes));
+                    break;
+                }
 
                 refreshed++;
                 cancel.ThrowIfCancellationRequested();
                 Log?.Invoke(string.Format(
                     "直链已失效（{0}），正在重新获取第 {1}/{2} 次…已下载的部分会保留，换新链后自动续传。",
-                    Trim(msg, 60), refreshed, MaxLinkRefreshes));
+                    Trim(msg, 60), refreshed, maxRefreshes));
 
                 string fresh = null;
                 try
@@ -680,6 +735,8 @@ namespace GeZi.Core.Download
             CancellationToken cancel, PauseToken pause, DateTime taskStart)
         {
             var (total, supports) = await ProbeAsync(url, headers, cancel).ConfigureAwait(false);
+            // 带出来给 ComputeMaxLinkRefreshes 用（刷新上限要按文件大小算，见那里）
+            _lastProbedTotal = total;
             if (supports && total > 0)
             {
                 // 落盘方式（直写 / 独立分片+边合并）由 _writeMode 决定，
@@ -1538,6 +1595,10 @@ namespace GeZi.Core.Download
             // 按分片索引：该片被抢过几次、上次何时被抢
             var partPreempt = new int[plan.Parts.Count];
             var partLastPreempt = new long[plan.Parts.Count];
+            // 【2026-10-11 新增】上次抢占时该片的已写字节数。
+            // 用来判断"这次重连有没有真的拿到数据"—— 有进展就重置 partPreempt，
+            // 让它继续享有抢占机会（详见抢占循环里的说明）。
+            var partPreemptAtW = new long[plan.Parts.Count];
             int preemptedCount = 0;   // 累计抢占次数（收尾诊断用）
             // 各路瞬时速度（两遍扫描用：第一遍采样、第二遍按结果抢占）
             var wInstBps = new long[MaxRealConcurrency];
@@ -1695,6 +1756,23 @@ namespace GeZi.Core.Download
                         long remain = (pp.E - pp.S + 1) - w;
                         if (remain < PreemptMinRemain) continue;
                     }
+                    // 【2026-10-11】先看"上次抢占之后有没有进展"——**有进展就重置计数**。
+                    //
+                    // 原来 partPreempt 只增不减：抢满 3 次后**永久放弃**那一片，只能干等。
+                    // 尾部几片落到坏节点时，就会一路磨到被看门狗中止 —— 用户实测的「卡在 99%」。
+                    //
+                    // 判据：该片自上次被抢后，已写字节增长 ≥ **一片的 1/4**（至少 64KB）
+                    // ⇒ 说明重连换到了好节点、确实在下载 → 重置，让它继续享有抢占机会。
+                    // ⇒ 若毫无进展（重连还是坏节点）→ **不重置** → 仍会在抢满后放弃，
+                    //    不会退化成"无限重连风暴"。
+                    if (partPreempt[idx] > 0)
+                    {
+                        long grew = plan.Parts[idx].W - partPreemptAtW[idx];
+                        long quarter = (plan.Parts[idx].E - plan.Parts[idx].S + 1) / 4;
+                        if (quarter < 64 * 1024) quarter = 64 * 1024;
+                        if (grew >= quarter) partPreempt[idx] = 0;
+                    }
+
                     // 【2026-10-06】收尾期放宽上限与冷却 —— 只剩几路时多抢几次成本极低，
                     // 而"抢满就永久放弃"会让尾部那几片干等到被看门狗中止（用户实测）。
                     int maxPreempt = endgame ? PreemptMaxEndgame : PreemptMax;
@@ -1706,6 +1784,7 @@ namespace GeZi.Core.Download
                     // 命中：只掐这一片的连接。已写字节保留在 part.W，
                     // 重新入队由 worker 的 catch 负责 —— 这里不做任何破坏性动作。
                     partPreempt[idx]++;
+                    partPreemptAtW[idx] = plan.Parts[idx].W;   // 记下被抢时的进度，供下轮判断"有无进展"
                     partLastPreempt[idx] = nowMs;
                     var cts = Volatile.Read(ref wCts[i]);
                     if (cts != null)
