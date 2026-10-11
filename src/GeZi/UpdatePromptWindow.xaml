@@ -82,6 +82,16 @@
 
                 <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,14,0,0"/>
 
+                <!-- 未登录提示（需求第 7 条：未登录时提示「请登录后更新」）。
+                     默认折叠，未登录时由代码显示 —— 不用 Visibility 绑定，保持与项目其它窗口一致。 -->
+                <Border x:Name="LoginHintBox" Visibility="Collapsed"
+                        Background="{DynamicResource SurfaceSunkenBrush}"
+                        CornerRadius="6" Padding="10,7" Margin="0,12,0,0">
+                    <TextBlock x:Name="LoginHintText" Text="请登录后更新"
+                               FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                </Border>
+
                 <!-- 下载方式 -->
                 <TextBlock Text="选择下载方式" Style="{StaticResource SectionLabel}" Margin="0,14,0,8"/>
 
@@ -105,18 +115,30 @@
                 <TextBlock x:Name="ModeNote" Text="" Style="{StaticResource ProseText}"
                            TextWrapping="Wrap" Margin="20,6,0,0" FontSize="11"/>
 
-                <!-- 底部按钮 -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                            Margin="0,18,0,0">
-                    <Button x:Name="CancelBtn" Content="暂不" Click="OnCloseClick"
+                <!-- 底部按钮：左侧「忽略此版本」，右侧「暂不 / 开始下载」。
+                     「忽略此版本」原来挂在「关于」页那层"是否查看详情"确认框的「否」上，
+                     容易手滑把提醒永久屏蔽；现在挪到这里，要忽略必须明确点它。 -->
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="IgnoreBtn" Grid.Column="0" Content="忽略此版本" Click="OnIgnoreClick"
+                            AutomationProperties.Name="忽略此版本"
+                            Style="{StaticResource SecondaryButton}"
+                            MinWidth="96" HorizontalAlignment="Left"
+                            ToolTip="之后不再提示这个版本；想恢复：再点一次「检查更新」"/>
+                    <Button x:Name="CancelBtn" Grid.Column="2" Content="暂不" Click="OnCloseClick"
                             AutomationProperties.Name="暂不更新"
                             Style="{StaticResource SecondaryButton}"
                             MinWidth="84" Margin="0,0,10,0"/>
-                    <Button x:Name="DownloadBtn" Content="开始下载" Click="OnDownloadClick"
+                    <Button x:Name="DownloadBtn" Grid.Column="3" Content="开始下载" Click="OnDownloadClick"
                             AutomationProperties.Name="开始下载更新"
                             Style="{StaticResource PrimaryButton}"
                             MinWidth="96"/>
-                </StackPanel>
+                </Grid>
             </StackPanel>
         </StackPanel>
     </Border>

@@ -5059,8 +5059,22 @@ namespace GeZi
                     }
                     catch (QuarkApiException saveEx) when (QuarkClient.IsCapacityMessage(saveEx.Message))
                     {
-                        // 移植自日常下载的降级逻辑：仅「网盘容量不足」时才降级为免转存。
-                        Log("[更新] 网盘容量不足，已自动改用「免转存」下载（不写入网盘）。");
+                        // 需求第 6 条：容量不足要**明确告诉用户**，并给出「改用免转存」的选择 ——
+                        // 不能默默降级（用户会以为"转存好了"，也失去清理网盘的机会）。
+                        // 仍然只对「容量不足」这一类降级（其它 QuarkApiException 照常抛出去）。
+                        var ans = AppDialog.Show(this,
+                            "网盘容量不足，无法把更新包转存到网盘。\n\n"
+                            + "「转存后下载」更稳定、支持断点续传；想用它请先清理网盘空间后重试。\n\n"
+                            + "是否改用「免转存」直接下载？",
+                            "更新下载", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        if (ans != MessageBoxResult.Yes)
+                        {
+                            Log("[更新] 网盘容量不足，已按你的选择暂停更新（清理网盘后可重新检查更新）。");
+                            _updateVersionText = "";
+                            _updateDestPath = null;
+                            return;
+                        }
+                        Log("[更新] 网盘容量不足，已按你的选择改用「免转存」下载（不写入网盘）。");
                         useSave = false;
                     }
                 }
@@ -5196,7 +5210,7 @@ namespace GeZi
         /// 所以让一个**脱离本进程**的脚本等本程序退出后，再把新文件拷进安装目录、重启、自删。
         /// 脚本用 robocopy /E（递归复制、不删目标多余文件 → 不会误删用户的 config/state）。
         /// </summary>
-        private async void InstallUpdate(string zipPath)
+        private void InstallUpdate(string zipPath)
         {
             try
             {
@@ -5239,20 +5253,46 @@ namespace GeZi
                 sb.AppendLine("del \"%~f0\"");
                 File.WriteAllText(scriptPath, sb.ToString(), System.Text.Encoding.UTF8);
 
+                // 需求提到"注意可能需要提权"：安装目录不可写（例如装在 Program Files）时，
+                // robocopy 会因权限失败，而脚本后面照样会重启**旧版本** —— 静默失败最难查。
+                // 这里先探一下可写性，不可写就用 runas 起脚本（弹 UAC）让复制能成功。
+                // ⚠️ 代价：UAC 之后启动的脚本所拉起的新进程同样是**提权**状态。
+                bool needElevate = !IsDirectoryWritable(installDir);
+
                 // 脱离本进程启动脚本，随后立即退出本程序 —— 释放文件句柄让脚本覆盖
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = scriptPath,
                     UseShellExecute = true,
                     CreateNoWindow = true,
+                    Verb = needElevate ? "runas" : null,
                 });
-                Log("[更新] 即将安装新版本并重启…");
+                Log("[更新] 即将安装新版本并重启…" + (needElevate ? "（安装目录不可写，已请求管理员权限）" : ""));
                 ExitApp();
             }
             catch (Exception ex)
             {
                 AppDialog.Show(this, "启动安装失败：" + ex.Message, "安装更新",
                     MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 探一下目录是否可写 —— 判断安装时要不要提权。
+        /// 用"建一个临时文件再删掉"的方式，比查 ACL 可靠（受控文件夹访问、组策略都能拦住写入）。
+        /// </summary>
+        private static bool IsDirectoryWritable(string dir)
+        {
+            try
+            {
+                string probe = Path.Combine(dir,
+                    ".gezi_write_probe_" + Guid.NewGuid().ToString("N") + ".tmp");
+                using (File.Create(probe, 1, FileOptions.DeleteOnClose)) { }
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

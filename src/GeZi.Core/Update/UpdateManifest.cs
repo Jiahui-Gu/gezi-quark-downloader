@@ -73,11 +73,5 @@ namespace GeZi.Core.Update
             }
         }
 
-        public override string ToString()
-        {
-            return string.Format("v{0} — {1}（{2} 字节）",
-                Version == null ? "?" : Version.ToString(),
-                FileName ?? "?", Size);
-        }
     }
 }

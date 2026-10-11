@@ -111,15 +111,6 @@ namespace GeZi.Core.Update
         }
 
         /// <summary>
-        /// 判断找到的包是否比当前版本新。抽出来是为了可单测（不碰网络）。
-        /// </summary>
-        public static bool IsNewer(UpdateManifest manifest, UpdateVersion current)
-        {
-            if (manifest == null || !manifest.IsValid || current == null) return false;
-            return manifest.Version.CompareTo(current) > 0;
-        }
-
-        /// <summary>
         /// 递归扫描一层目录：文件按命名规范收集，目录继续下钻。
         /// </summary>
         private async Task CollectAsync(string pwdId, string stoken, string pdirFid,

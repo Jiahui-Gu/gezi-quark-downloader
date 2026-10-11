@@ -82,9 +82,6 @@ namespace GeZi
         /// <summary>当前是否有（未被忽略的）新版本。红点与气泡都看它。</summary>
         public static bool HasUpdate { get; private set; }
 
-        /// <summary>本次运行是否已完成过一次检查（供 UI 区分"还没查"和"查了没有"）。</summary>
-        public static bool CheckCompleted { get; private set; }
-
         /// <summary>
         /// 由主窗口在启动时注入的配置对象。
         ///
@@ -224,7 +221,6 @@ namespace GeZi
             Latest = (found != null && found.IsValid) ? found : null;
             s.UpdateLatestVersion = Latest != null ? Latest.Version.ToString() : "";
             HasUpdate = ComputeHasUpdate(s.UpdateLatestVersion, s.UpdateIgnoredVersion, CurrentVersion);
-            CheckCompleted = true;
 
             if (HasUpdate && onNewUpdate != null)
                 onNewUpdate(Latest);

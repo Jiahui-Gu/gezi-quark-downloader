@@ -239,9 +239,12 @@ namespace GeZi.Core.Api
         private static bool IsCapacityCode(object code)
         {
             long c = AsLong(code);
-            // 23017 / 23018 是夸克"转存空间不足"族错误码（社区与同类项目常见取值）；
-            // 32003 是**转存任务异步轮询结果**里返回的"容量不足"码（见 QuarkErrorCode）。
-            return c == 23017 || c == 23018 || c == QuarkErrorCode.CapacityInsufficient;
+            // 一律引用常量类，别在这里写裸数字（见 QuarkErrorCode 的说明）：
+            //   23017 / 23018 = 转存接口**同步响应**里的空间不足族；
+            //   32003         = 转存任务**异步轮询结果**里的容量不足码。
+            return c == QuarkErrorCode.ShareSaveCapacityInsufficient
+                || c == QuarkErrorCode.ShareSaveCapacityInsufficientAlt
+                || c == QuarkErrorCode.CapacityInsufficient;
         }
 
         // ---------------- 账号 ----------------

@@ -8,8 +8,8 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// WITHOUT even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU General Public License for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
@@ -42,6 +42,12 @@ namespace GeZi
         /// <summary>用户点了「开始下载」后回调：参数为（更新包, 是否转存到网盘）。</summary>
         public Action<UpdateManifest, bool> DownloadRequested { get; set; }
 
+        /// <summary>
+        /// 用户在详情窗里点了「忽略此版本」。
+        /// 由调用方（关于页）负责把它落到配置里 —— 本窗口不碰持久化。
+        /// </summary>
+        public bool IgnoredByUser { get; private set; }
+
         /// <summary>GitHub Releases 地址（查看更新说明）。</summary>
         private const string ReleasesUrl =
             "https://github.com/huaotem-bot/gezi-quark-downloader/releases";
@@ -59,9 +65,13 @@ namespace GeZi
                 ? UpdateService.CurrentVersion.ToString() : "?");
             SizeText.Text = FormatSize(_manifest.Size);
 
-            // 未登录：禁用"转存到网盘"，默认选免转存并说明
+            // 未登录：明确提示「请登录后更新」（需求第 7 条），禁用"转存到网盘"，默认选免转存。
             if (!_loggedIn)
             {
+                LoginHintText.Text = "请登录后更新：转存到网盘需要登录，未登录只能免转存直接下载"
+                    + "（游客可能受额度限制）。";
+                LoginHintBox.Visibility = Visibility.Visible;
+
                 RbSave.IsEnabled = false;
                 RbSave.Content = new System.Windows.Controls.TextBlock
                 {
@@ -139,6 +149,16 @@ namespace GeZi
                     AppDialog.Show(this, "打开浏览器失败，请手动访问：\n\n" + ReleasesUrl, "更新说明");
             }
             catch { }
+        }
+
+        /// <summary>
+        /// 「忽略此版本」：记下标记，由调用方落盘（之后不再提示这个版本）。
+        /// 与「暂不」的区别：「暂不」只是这次不看，下次还会提醒。
+        /// </summary>
+        private void OnIgnoreClick(object sender, RoutedEventArgs e)
+        {
+            IgnoredByUser = true;
+            try { Close(); } catch { }
         }
 
         private void OnCloseClick(object sender, RoutedEventArgs e)

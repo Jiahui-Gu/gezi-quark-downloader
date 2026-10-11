@@ -34,8 +34,17 @@ namespace GeZi.Core.Api
     /// </summary>
     public static class QuarkErrorCode
     {
-        /// <summary>网盘容量不足：转存任务失败时返回的容量类错误码。</summary>
+        /// <summary>网盘容量不足：转存任务**异步轮询结果**里返回的容量类错误码。</summary>
         public const long CapacityInsufficient = 32003;
+
+        /// <summary>
+        /// 转存接口（<c>sharepage/save</c>）**同步响应**里的「空间不足」业务码。
+        /// 取值来自社区与同类项目的常见实现；与 32003 是两条不同路径（同步响应 vs 异步任务）。
+        /// </summary>
+        public const long ShareSaveCapacityInsufficient = 23017;
+
+        /// <summary>同上，夸克偶发返回的另一个取值。</summary>
+        public const long ShareSaveCapacityInsufficientAlt = 23018;
 
         /// <summary>
         /// 转存任务「成功」的终态值（/1/clouddrive/task 返回的 <c>data.status</c>）。

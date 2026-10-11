@@ -144,43 +144,36 @@ namespace GeZi
                     RefreshUpdateDot();
                 }
 
-                // ② 有更新（且未被忽略）→ 详情
+                // ② 有更新（且未被忽略）→ **直接**展示详情，不再多问一层「是否查看更新详情？」
+                //    「忽略此版本」的入口已挪进详情窗左下角 —— 原来它挂在那个确认框的「否」上，
+                //    用户只想"不展开详情"却会**永久屏蔽该版本**，手滑代价太大。
                 if (UpdateService.HasUpdate && m != null)
                 {
-                    string size = (m.Size / 1048576.0).ToString("0.0") + " MB";
-                    var ans = AppDialog.Show(this,
-                        "发现新版本 v" + m.Version + "（" + size + "）。\n\n是否查看更新详情？\n"
-                        + "选择「否」= 忽略此版本，之后不再提示。",
-                        "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                    if (ans == MessageBoxResult.Yes)
+                    bool loggedIn = UpdateService.Settings != null
+                        && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
+                    var prompt = new UpdatePromptWindow(m, loggedIn)
                     {
-                        bool loggedIn = UpdateService.Settings != null
-                            && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
-                        var prompt = new UpdatePromptWindow(m, loggedIn)
+                        Owner = this,
+                        DownloadRequested = (manifest, save) =>
                         {
-                            Owner = this,
-                            DownloadRequested = (manifest, save) =>
-                            {
-                                // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
-                                // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
-                                var main = Application.Current.MainWindow as MainWindow;
-                                if (main != null)
-                                    main.StartUpdateDownload(manifest, save);
-                                else
-                                    AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
-                            },
-                        };
-                        prompt.ShowDialog();
-                    }
-                    else
+                            // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
+                            // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
+                            var main = Application.Current.MainWindow as MainWindow;
+                            if (main != null)
+                                main.StartUpdateDownload(manifest, save);
+                            else
+                                AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
+                        },
+                    };
+                    prompt.ShowDialog();
+
+                    // 用户在详情窗里**明确**点了「忽略此版本」才落盘
+                    if (prompt.IgnoredByUser && UpdateService.Settings != null)
                     {
-                        if (UpdateService.Settings != null)
-                        {
-                            UpdateService.IgnoreCurrent(UpdateService.Settings);
-                            SettingsStore.Save(UpdateService.Settings);
-                        }
-                        RefreshUpdateDot();
+                        UpdateService.IgnoreCurrent(UpdateService.Settings);
+                        SettingsStore.Save(UpdateService.Settings);
                     }
+                    RefreshUpdateDot();
                 }
                 else if (UpdateService.Latest != null
                          && UpdateService.Latest.Version.CompareTo(UpdateService.CurrentVersion) > 0)
