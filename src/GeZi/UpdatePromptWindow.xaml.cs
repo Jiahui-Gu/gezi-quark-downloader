@@ -65,33 +65,26 @@ namespace GeZi
                 ? UpdateService.CurrentVersion.ToString() : "?");
             SizeText.Text = FormatSize(_manifest.Size);
 
-            // 未登录：明确提示「请登录后更新」（需求第 7 条），禁用"转存到网盘"，默认选免转存。
-            if (!_loggedIn)
-            {
-                LoginHintText.Text = "请登录后更新：转存到网盘需要登录，未登录只能免转存直接下载"
-                    + "（游客可能受额度限制）。";
-                LoginHintBox.Visibility = Visibility.Visible;
-
-                RbSave.IsEnabled = false;
-                RbSave.Content = new System.Windows.Controls.TextBlock
-                {
-                    Text = "转存到网盘后下载（需登录）",
-                    FontSize = 12.5,
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = (System.Windows.Media.Brush)FindResource("TextTertiaryBrush"),
-                };
-            }
-
-            // 默认选中：登录 → 转存；未登录 → 免转存
+            // 下载方式**不由用户选**：
+            //   · 已登录 → 直接转存到网盘后下载（默认路径）；
+            //   · 未登录 → 只能免转存（转存需要登录），给一句明确提示。
+            // 「免转存」的另一个入口是**网盘容量不足**时由主窗口弹提示给出，不在这里选。
             if (_loggedIn)
-                RbSave.IsChecked = true;
+            {
+                ModeNote.Text = "先转存到你的网盘再下载（速度更稳、支持断点续传）。\n"
+                    + "转存的副本会在 " + UpdateConstants.DeleteAfterHours.ToString("0")
+                    + " 小时后自动从网盘删除，不会永久占用空间。";
+            }
             else
-                RbNoSave.IsChecked = true;
+            {
+                LoginHintText.Text = "请登录后更新：转存到网盘需要登录，本次只能免转存直接下载。";
+                LoginHintBox.Visibility = Visibility.Visible;
+                ModeNote.Text = "免转存直接下载：不写入网盘、不占空间（游客可能受额度限制）。";
+            }
 
             Loaded += (s, e) =>
             {
                 DialogChrome.ApplyRoundedCorners(this);
-                OnModeChanged(null, null);   // 初始化说明文案
             };
         }
 
@@ -103,31 +96,10 @@ namespace GeZi
             return (bytes / 1024.0).ToString("0") + " KB";
         }
 
-        private void OnModeChanged(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                bool save = RbSave.IsChecked == true;
-                if (save)
-                {
-                    ModeNote.Text = _loggedIn
-                        ? "转存到你的网盘后再下载，速度更稳。转存的副本会在 "
-                          + UpdateConstants.DeleteAfterHours.ToString("0") + " 小时后自动从网盘删除，不会永久占用空间。"
-                        : "需先登录才能转存到网盘。";
-                }
-                else
-                {
-                    ModeNote.Text = _loggedIn
-                        ? "不写入网盘，直接从分享取链下载（不占空间，但游客可能受额度限制）。"
-                        : "未登录：仅能免转存下载（游客可能受额度限制）。";
-                }
-            }
-            catch { }
-        }
-
         private void OnDownloadClick(object sender, RoutedEventArgs e)
         {
-            bool save = RbSave.IsChecked == true && _loggedIn;
+            // 默认路径：登录了就走转存（转存副本 60 小时后自动删）；没登录只能免转存。
+            bool save = _loggedIn;
             try
             {
                 if (DownloadRequested != null)

@@ -5063,9 +5063,9 @@ namespace GeZi
                         // 不能默默降级（用户会以为"转存好了"，也失去清理网盘的机会）。
                         // 仍然只对「容量不足」这一类降级（其它 QuarkApiException 照常抛出去）。
                         var ans = AppDialog.Show(this,
-                            "网盘容量不足，无法把更新包转存到网盘。\n\n"
-                            + "「转存后下载」更稳定、支持断点续传；想用它请先清理网盘空间后重试。\n\n"
-                            + "是否改用「免转存」直接下载？",
+                            "网盘容量不足，请清理网盘容量之后再更新，或选择免转存下载。\n\n"
+                            + "（转存后下载更稳定、支持断点续传；免转存不写入网盘、不占空间。）\n\n"
+                            + "现在改用「免转存」下载吗？",
                             "更新下载", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                         if (ans != MessageBoxResult.Yes)
                         {
