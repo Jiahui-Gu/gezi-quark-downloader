@@ -131,6 +131,24 @@ namespace GeZi
         /// <summary>直链短时缓存（TTL 600s），避免重复取链触发夸克限流。见 LinkCache。</summary>
         private readonly LinkCache _linkCache = new LinkCache();
 
+        // ---------------- 「入队」可终止（2026-10-11） ----------------
+        //
+        // 【背景】用户反馈：「点击下载后一直卡在『入队中』」。
+        // 「入队」这一步其实是串起来的多个网络动作（递归展开目录 → 转存/取链，
+        // 转存还要轮询任务状态最长 300 秒），全过程没有任何取消入口 ——
+        // 一旦某一步卡住 / 接口变慢，界面就永远停在「入队中」，用户只能干等甚至杀进程。
+        //
+        // 【做法】入队期间把「下载」按钮就地变成**可点**的「入队中（点此终止）」，
+        // 再点一次即触发下面的取消源；流程各处插入检查点，逐步退回。
+        // ⚠️ 取消是「立刻响应」级别：正在飞的那一个 HTTP 请求会等它自己返回（通常几秒），
+        // 但后续步骤不会再开始 —— 该粒度足以解决"卡住/等太久"的问题，且不动网络层。
+
+        /// <summary>当前「入队」流程的取消源。非 null = 正在入队（此时再点下载按钮 = 终止）。</summary>
+        private CancellationTokenSource _enqueueCts;
+
+        /// <summary>正在显示「入队中」的那个按钮（终止时用来改文案）。</summary>
+        private Button _enqueueBusyBtn;
+
         // ---------------- 剪贴板自动解析（2026-10-08） ----------------
 
         /// <summary>
@@ -682,7 +700,9 @@ namespace GeZi
                                       DriveRefreshBtn, DriveUpBtn, FetchLinksBtn })
             {
                 if (b == null) continue;
-                if (_busyButtons.Contains(b)) continue;   // 加载中 → 保持原色
+                // 加载中 → 保持原色。⚠️ 可终止的加载态（「入队中」）还必须**保持可点**，
+                // 不能被 SetBusy(false) 之外的东西影响 —— IsEnabled 本身不动它。
+                if (_busyButtons.Contains(b)) continue;
                 b.IsEnabled = !busy;
             }
         }
@@ -724,6 +744,19 @@ namespace GeZi
         /// </remarks>
         private bool BeginBusy(Button btn, string busyText)
         {
+            return BeginBusy(btn, busyText, cancelable: false);
+        }
+
+        /// <summary>
+        /// 把按钮切成「加载中」（可终止版）。
+        /// </summary>
+        /// <param name="cancelable">
+        /// true = **保持按钮可点**，用于"入队"这类可能长时间卡住的流程 ——
+        /// 再点一次即触发终止（见 <see cref="RequestCancelEnqueue"/>）。
+        /// 普通加载态（解析 / 取直链 / 刷新）传 false，仍需 <c>IsHitTestVisible=false</c> 防重入。
+        /// </param>
+        private bool BeginBusy(Button btn, string busyText, bool cancelable)
+        {
             if (btn == null) return true;                 // 没有按钮就只当普通执行
             if (_busyButtons.Contains(btn)) return false; // 已在加载 → 拒绝重入
 
@@ -733,7 +766,8 @@ namespace GeZi
             if (btn.ActualWidth > 0)
                 btn.MinWidth = Math.Max(btn.MinWidth, btn.ActualWidth);
             btn.Content = UiBusy.BuildContent(busyText, btn);
-            btn.IsHitTestVisible = false;
+            // 可终止的加载态：按钮仍可点击（点击 = 终止）；普通加载态则挡住重入。
+            btn.IsHitTestVisible = cancelable;
             return true;
         }
 
@@ -751,7 +785,69 @@ namespace GeZi
                 btn.Content = saved;
             _busySavedContent.Remove(btn);
             _busyButtons.Remove(btn);
+            // 还原后按钮回到"正常可点"（含「正在终止…」阶段被临时收回可点的情况）。
             btn.IsHitTestVisible = true;
+        }
+
+        // ---------------- 「入队」可终止（2026-10-11） ----------------
+
+        /// <summary>「入队中」按钮的文案（点它即可终止）。</summary>
+        private const string EnqueueBusyText = "入队中（点此终止）";
+
+        /// <summary>
+        /// 进入「入队中」（**可终止**）。
+        /// </summary>
+        /// <returns>
+        /// false = 本次点击**不应开始新的入队** —— 要么已在入队（本次点击已被当作
+        /// 「终止」处理并触发了取消），要么按钮正被别的加载态占用（拒绝重入）。
+        /// </returns>
+        private bool BeginEnqueue(Button btn)
+        {
+            if (_enqueueCts != null)
+            {
+                // 已在入队 → 再点一次 = 终止
+                RequestCancelEnqueue();
+                return false;
+            }
+
+            // 按钮正显示别的加载态（如「解析中」）→ 拒绝重入
+            if (btn != null && _busyButtons.Contains(btn)) return false;
+
+            _enqueueCts = new CancellationTokenSource();
+            _enqueueBusyBtn = btn;
+            if (btn != null)
+                BeginBusy(btn, EnqueueBusyText, cancelable: true);
+            return true;
+        }
+
+        /// <summary>
+        /// 请求终止当前「入队」流程。**不阻塞** —— 只发取消信号并改按钮文案，
+        /// 真正退回由入队流程自己那串检查点逐级响应（正在飞的单个请求会等它返回）。
+        /// </summary>
+        private void RequestCancelEnqueue()
+        {
+            try
+            {
+                Log("正在终止入队…");
+                _enqueueCts?.Cancel();
+                // 立刻给用户反馈：按钮文案改「正在终止…」并**收回可点**
+                // （否则用户在流程退干净之前连点会反复触发 Cancel）。
+                if (_enqueueBusyBtn != null && _busyButtons.Contains(_enqueueBusyBtn))
+                {
+                    _enqueueBusyBtn.Content = UiBusy.BuildContent("正在终止…", _enqueueBusyBtn);
+                    _enqueueBusyBtn.IsHitTestVisible = false;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>退出「入队中」态：清掉取消源并把按钮还原（保证至少显示 MinBusyMs）。</summary>
+        private async Task EndEnqueueAsync(Button btn, long startedTicks)
+        {
+            try { _enqueueCts?.Dispose(); } catch { }
+            _enqueueCts = null;
+            _enqueueBusyBtn = null;
+            await EndBusyAsync(btn, startedTicks);
         }
 
         /// <summary>造一个"小转圈"（缺口圆弧 + 无限旋转）。Stroke 由调用方设置。</summary>
@@ -842,6 +938,42 @@ namespace GeZi
             _pathList.Clear();
             _curFid = "0";
             UpdatePathText();
+        }
+
+        /// <summary>
+        /// 换账号（登录成功 / 登出）时把**"网盘侧"的缓存与快照作废**。
+        /// </summary>
+        /// <remarks>
+        /// 【2026-10-11 修 bug】用户反馈：「登录了新账号，但从下载页切回我的网盘，
+        /// 显示的还是旧账号的网盘内容」。
+        /// 根因是换账号时只清了直链缓存（<see cref="LinkCache"/>），没清这两样：
+        ///   ① 目录缓存 <c>_dirCache</c> / <c>_dirSizeCache</c> —— fid 是**账号内的编号**，
+        ///      换账号后同一个 fid 指向的文件完全不同，留着必然张冠李戴；
+        ///   ② 网盘导航快照 <c>_driveNav</c> —— 最要命：<see cref="OnModeChanged"/>
+        ///      见到快照非空会**直接把旧列表铺开、连请求都不发**
+        ///      （那是为"切回来不丢状态"特意做的），于是旧账号的文件原样重现。
+        ///
+        /// ⚠️ **刻意不动分享侧状态**（<c>_shareNav</c> / <c>_pwdId</c> / <c>_stoken</c>）：
+        /// 分享（pwd_id + stoken + 每条的 fid_token）是**账号无关**的，匿名也能列目录/取链，
+        /// 其 stoken 与 token 又是成组存放的、切换账号后依旧自洽。
+        /// 若一并清掉，当用户正停在「分享」模式时（<c>_files</c> 还显示着分享内容），
+        /// 再点下载会因 <c>_pwdId</c>/<c>_stoken</c> 变成 null 而失效 —— 那是自造的回归。
+        /// </remarks>
+        private void InvalidateAccountCaches()
+        {
+            _linkCache.Clear();
+            // 目录缓存键带模式前缀（"s:"/"d:"），这里整体清掉：
+            // 分享侧被顺带清掉只是下次进目录重取一次，无副作用；网盘侧则是必须清的。
+            _dirCache.Clear();
+            _dirSizeCache.Clear();
+
+            // 网盘快照重置为"没进过"的状态（ShareFileItem 是可变引用集合，整体换新实例）
+            _driveNav.Files = new List<ShareFileItem>();
+            _driveNav.CurFid = "0";
+            _driveNav.FidStack = new List<string>();
+            _driveNav.PathList = new List<string>();
+            _driveNav.PwdId = null;
+            _driveNav.Stoken = null;
         }
 
         // ---------------- 分享解析 ----------------
@@ -2271,15 +2403,20 @@ namespace GeZi
                 return;
             }
             long t0 = BusyClock();
-            if (!BeginBusy(DownloadSelBtn, "入队中")) return;
+            if (!BeginEnqueue(DownloadSelBtn)) return;
             try
             {
                 await StartDownloadAsync(
-                    FileList.SelectedItems.Cast<ShareFileItem>().ToList(), forceNoSave: true);
+                    FileList.SelectedItems.Cast<ShareFileItem>().ToList(), _enqueueCts.Token,
+                    forceNoSave: true);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("已终止入队（未加入任何下载任务）。");
             }
             finally
             {
-                await EndBusyAsync(DownloadSelBtn, t0);
+                await EndEnqueueAsync(DownloadSelBtn, t0);
             }
         }
 
@@ -2503,29 +2640,39 @@ namespace GeZi
         private async void OnDownloadSelected(object sender, RoutedEventArgs e)
         {
             // 下载前要先递归展开目录 + 取直链（网络）→ 按钮就地变成"入队中…"
+            // 【2026-10-11】入队期间按钮保持可点：再点一次 = 终止（见 BeginEnqueue）。
             long t0 = BusyClock();
-            if (!BeginBusy(DownloadSelBtn, "入队中")) return;
+            if (!BeginEnqueue(DownloadSelBtn)) return;
             try
             {
-                await StartDownloadAsync(FileList.SelectedItems.Cast<ShareFileItem>().ToList());
+                await StartDownloadAsync(
+                    FileList.SelectedItems.Cast<ShareFileItem>().ToList(), _enqueueCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("已终止入队（未加入任何下载任务）。");
             }
             finally
             {
-                await EndBusyAsync(DownloadSelBtn, t0);
+                await EndEnqueueAsync(DownloadSelBtn, t0);
             }
         }
 
         private async void OnDownloadAll(object sender, RoutedEventArgs e)
         {
             long t0 = BusyClock();
-            if (!BeginBusy(DownloadAllBtn, "入队中")) return;
+            if (!BeginEnqueue(DownloadAllBtn)) return;
             try
             {
-                await StartDownloadAsync(_files.ToList());
+                await StartDownloadAsync(_files.ToList(), _enqueueCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("已终止入队（未加入任何下载任务）。");
             }
             finally
             {
-                await EndBusyAsync(DownloadAllBtn, t0);
+                await EndEnqueueAsync(DownloadAllBtn, t0);
             }
         }
 
@@ -2998,7 +3145,8 @@ namespace GeZi
             RunJobs(jobs);
         }
 
-        private async Task StartDownloadAsync(List<ShareFileItem> selected, bool forceNoSave = false)
+        private async Task StartDownloadAsync(List<ShareFileItem> selected,
+            CancellationToken ct = default(CancellationToken), bool forceNoSave = false)
         {
             if (_client == null)
             {
@@ -3014,8 +3162,9 @@ namespace GeZi
             SetBusy(true);
             try
             {
+                ct.ThrowIfCancellationRequested();
                 // 把选中的文件夹递归展开成文件列表（保留相对目录）
-                var files = await CollectFilesAsync(selected, "", 0);
+                var files = await CollectFilesAsync(selected, "", 0, ct);
                 if (files.Count == 0)
                 {
                     Log("没有要下载的文件");
@@ -3063,7 +3212,9 @@ namespace GeZi
                     }
                 }
 
-                var items = await GetDownloadItemsAsync(files, forceNoSave);
+                ct.ThrowIfCancellationRequested();
+                var items = await GetDownloadItemsAsync(files, ct, forceNoSave);
+                ct.ThrowIfCancellationRequested();
 
                 // 连接数按文件大小比例分配（大文件多分、小文件少分，各不低于下限）
                 var alloc = AllocateThreads(items.Select(x => x.Size).ToList());
@@ -3071,6 +3222,7 @@ namespace GeZi
                 var jobs = new List<DownloadJob>();
                 for (int i = 0; i < items.Count; i++)
                 {
+                    ct.ThrowIfCancellationRequested();
                     var it = items[i];
                     string destDir = Path.Combine(_settings.OutDir, it.RelDir ?? "");
                     try { Directory.CreateDirectory(destDir); }
@@ -3122,11 +3274,13 @@ namespace GeZi
             }
         }
 
-        private async Task<List<ShareFileItem>> CollectFilesAsync(IEnumerable<ShareFileItem> items, string relPrefix, int depth)
+        private async Task<List<ShareFileItem>> CollectFilesAsync(IEnumerable<ShareFileItem> items,
+            string relPrefix, int depth, CancellationToken ct = default(CancellationToken))
         {
             var result = new List<ShareFileItem>();
             foreach (var it in items)
             {
+                ct.ThrowIfCancellationRequested();   // 每一层每个条目都查一次 → 终止响应足够快
                 if (it.IsDir)
                 {
                     if (depth >= 40)
@@ -3138,15 +3292,21 @@ namespace GeZi
                             ? await _client.ShareDetailAsync(_pwdId, _stoken, it.Fid)
                             : await _client.ListDirAsync(it.Fid);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        throw;   // 取消不能被下面的"容错 continue"吞掉
+                    }
                     catch
                     {
                         continue;
                     }
+                    ct.ThrowIfCancellationRequested();
                     var kids = children.Select(c => new ShareFileItem
                     {
                         Fid = c.Fid, Name = c.Name, Size = c.Size, IsDir = c.IsDir, Token = c.Token,
                     }).ToList();
-                    var sub = await CollectFilesAsync(kids, Path.Combine(relPrefix, PathUtil.SanitizeFileName(it.Name)), depth + 1);
+                    var sub = await CollectFilesAsync(
+                        kids, Path.Combine(relPrefix, PathUtil.SanitizeFileName(it.Name)), depth + 1, ct);
                     result.AddRange(sub);
                 }
                 else
@@ -3162,7 +3322,7 @@ namespace GeZi
         }
 
         private async Task<List<DownloadItem>> GetDownloadItemsAsync(List<ShareFileItem> files,
-            bool forceNoSave = false)
+            CancellationToken ct = default(CancellationToken), bool forceNoSave = false)
         {
             if (ShareMode)
             {
@@ -3172,7 +3332,7 @@ namespace GeZi
                 if (forceNoSave)
                 {
                     Log("按你的选择走「免转存」路径：不写入网盘，直接从分享取链。");
-                    return await NoSaveGetItemsAsync(files);
+                    return await NoSaveGetItemsAsync(files, ct);
                 }
 
                 bool loggedIn = !string.IsNullOrEmpty(_settings.Cookie);
@@ -3181,7 +3341,11 @@ namespace GeZi
                     Log("已登录，走「转存→取直链」路径（更稳定）");
                     try
                     {
-                        return await SaveAndGetItemsAsync(files);
+                        return await SaveAndGetItemsAsync(files, ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;   // 终止入队：原样上抛，不能被下面的"容量降级"当成失败处理
                     }
                     catch (CapacityDowngradeException)
                     {
@@ -3189,13 +3353,14 @@ namespace GeZi
                         // （不写入网盘、直接从分享取链），而不是让整批任务失败。
                         // 这是很常见的场景：网盘满了但仍想下载公开分享。
                         Log("网盘容量不足，已自动改用「免转存」路径取直链（不写入网盘）。");
-                        return await NoSaveGetItemsAsync(files);
+                        ct.ThrowIfCancellationRequested();
+                        return await NoSaveGetItemsAsync(files, ct);
                     }
                 }
                 Log("未登录，走「免转存」路径（游客可能受额度限制）");
-                return await NoSaveGetItemsAsync(files);
+                return await NoSaveGetItemsAsync(files, ct);
             }
-            return await DriveGetItemsAsync(files);
+            return await DriveGetItemsAsync(files, ct);
         }
 
         /// <summary>
@@ -3207,10 +3372,12 @@ namespace GeZi
             public CapacityDowngradeException() : base("网盘容量不足") { }
         }
 
-        private async Task<List<DownloadItem>> NoSaveGetItemsAsync(List<ShareFileItem> files)
+        private async Task<List<DownloadItem>> NoSaveGetItemsAsync(List<ShareFileItem> files,
+            CancellationToken ct = default(CancellationToken))
         {
+            ct.ThrowIfCancellationRequested();
             var targets = files.Select(f => new LinkTarget { Fid = f.Fid, Token = f.Token, Name = f.Name }).ToList();
-            var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: true);
+            var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: true, ct: ct);
             var items = new List<DownloadItem>();
             foreach (var f in files)
             {
@@ -3226,10 +3393,12 @@ namespace GeZi
             return items;
         }
 
-        private async Task<List<DownloadItem>> DriveGetItemsAsync(List<ShareFileItem> files)
+        private async Task<List<DownloadItem>> DriveGetItemsAsync(List<ShareFileItem> files,
+            CancellationToken ct = default(CancellationToken))
         {
+            ct.ThrowIfCancellationRequested();
             var targets = files.Select(f => new LinkTarget { Fid = f.Fid, Name = f.Name }).ToList();
-            var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: false);
+            var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: false, ct: ct);
             var items = new List<DownloadItem>();
             foreach (var f in files)
             {
@@ -3245,9 +3414,11 @@ namespace GeZi
             return items;
         }
 
-        private async Task<List<DownloadItem>> SaveAndGetItemsAsync(List<ShareFileItem> files)
+        private async Task<List<DownloadItem>> SaveAndGetItemsAsync(List<ShareFileItem> files,
+            CancellationToken ct = default(CancellationToken))
         {
             var items = new List<DownloadItem>();
+            ct.ThrowIfCancellationRequested();
             string toFid = await EnsureFolderAsync(QuarkConstants.DefaultFolder);
             if (string.IsNullOrEmpty(toFid))
             {
@@ -3257,13 +3428,18 @@ namespace GeZi
 
             for (int i = 0; i < files.Count; i += 50)
             {
+                ct.ThrowIfCancellationRequested();   // 每批转存前查一次 → 终止不必等整批跑完
                 var batch = files.Skip(i).Take(50).ToList();
                 var fids = batch.Select(f => f.Fid).ToList();
                 var tokens = batch.Select(f => f.Token).ToList();
                 List<string> newFids;
                 try
                 {
-                    newFids = await _client.SaveShareAndGetFidsAsync(fids, tokens, toFid, _pwdId, _stoken);
+                    newFids = await _client.SaveShareAndGetFidsAsync(fids, tokens, toFid, _pwdId, _stoken, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;   // 终止入队：原样上抛（否则会被下面的 catch 吞成"转存失败"继续跑）
                 }
                 catch (QuarkApiException ex) when (QuarkClient.IsCapacityMessage(ex.Message))
                 {
@@ -3279,6 +3455,14 @@ namespace GeZi
 
                 if (newFids.Count > 0)
                 {
+                    // 🚨 转存**一旦成功就立刻登记待清理** —— 不能像原来那样等到本批循环
+                    // 末尾再加：中途若被「终止入队」打断（下面的 ThrowIfCancellationRequested
+                    // 或取链抛取消），就会漏登记，网盘里留下**孤儿中转文件**。
+                    // （这类"删除漏登记"是本项目栽过的坑，宁可提前登记。）
+                    lock (_cleanupLock)
+                        _pendingCleanupFids.AddRange(newFids);
+
+                    ct.ThrowIfCancellationRequested();
                     // 转存后校验：等文件落盘，过滤无效 fid（对应原版 _resolve_saved_fids）
                     newFids = await ResolveSavedFidsAsync(toFid, newFids);
 
@@ -3292,7 +3476,7 @@ namespace GeZi
                             Name = j < batch.Count ? batch[j].Name : newFids[j],
                         });
                     }
-                    var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: false);
+                    var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: false, ct: ct);
 
                     for (int j = 0; j < newFids.Count && j < batch.Count; j++)
                     {
@@ -3307,8 +3491,6 @@ namespace GeZi
                             Log("无直链: " + batch[j].Name);
                     }
                 }
-                lock (_cleanupLock)
-                    _pendingCleanupFids.AddRange(newFids);
             }
             return items;
         }
@@ -3330,8 +3512,9 @@ namespace GeZi
         ///  2. **多一轮"逐个单请求"兜底**。批量接口更易被限流，剩少量文件时逐个问成功率更高。
         /// </summary>
         private async Task<Dictionary<string, string>> FetchUrlsWithRetryAsync(
-            List<LinkTarget> targets, bool fromShare)
+            List<LinkTarget> targets, bool fromShare, CancellationToken ct = default(CancellationToken))
         {
+            ct.ThrowIfCancellationRequested();
             var urls = new Dictionary<string, string>();
             var pending = new List<LinkTarget>(targets);
             var reason = new Dictionary<string, string>();
@@ -3353,18 +3536,21 @@ namespace GeZi
 
             for (int round = 0; round < delays.Length && pending.Count > 0; round++)
             {
+                ct.ThrowIfCancellationRequested();
                 if (round > 0)
                 {
                     Log(string.Format("{0} 个文件未返回直链，重试第 {1} 轮…", pending.Count, round));
-                    await Task.Delay(delays[round]);
+                    await Task.Delay(delays[round], ct);
                 }
                 var next = new List<LinkTarget>();
                 for (int i = 0; i < pending.Count; i += 20)
                 {
+                    ct.ThrowIfCancellationRequested();
                     var batch = pending.Skip(i).Take(20).ToList();
                     List<DownloadLink> links = null;
                     string err = null;
                     try { links = await FetchBatchAsync(batch, fromShare); }
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception ex) { err = ex.Message; }
                     if (err != null)
                     {
@@ -3407,7 +3593,8 @@ namespace GeZi
                 var still = new List<LinkTarget>();
                 foreach (var t in pending)
                 {
-                    await Task.Delay(150);
+                    ct.ThrowIfCancellationRequested();
+                    await Task.Delay(150, ct);
                     try
                     {
                         var one = await FetchBatchAsync(new List<LinkTarget> { t }, fromShare);
@@ -7024,8 +7211,9 @@ namespace GeZi
             try { _client?.StopKeepAlive(); } catch { }
             _client?.Dispose();
             _client = null;
-            _stoken = null;
-            _linkCache.Clear();   // 换账号后旧账号的直链必须作废
+            // 【2026-10-11】登出同样是"换账号"：直链 / 目录缓存 / 导航快照都要作废，
+            // 否则下次登录别的账号会看到上一个账号的网盘内容（见 InvalidateAccountCaches）。
+            InvalidateAccountCaches();
             _settings.Cookie = "";
             _settings.Who = "";
             _settings.AvatarUrl = "";
@@ -7034,6 +7222,9 @@ namespace GeZi
             UpdateAccountCard(null, 0, 0);
             LoginBtn.Visibility = Visibility.Visible;
             AccountsBtn.Visibility = Visibility.Collapsed;
+            // 若正停在「我的网盘」模式，把文件列表清空 —— 已登出，那些内容不再属于任何人。
+            if (!ShareMode)
+                ResetNav();
             Log(string.IsNullOrEmpty(reason) ? "已登出" : reason);
         }
 
@@ -7077,7 +7268,9 @@ namespace GeZi
                     };
                     _client.StartKeepAlive();
                     _loginExpired = false;   // 新登录成功 → 清掉"已过期"标记
-                    _linkCache.Clear();   // 换账号后旧账号的直链必须作废
+                    // 换账号后旧账号的**直链 / 目录缓存 / 两个模式的导航快照**全部作废。
+                    // （原来只清了直链 → 切回「我的网盘」会显示旧账号的内容，见 InvalidateAccountCaches）
+                    InvalidateAccountCaches();
                     _settings.Cookie = client.CookieStr;
                     _settings.Who = nick;
                     // 头像：探测到的就存下来（拿不到存空串 → 界面回退"昵称首字"）
@@ -7096,6 +7289,16 @@ namespace GeZi
                     LoginBtn.Visibility = Visibility.Collapsed;
                     AccountsBtn.Visibility = Visibility.Visible;
                     Log("登录成功: " + nick);
+
+                    // 【2026-10-11】若此刻正停在「我的网盘」模式，缓存/快照刚被清空，
+                    // 界面还挂着旧账号的文件列表 → 立刻重置并加载**新账号**的根目录，
+                    // 否则用户会在切页时看到旧内容（正是本次要修的 bug）。
+                    if (!ShareMode)
+                    {
+                        ResetNav();
+                        await LoadDirAsync("0");
+                    }
+
                     await RefreshCapacityAsync();
                 }
                 else

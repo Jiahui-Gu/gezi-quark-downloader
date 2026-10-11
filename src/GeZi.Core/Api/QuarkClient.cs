@@ -543,12 +543,18 @@ namespace GeZi.Core.Api
             return taskId;
         }
 
-        public async Task<object> QueryTaskAsync(string taskId, int timeoutSeconds = 300)
+        /// <param name="ct">
+        /// 【2026-10-11】可选取消令牌。转存确认最长要轮询 300 秒，用户点了「终止入队」
+        /// 应当能立刻停下，而不是干等完 —— 这个 token 由上层（MainWindow 的入队流程）传入。
+        /// </param>
+        public async Task<object> QueryTaskAsync(string taskId, int timeoutSeconds = 300,
+            CancellationToken ct = default(CancellationToken))
         {
             int retry = 0;
             var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
             while (DateTime.UtcNow < deadline)
             {
+                ct.ThrowIfCancellationRequested();
                 var query = new Dictionary<string, string>
                 {
                     { "pr", "ucpro" }, { "fr", "pc" }, { "uc_param_str", "" },
@@ -590,17 +596,17 @@ namespace GeZi.Core.Api
                 }
 
                 retry++;
-                await Task.Delay(TimeSpan.FromMilliseconds(600)).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(600), ct).ConfigureAwait(false);
             }
             throw new QuarkApiException("转存任务超时");
         }
 
         /// <summary>转存一批分享文件到网盘并等待完成，返回转存后得到的新 fid 列表（顺序与输入一致）。</summary>
         public async Task<List<string>> SaveShareAndGetFidsAsync(IList<string> fidList, IList<string> tokenList,
-            string toPdirFid, string pwdId, string stoken)
+            string toPdirFid, string pwdId, string stoken, CancellationToken ct = default(CancellationToken))
         {
             string taskId = await SaveShareAsync(fidList, tokenList, toPdirFid, pwdId, stoken).ConfigureAwait(false);
-            var data = await QueryTaskAsync(taskId).ConfigureAwait(false);
+            var data = await QueryTaskAsync(taskId, ct: ct).ConfigureAwait(false);
             var fids = new List<string>();
             var saveAs = AsDict(Get(AsDict(data), "save_as"));
             var arr = AsArray(Get(saveAs, "save_as_top_fids"));
