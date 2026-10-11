@@ -77,8 +77,125 @@ namespace GeZi
             catch { }
 
             BuildFeatureList();
+            RefreshUpdateDot();
 
-            Loaded += (s, e) => DialogChrome.ApplyRoundedCorners(this);
+            Loaded += (s, e) =>
+            {
+                DialogChrome.ApplyRoundedCorners(this);
+                // 再刷一次：启动检查是异步的，可能刚好在构造之后才完成。
+                RefreshUpdateDot();
+            };
+        }
+
+        // ---------------- 检查更新（2026-10-11 新增） ----------------
+
+        private bool _checkingUpdate;
+
+        /// <summary>按 <see cref="UpdateService.HasUpdate"/> 决定右上角红点显示与否。</summary>
+        private void RefreshUpdateDot()
+        {
+            try
+            {
+                UpdateDot.Visibility = UpdateService.HasUpdate
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 点「检查更新」：立刻查一次（**不节流**），然后把结果明确告诉用户。
+        ///
+        /// 【为什么弹窗放在这里，而不是启动时】需求要求启动时**不打断用户** ——
+        /// 启动只做后台检查 → 红点 + 气泡，用户不点就当没发生过。
+        /// 这里是用户**主动点了**，所以有结果就该说清楚（失败也要给原因和手动地址），
+        /// 与"静默"的启动检查是两回事。
+        /// </summary>
+        private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
+        {
+            if (_checkingUpdate) return;
+            _checkingUpdate = true;
+            CheckUpdateBtn.IsEnabled = false;
+            try
+            {
+                var m = await UpdateService.CheckNowAsync();
+
+                // Settings 由主窗口 Attach；正常路径一定有，防御一下免得测试宿主崩
+                if (UpdateService.Settings != null)
+                    UpdateService.Apply(UpdateService.Settings, m, null);
+                RefreshUpdateDot();
+
+                // ① 有新版本、但之前被忽略了 → 先问要不要恢复提醒
+                //    （不能装作没有，也不能说"再点一次就好"—— 那样点了还是被忽略）
+                if (m != null && UpdateService.CurrentVersion != null
+                    && m.Version.CompareTo(UpdateService.CurrentVersion) > 0
+                    && UpdateService.IsIgnored(m.Version))
+                {
+                    var resume = AppDialog.Show(this,
+                        "你之前忽略了 v" + m.Version + " 的更新提醒。\n\n是否恢复提醒并查看更新？",
+                        "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (resume != MessageBoxResult.Yes) return;
+
+                    if (UpdateService.Settings != null)
+                    {
+                        UpdateService.ClearIgnore(UpdateService.Settings);
+                        SettingsStore.Save(UpdateService.Settings);
+                    }
+                    RefreshUpdateDot();
+                }
+
+                // ② 有更新（且未被忽略）→ 详情
+                if (UpdateService.HasUpdate && m != null)
+                {
+                    string size = (m.Size / 1048576.0).ToString("0.0") + " MB";
+                    var ans = AppDialog.Show(this,
+                        "发现新版本 v" + m.Version + "（" + size + "）。\n\n是否查看更新详情？\n"
+                        + "选择「否」= 忽略此版本，之后不再提示。",
+                        "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (ans == MessageBoxResult.Yes)
+                    {
+                        // 【第三步接入】这里将打开「更新详情」窗口（转存下载 / 免转存下载）。
+                        AppDialog.Show(this, "更新详情与下载流程将在下一步接入。", "检查更新");
+                    }
+                    else
+                    {
+                        if (UpdateService.Settings != null)
+                        {
+                            UpdateService.IgnoreCurrent(UpdateService.Settings);
+                            SettingsStore.Save(UpdateService.Settings);
+                        }
+                        RefreshUpdateDot();
+                    }
+                }
+                else if (UpdateService.Latest != null
+                         && UpdateService.Latest.Version.CompareTo(UpdateService.CurrentVersion) > 0)
+                {
+                    // 有新版本但被用户忽略了 —— 不能谎称"已是最新"，要说清楚是被忽略的
+                    AppDialog.Show(this,
+                        "你已忽略 v" + UpdateService.Latest.Version + " 的更新提醒。\n"
+                        + "当前版本仍是 v" + UpdateService.CurrentVersion + "。\n\n"
+                        + "想恢复提醒：再点一次「检查更新」即可。",
+                        "检查更新");
+                }
+                else
+                {
+                    AppDialog.Show(this,
+                        "当前已是最新版本（v" + UpdateService.CurrentVersion + "）。",
+                        "检查更新");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppDialog.Show(this,
+                    "检查更新失败：" + ex.Message
+                    + "\n\n你也可以手动打开更新源查看：\n" + GeZi.Core.Update.UpdateConstants.ShareUrl,
+                    "检查更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                _checkingUpdate = false;
+                CheckUpdateBtn.IsEnabled = true;
+            }
         }
 
         private void BuildFeatureList()

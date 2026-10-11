@@ -66,6 +66,27 @@
                                        FontSize="11" Margin="0,1,0,0"
                                        Foreground="{DynamicResource TextTertiaryBrush}"/>
                         </StackPanel>
+
+                        <!-- 「检查更新」按钮（2026-10-11 新增）
+                             红点是**右上角那个小圆点**，只在检测到新版本时显示。
+                             ⚠️ 用外层 Grid 承载红点，而不是把 Ellipse 塞进 Button.Content ——
+                                塞进 Content 会被按钮的 Padding 裁掉，且会吃掉点击事件。
+                                IsHitTestVisible=False 保证红点不挡按钮。 -->
+                        <Grid VerticalAlignment="Center" Margin="12,0,0,0">
+                            <Button x:Name="CheckUpdateBtn" Click="OnCheckUpdateClick"
+                                    AutomationProperties.Name="检查更新"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="10,5" FontSize="11.5"
+                                    ToolTip="检查是否有新版本">
+                                <TextBlock Text="检查更新"/>
+                            </Button>
+                            <Ellipse x:Name="UpdateDot" Width="9" Height="9"
+                                     Fill="{DynamicResource DangerBrush}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                                     Margin="0,-4,-4,0"
+                                     IsHitTestVisible="False"
+                                     Visibility="Collapsed"/>
+                        </Grid>
                     </StackPanel>
 
                     <!-- 作者 B 站（点击跳转） -->

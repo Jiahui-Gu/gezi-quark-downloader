@@ -175,6 +175,53 @@ namespace GeZi
         ///    系统是深色则界面跟着变深，正是"跟随系统"该有的行为。
         /// </summary>
         public AppTheme Theme { get; set; } = AppTheme.System;
+
+        // ---------------- 检查更新（2026-10-11 新增） ----------------
+
+        /// <summary>
+        /// 上次检查更新的时刻（<see cref="DateTime.Ticks"/>，本地时间）。0 = 从没查过。
+        ///
+        /// 【为什么用它】启动检查要节流 —— 每次启动都打一次接口既没意义
+        /// （版本不会几分钟变一次），又会在接口失效时白白拖慢启动。
+        /// </summary>
+        public long UpdateLastCheckTicks { get; set; }
+
+        /// <summary>
+        /// 上次查到的最新版本号（"2.5.0"）。空/null = 目前没有待提示的更新。
+        ///
+        /// ⚠️ 存它是为了**红点能跨会话保持**：检查只在启动时做，而「关于」窗口是后来才打开的，
+        ///    打开时不能再去查一次（会卡一下 UI），只能读这里。
+        /// </summary>
+        public string UpdateLatestVersion { get; set; }
+
+        /// <summary>用户点过「忽略此版本」的版本号。与 <see cref="UpdateLatestVersion"/> 相同则不再提示。</summary>
+        public string UpdateIgnoredVersion { get; set; }
+
+        /// <summary>
+        /// 转存到网盘、到期要自动删除的文件（更新包）。
+        ///
+        /// ⚠️ XmlSerializer 反序列化**不执行字段初始化器** —— 老配置里没有这个节点时是
+        ///    <c>null</c>，读取处必须判空（见 <c>UpdateService</c> 里的 <c>PendingDeletes</c>）。
+        /// </summary>
+        public List<NetdiskDeleteTask> UpdatePendingDeletes { get; set; }
+    }
+
+    /// <summary>
+    /// 网盘里一条「到期要删」的转存文件。
+    ///
+    /// 【为什么只记 fid】删除接口只要 fid，而且**只按 fid 精确删** ——
+    /// 绝不掃目录去匹配名字，否则可能误删用户自己的同名文件。
+    /// </summary>
+    public class NetdiskDeleteTask
+    {
+        /// <summary>网盘文件 ID（删除接口的唯一依据）。</summary>
+        public string Fid { get; set; }
+
+        /// <summary>文件名，仅用于日志/提示，不参与删除判定。</summary>
+        public string Name { get; set; }
+
+        /// <summary>到期时刻（<see cref="DateTime.Ticks"/>，本地时间）。到点后才删。</summary>
+        public long DueTicks { get; set; }
     }
 
     /// <summary>主窗口「关闭」按钮的行为。</summary>

@@ -36,6 +36,7 @@ using GeZi.Core.Api;
 using GeZi.Core.Download;
 using GeZi.Core.Models;
 using GeZi.Core.Support;
+using GeZi.Core.Update;
 using System.Text.RegularExpressions;
 
 // 说明：MainWindow 里既有 XAML 生成的字段，也有代码动态构建的窗口（如续传询问、
@@ -331,6 +332,11 @@ namespace GeZi
             _scheduler.Diagnostics = OnDiagnostics;
             LoadSettingsToUi();
 
+            // 【2026-10-11】检查更新：把配置交给 UpdateService。
+            // 同时用**上次落盘的版本号**恢复红点状态 —— 红点必须跨会话保持，
+            // 否则用户重启一次、红点就没了（而本次可能因节流根本没去查）。
+            UpdateService.Attach(_settings);
+
             // 加载完成后再提示未完成任务（此时窗口已就绪，弹窗才有 Owner）
             Loaded += (s, e) =>
             {
@@ -356,6 +362,17 @@ namespace GeZi
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     try { ShowPendingOnStartup(); } catch { }
+                }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                // 【2026-10-11】启动检查更新 + 清理到期的网盘转存包。
+                // 同样推到 ApplicationIdle：先让主窗画出来，后台的事晚一点无所谓。
+                // ⚠️ 全程静默 —— 接口失效/断网都不弹窗（理由见 UpdateService 的注释）。
+                Dispatcher.BeginInvoke(new Action(async () =>
+                {
+                    try { await UpdateService.RunStartupCheckAsync(_settings, OnUpdateFound); }
+                    catch { }
+                    try { await RunPendingUpdateDeletesAsync(); }
+                    catch { }
                 }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 // 窗口圆角（用户反馈「整个软件窗口四个角太尖了，微微加一些圆角」）。
@@ -4800,6 +4817,81 @@ namespace GeZi
         /// 无法续传的（免转存/信息不全）单独列出并说明，不会静默丢弃。
         /// </para>
         /// </summary>
+        // ---------------- 检查更新（2026-10-11 新增） ----------------
+
+        /// <summary>
+        /// 启动检查确认有新版本后的回调（UI 线程）。
+        ///
+        /// 【按需求：不弹窗打断】只做两件"不抢焦点"的事：托盘气泡 + 日志行。
+        /// 真正的窗口等用户去「关于」页点「检查更新」才出现。
+        /// ⚠️ 图标传 null：NotifyToast 会把它隐藏（实测过它处理 null）——
+        ///    这里刻意**不用**系统气泡（ShowBalloonTip 在 Win10/11 会变成黑疙瘩图标）。
+        /// </summary>
+        private void OnUpdateFound(UpdateManifest m)
+        {
+            try
+            {
+                if (m == null) return;
+                string size = (m.Size / 1048576.0).ToString("0.0") + " MB";
+                NotifyToast.Show("发现新版本 v" + m.Version,
+                    "打开「关于 → 检查更新」即可更新（" + size + "）", null);
+                Log("发现新版本 v" + m.Version + "（" + m.FileName + "）— 可在「关于」页点击「检查更新」。");
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 删掉网盘里已超过保留时长（转存后 60 小时）的更新包。
+        ///
+        /// 【为什么只按 fid 删】记录里存的是**当时转存生成的 fid**，精确到那一个文件；
+        /// 绝不扫描目录按名字匹配 —— 那会误删用户自己的同名文件。
+        ///
+        /// 【未登录怎么办】删除需要登录态，而自动登录是异步的：这里最多等 15 秒，
+        /// 还不就绪就本次跳过（下次启动再试），不阻塞、不报错。
+        /// </summary>
+        private async Task RunPendingUpdateDeletesAsync()
+        {
+            try
+            {
+                var due = UpdateService.DueDeletes(_settings, DateTime.Now);
+
+                // 顺手清掉"过期太久还没删掉"的僵尸记录（目标多半早就不存在了）
+                int stale = UpdateService.DropStalePendingDeletes(_settings, DateTime.Now);
+                if (stale > 0)
+                    Log("已清理 " + stale + " 条过期的网盘删除记录。");
+
+                if (due.Count == 0) return;
+
+                if (_startupLoginTask != null)
+                {
+                    try { await Task.WhenAny(_startupLoginTask, Task.Delay(15000)).ConfigureAwait(false); }
+                    catch { }
+                }
+                if (_client == null) return;   // 仍未登录 → 下次启动再试
+
+                int ok = 0;
+                foreach (var t in due)
+                {
+                    try
+                    {
+                        await _client.DeleteAsync(new[] { t.Fid }).ConfigureAwait(false);
+                        UpdateService.DropPendingDelete(_settings, t.Fid);
+                        ok++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("清理网盘更新包失败（" + t.Name + "）：" + ex.Message);
+                    }
+                }
+                if (ok > 0)
+                {
+                    SettingsStore.Save(_settings);
+                    Log("已自动清理 " + ok + " 个转存的更新包（超过保留时长）。");
+                }
+            }
+            catch { }
+        }
+
         private void ShowPendingOnStartup()
         {
             List<PendingTask> all;
