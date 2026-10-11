@@ -37,6 +37,28 @@ namespace GeZi.Core.Update
         /// <summary>分享场景的 <c>share_fid_token</c>，与 <see cref="Fid"/> 配对使用。</summary>
         public string FidToken { get; set; }
 
+        /// <summary>
+        /// 取到 <see cref="FidToken"/> 时所用的分享凭证（<c>stoken</c>）。
+        ///
+        /// 🚨🚨 【2026-10-11 实测定论 —— 这个字段是修 bug 加的，别删】
+        /// 夸克的 <c>share_fid_token</c> **与"列目录时用的那个 stoken"绑定**：
+        /// 用 A 次 <c>sharepage/token</c> 拿到的 token，配 B 次的 stoken 去请求，
+        /// 服务端一律返回 <c>HTTP 403 / code 41020「转存文件token校验异常」</c>。
+        ///
+        /// 实测（同一份分享、同一个已登录 Cookie）：
+        /// <code>
+        ///   stoken1 + 用 stoken1 列的 token  → 200 OK
+        ///   stoken2 + 用 stoken1 列的 token  → 403 / 41020   ← 就是线上那个报错
+        ///   stoken2 + 用 stoken2 重新列的 token → 200 OK
+        /// </code>
+        /// 而且**每次调用 <c>sharepage/token</c> 返回的 stoken 都不同**，所以"下载时再取一次"
+        /// 必然踩坑 —— 之前的更新流程就是这么挂的（检查用匿名客户端列目录，
+        /// 下载又新取一个 stoken）。
+        ///
+        /// ⇒ <b>规矩：fid / fid_token / stoken 三者必须来自同一次列目录，整组传递。</b>
+        /// </summary>
+        public string Stoken { get; set; }
+
         /// <summary>文件字节数（展示用）。</summary>
         public long Size { get; set; }
 

@@ -149,6 +149,10 @@ namespace GeZi.Core.Update
                             FileName = it.Name,
                             Fid = it.Fid,
                             FidToken = it.Token,
+                            // 🚨 必须带上**列目录时用的那个 stoken**：share_fid_token 与它绑定，
+                            //    换一个 stoken 去转存/取链会被服务端判「token校验异常」(41020)。
+                            //    详见 UpdateManifest.Stoken 的注释。
+                            Stoken = stoken,
                             Size = it.Size,
                         });
                         continue;

@@ -239,8 +239,9 @@ namespace GeZi.Core.Api
         private static bool IsCapacityCode(object code)
         {
             long c = AsLong(code);
-            // 23017 / 23018 是夸克"转存空间不足"族错误码（社区与同类项目常见取值）
-            return c == 23017 || c == 23018;
+            // 23017 / 23018 是夸克"转存空间不足"族错误码（社区与同类项目常见取值）；
+            // 32003 是**转存任务异步轮询结果**里返回的"容量不足"码（见 QuarkErrorCode）。
+            return c == 23017 || c == 23018 || c == QuarkErrorCode.CapacityInsufficient;
         }
 
         // ---------------- 账号 ----------------
@@ -555,8 +556,36 @@ namespace GeZi.Core.Api
                 var res = await RequestAsync(HttpMethod.Get, QuarkConstants.ApiBase + "/1/clouddrive/task", query);
                 Check(res, "查询转存任务");
                 var data = AsDict(Get(AsDict(res), "data"));
-                if (AsLong(Get(data, "status")) == 2)
+                long status = AsLong(Get(data, "status"));
+
+                // 成功：转存完成（status == 2）
+                if (status == QuarkErrorCode.TaskStatusSuccess)
                     return data;
+
+                // 【2026-10-11 新增】终态失败检测。
+                // 转存任务可能因「网盘容量不足」(业务码 32003) 等原因以失败收场，
+                // 不能傻等满 timeoutSeconds 才报"转存任务超时"—— 那样用户要干等很久。
+                // 一旦识别到失败终态就立即抛出，上层（SaveAndGetItemsAsync / 更新流程）
+                // 据此降级为免转存或如实提示。
+                // 判据（保守，绝不误判正常轮询）：
+                //   · failed_code 非零 = 任务明确失败；
+                //   · status 为负 = 失败（0=排队 1=进行中 2=成功，负数即失败）。
+                long failedCode = AsLong(Get(data, "failed_code"));
+                if (failedCode != 0 || status < 0)
+                {
+                    if (failedCode == QuarkErrorCode.CapacityInsufficient
+                        || IsCapacityCode(failedCode)
+                        || IsCapacityMessage(AsString(Get(data, "message"))))
+                    {
+                        throw new QuarkApiException(
+                            "网盘容量不足，无法完成转存（请清理网盘空间或减少选择文件）",
+                            failedCode, status);
+                    }
+                    throw new QuarkApiException(
+                        string.Format("转存任务失败（code={0}, status={1}）", failedCode, status),
+                        failedCode, status);
+                }
+
                 retry++;
                 await Task.Delay(TimeSpan.FromMilliseconds(600)).ConfigureAwait(false);
             }

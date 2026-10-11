@@ -154,8 +154,23 @@ namespace GeZi
                         "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
                     if (ans == MessageBoxResult.Yes)
                     {
-                        // 【第三步接入】这里将打开「更新详情」窗口（转存下载 / 免转存下载）。
-                        AppDialog.Show(this, "更新详情与下载流程将在下一步接入。", "检查更新");
+                        bool loggedIn = UpdateService.Settings != null
+                            && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
+                        var prompt = new UpdatePromptWindow(m, loggedIn)
+                        {
+                            Owner = this,
+                            DownloadRequested = (manifest, save) =>
+                            {
+                                // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
+                                // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
+                                var main = Application.Current.MainWindow as MainWindow;
+                                if (main != null)
+                                    main.StartUpdateDownload(manifest, save);
+                                else
+                                    AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
+                            },
+                        };
+                        prompt.ShowDialog();
                     }
                     else
                     {

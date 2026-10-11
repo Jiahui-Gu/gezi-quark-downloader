@@ -68,6 +68,13 @@ namespace GeZi.Core.Download
         /// </summary>
         public PendingInfo Pending { get; set; }
 
+        /// <summary>
+        /// 为 true 时，这个任务**不会**被写进「未完成任务」持久化记录
+        /// （重启后不会提示续传）。更新包的下载用它 —— 跨重启续传更新包没有意义
+        /// （要重新查版本、重新取链），且避免 Pending 信息残缺导致续传界面出错。
+        /// </summary>
+        public bool SkipPersist { get; set; }
+
         public CancellationTokenSource Cancel { get; } = new CancellationTokenSource();
         public PauseToken Pause { get; } = new PauseToken();
 

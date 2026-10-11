@@ -3671,6 +3671,27 @@ namespace GeZi
 
             // 合并按钮的文案/图标要跟着任务状态走（有在跑的 → 暂停全部；否则 → 恢复全部）
             UpdatePauseAllButton();
+
+            // ---- 更新包下载终态：识别"这是更新包"，收尾后提示安装 ----
+            if (_updateJob != null && u.Job == _updateJob)
+            {
+                if (u.State == JobState.Completed)
+                {
+                    string dest = _updateDestPath;
+                    _updateJob = null;
+                    _updateDestPath = null;
+                    Log("[更新] 更新包已下载完成：" + dest);
+                    OnUpdateDownloadCompleted(dest);
+                }
+                else if (u.State == JobState.Failed || u.State == JobState.Cancelled)
+                {
+                    _updateJob = null;
+                    _updateDestPath = null;
+                    Log("[更新] 更新包下载"
+                        + (u.State == JobState.Cancelled ? "已取消" : "失败")
+                        + (string.IsNullOrEmpty(u.Error) ? "" : "：" + u.Error));
+                }
+            }
         }
 
         /// <summary>上次写入 pending 时的状态签名，用于避免高频重复写盘。</summary>
@@ -3691,6 +3712,9 @@ namespace GeZi
                 var list = new List<PendingTask>();
                 foreach (var t in _tasks)
                 {
+                    // 更新包下载不持久化：跨重启续传没有意义，且避免 Pending 信息残缺
+                    if (t.Job.SkipPersist)
+                        continue;
                     if (t.State == JobState.Queued || t.State == JobState.Downloading
                         || t.State == JobState.Paused)
                     {
@@ -4919,6 +4943,363 @@ namespace GeZi
                 }
             }
             catch { }
+        }
+
+        // ============ 检查更新：下载与安装（2026-10-11 第三步）============
+        //
+        // 【设计要点】
+        // · 更新下载**复用主下载器与调度器**：把更新包当成一个普通下载任务加进 _tasks，
+        //   用户在「下载」页就能看到进度，和日常下载体验一致。
+        // · 下载到系统临时目录下的 GeZiUpdate（不污染用户下载目录、也便于自动清理），
+        //   下完后再解压、用外部 updater 脚本覆盖安装目录并重启。
+        // · 转存路径：转存成功后把生成的新 fid 记进 UpdateService 的"到期删除"清单
+        //   （60 小时后自动清理网盘副本），**绝不**加进 _pendingCleanupFids（那会立刻删）。
+        // · 免转存路径：直接从分享取链，不写网盘、不记删除清单。
+        // · SkipPersist=true：更新包不写进"未完成任务"，跨重启续传既无意义又容易出错。
+
+        /// <summary>正在下载的更新包 job（OnJobUpdate 用它识别"这是更新包"）。</summary>
+        private DownloadJob _updateJob;
+
+        /// <summary>更新包 zip 的本地路径（下载完成后用来安装）。</summary>
+        private string _updateDestPath;
+
+        /// <summary>更新目标版本文本（仅用于安装提示文案）。</summary>
+        private string _updateVersionText = "";
+
+        /// <summary>
+        /// 启动更新包下载。由「更新详情」窗口的回调触发。
+        /// </summary>
+        /// <param name="manifest">从更新源找到的包（含 fid / share_fid_token / 文件名）。</param>
+        /// <param name="saveToNetdisk">true=转存到网盘后下载；false=免转存直接下载。</param>
+        public async void StartUpdateDownload(UpdateManifest manifest, bool saveToNetdisk)
+        {
+            if (manifest == null || !manifest.IsValid)
+            {
+                Log("[更新] 更新包信息无效，无法下载");
+                return;
+            }
+            if (_updateJob != null)
+            {
+                Log("[更新] 已有更新包正在下载（可在「下载」页查看进度）");
+                Tabs.SelectedIndex = 1;
+                return;
+            }
+
+            // 取链客户端：优先用登录态客户端（「转存后下载」必须要登录）；未登录时退化为空 Cookie。
+            // ⚠️ 实测结论（2026-10-11）：**免转存取分享直链并不需要登录态** ——
+            //    用同一 stoken 列目录拿到 fid/token 再取链，匿名也能拿到 200 与直链。
+            //    之前"匿名取直链必然 401"的结论，其实是 share_fid_token 与 stoken 不配对
+            //    造成的假象（详见 UpdateManifest.Stoken 的注释）。
+            var client = _client ?? new QuarkClient(_settings.Cookie ?? "");
+            bool loggedIn = !string.IsNullOrEmpty(_settings.Cookie);
+
+            try
+            {
+                // 🚨🚨 分享凭证必须用「找到这个包时那一次」的 stoken —— 别在这里重新取一个。
+                //   夸克的 share_fid_token 与**列目录时用的 stoken** 绑定，换一个 stoken
+                //   再配旧 token，服务端一律返回 HTTP 403 / code 41020「转存文件token校验异常」。
+                //   实测（2026-10-11，同一分享同一 Cookie）：
+                //     stoken2 + stoken1 列的 token → 403/41020   ← 之前线上就是这么挂的
+                //     stoken2 + stoken2 重新列的 token → 200 OK
+                //   而且每次 sharepage/token 返回的 stoken 都不同，所以"下载时再取一次"必然踩坑。
+                string stoken = manifest.Stoken;
+                if (string.IsNullOrEmpty(stoken))
+                {
+                    // 兜底（正常路径不会走到）：manifest 没带凭证 → 用当前客户端重查一次，
+                    // 保证 fid / fid_token / stoken 三者同源。
+                    var recheck = new UpdateChecker(client);
+                    var fresh = await recheck.FindLatestAsync().ConfigureAwait(true);
+                    if (fresh == null || !fresh.IsValid || string.IsNullOrEmpty(fresh.Stoken))
+                        throw new QuarkApiException("未能取得更新包的下载凭证，请稍后重试");
+                    manifest = fresh;
+                    stoken = fresh.Stoken;
+                }
+
+                // 固定下载目录：系统临时目录下的 GeZiUpdate（不污染用户下载目录）
+                string workDir = Path.Combine(Path.GetTempPath(), "GeZiUpdate");
+                try { Directory.CreateDirectory(workDir); }
+                catch (Exception ex) { Log("[更新] 创建下载目录失败: " + ex.Message); }
+                string dest = Path.Combine(workDir, manifest.FileName);
+                try { if (File.Exists(dest)) File.Delete(dest); }   // 确保全新下载
+                catch (Exception ex) { Log("[更新] 清理旧更新包失败（不影响下载）: " + ex.Message); }
+
+                _updateVersionText = "v" + manifest.Version;
+                _updateDestPath = dest;
+
+                bool useSave = saveToNetdisk && loggedIn;
+                string url = null;
+                bool fromShare = false;
+                List<string> savedFids = null;   // 转存路径下要"到期删除"的网盘副本 fid
+
+                if (useSave)
+                {
+                    try
+                    {
+                        // 转存到「GeZi 更新」目录，再取网盘直链（更稳定）—— 需要登录态
+                        string folderFid = await client.PathFidAsync("/" + UpdateConstants.NetdiskUpdateFolder)
+                            .ConfigureAwait(true);
+                        if (string.IsNullOrEmpty(folderFid))
+                            folderFid = await client.MkdirAsync("/" + UpdateConstants.NetdiskUpdateFolder)
+                                .ConfigureAwait(true);
+                        var newFids = await client.SaveShareAndGetFidsAsync(
+                            new List<string> { manifest.Fid },
+                            new List<string> { manifest.FidToken },
+                            folderFid, UpdateConstants.SharePwdId, stoken).ConfigureAwait(true);
+                        if (newFids == null || newFids.Count == 0)
+                            throw new QuarkApiException("转存未返回新文件 ID");
+
+                        savedFids = newFids;
+                        var links = await client.GetDownloadAsync(newFids).ConfigureAwait(true);
+                        var hit = links == null ? null
+                            : links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl));
+                        if (hit == null || string.IsNullOrEmpty(hit.DownloadUrl))
+                            throw new QuarkApiException("取网盘直链失败");
+                        url = hit.DownloadUrl;
+                        fromShare = false;
+                    }
+                    catch (QuarkApiException saveEx) when (QuarkClient.IsCapacityMessage(saveEx.Message))
+                    {
+                        // 移植自日常下载的降级逻辑：仅「网盘容量不足」时才降级为免转存。
+                        Log("[更新] 网盘容量不足，已自动改用「免转存」下载（不写入网盘）。");
+                        useSave = false;
+                    }
+                }
+
+                if (!useSave)
+                {
+                    // 免转存：直接从分享取链（不写网盘，也不需要登录）
+                    var links = await client.GetShareDownloadAsync(
+                        new List<string> { manifest.Fid },
+                        new List<string> { manifest.FidToken },
+                        UpdateConstants.SharePwdId, stoken).ConfigureAwait(true);
+                    var hit = links == null ? null
+                        : links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl));
+                    if (hit == null || string.IsNullOrEmpty(hit.DownloadUrl))
+                        throw new QuarkApiException("取分享直链失败（分享者可能已关闭直链，或游客额度受限）");
+                    url = hit.DownloadUrl;
+                    fromShare = true;
+                }
+
+                if (string.IsNullOrEmpty(url))
+                    throw new QuarkApiException("未能取得更新包直链");
+
+                // 记录"到期要删"的网盘副本（仅转存路径）
+                if (savedFids != null && savedFids.Count > 0 && UpdateService.Settings != null)
+                {
+                    foreach (var fid in savedFids)
+                        UpdateService.NotePendingDelete(UpdateService.Settings, fid, manifest.FileName,
+                            DateTime.Now.AddHours(UpdateConstants.DeleteAfterHours));
+                    SettingsStore.Save(UpdateService.Settings);
+                }
+
+                // 构造下载任务（复用主下载器）
+                var job = new DownloadJob
+                {
+                    Name = manifest.FileName,
+                    Url = url,
+                    Dest = dest,
+                    // 取链用的客户端（免转存不写网盘；有登录态就用登录态，没有也能下）。
+                    Cookie = client.CookieStr,
+                    Threads = _settings.Threads,
+                    WriteMode = WriteMode.SharedFile,   // 单文件更新包，直写即可
+                    PartsRoot = null,
+                    ResumeCannotRefresh = fromShare,
+                    SkipPersist = true,
+                    LinkRefresher = ct => fromShare
+                        ? RefreshUpdateLinkShareAsync(client, manifest)
+                        : RefreshUpdateLinkDriveAsync(client, savedFids),
+                };
+
+                _updateJob = job;
+                _tasks.Add(new TaskItem(job, job.Name));
+                Log("[更新] 已开始下载更新包 " + manifest.FileName
+                    + "（" + (useSave ? "转存后下载" : "免转存下载") + "）— 可在「下载」页查看进度。");
+                Tabs.SelectedIndex = 1;
+                RunJobs(new List<DownloadJob> { job });
+            }
+            catch (Exception ex)
+            {
+                _updateJob = null;
+                _updateDestPath = null;
+                Log("[更新] 下载准备失败: " + ex.Message);
+                AppDialog.Show(this,
+                    "更新下载失败：" + ex.Message
+                    + "\n\n你也可以手动打开更新源下载：\n" + UpdateConstants.ShareUrl,
+                    "更新下载", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>更新包（免转存）中途换链：取分享直链。</summary>
+        private async Task<string> RefreshUpdateLinkShareAsync(QuarkClient client, UpdateManifest m)
+        {
+            // 🚨 不能用"重新取一个 stoken"的写法 —— share_fid_token 与列目录时的 stoken 绑定，
+            //    混用会被判「token校验异常」(403/41020)。必须用 m 自带的那个 stoken。
+            string stoken = m == null ? null : m.Stoken;
+            if (string.IsNullOrEmpty(stoken))
+            {
+                // 兜底：manifest 没带凭证 → 重查一次，拿同源的 fid/token/stoken。
+                var fresh = await new UpdateChecker(client).FindLatestAsync().ConfigureAwait(false);
+                if (fresh != null && fresh.IsValid && !string.IsNullOrEmpty(fresh.Stoken))
+                {
+                    m = fresh;
+                    stoken = fresh.Stoken;
+                }
+            }
+            if (m == null) return null;
+
+            var links = await client.GetShareDownloadAsync(
+                new List<string> { m.Fid },
+                new List<string> { m.FidToken },
+                UpdateConstants.SharePwdId, stoken).ConfigureAwait(false);
+            var hit = links == null ? null : links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl));
+            return hit == null ? null : hit.DownloadUrl;
+        }
+
+        /// <summary>更新包（转存后）中途换链：用转存生成的新 fid 取网盘直链。</summary>
+        private async Task<string> RefreshUpdateLinkDriveAsync(QuarkClient client, List<string> fids)
+        {
+            if (fids == null || fids.Count == 0) return null;
+            var links = await client.GetDownloadAsync(fids).ConfigureAwait(false);
+            var hit = links == null ? null : links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl));
+            return hit == null ? null : hit.DownloadUrl;
+        }
+
+        /// <summary>
+        /// 更新包下载完成 → 询问是否立即安装并重启。
+        /// 由 <see cref="OnJobUpdate"/> 在识别到更新 job 终态后调用。
+        /// </summary>
+        private void OnUpdateDownloadCompleted(string zipPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(zipPath) || !File.Exists(zipPath))
+                {
+                    Log("[更新] 找不到已下载的更新包，无法安装");
+                    return;
+                }
+                var ans = AppDialog.Show(this,
+                    "GeZi " + _updateVersionText + " 已下载完成。\n\n是否立即安装并重启程序？\n"
+                    + "（将关闭本程序，用新版本覆盖后自动重新打开）",
+                    "安装更新", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                if (ans == MessageBoxResult.Yes)
+                    InstallUpdate(zipPath);
+                else
+                    Log("[更新] 已下载到：" + zipPath + "（你可在需要时手动安装）");
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 安装更新：解压 → 写外部 updater 脚本 → 脱离本进程启动脚本 → 退出本程序。
+        ///
+        /// 【为什么需要外部脚本】正在运行的 GeZi.exe 被自己占用，无法就地覆盖。
+        /// 所以让一个**脱离本进程**的脚本等本程序退出后，再把新文件拷进安装目录、重启、自删。
+        /// 脚本用 robocopy /E（递归复制、不删目标多余文件 → 不会误删用户的 config/state）。
+        /// </summary>
+        private async void InstallUpdate(string zipPath)
+        {
+            try
+            {
+                string workDir = Path.GetDirectoryName(zipPath)
+                    ?? Path.Combine(Path.GetTempPath(), "GeZiUpdate");
+                string extractDir = Path.Combine(workDir,
+                    "extracted_" + DateTime.Now.ToString("yyyyMMddHHmmss"));
+                try { if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true); } catch { }
+                Directory.CreateDirectory(extractDir);
+
+                if (!ExtractZip(zipPath, extractDir))
+                {
+                    AppDialog.Show(this,
+                        "更新包解压失败，无法安装。\n你可以手动解压并覆盖程序目录：\n" + zipPath,
+                        "安装更新", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // zip 若包了一层目录，下沉到那一层（避免把外层文件夹名也拷进安装目录）
+                string srcDir = extractDir;
+                var top = Directory.GetFileSystemEntries(extractDir);
+                if (top.Length == 1
+                    && (File.GetAttributes(top[0]) & FileAttributes.Directory) != 0)
+                    srcDir = top[0];
+
+                string installDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+                string exeName = Path.GetFileName(
+                    System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
+                string scriptPath = Path.Combine(workDir,
+                    "gezi_update_" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".cmd");
+
+                // 更新脚本：等本程序退出 → 复制新文件 → 重启 → 自删
+                var sb = new StringBuilder();
+                sb.AppendLine("@echo off");
+                sb.AppendLine("chcp 65001 >nul");
+                sb.AppendLine(":wait");
+                sb.AppendLine("tasklist | find /i \"" + exeName + "\" >nul && (timeout /t 1 /nobreak >nul & goto wait)");
+                sb.AppendLine("robocopy \"" + srcDir + "\" \"" + installDir + "\" /E /NFL /NDL /NJH /NJS /NC");
+                sb.AppendLine("start \"\" \"" + Path.Combine(installDir, exeName) + "\"");
+                sb.AppendLine("del \"%~f0\"");
+                File.WriteAllText(scriptPath, sb.ToString(), System.Text.Encoding.UTF8);
+
+                // 脱离本进程启动脚本，随后立即退出本程序 —— 释放文件句柄让脚本覆盖
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = scriptPath,
+                    UseShellExecute = true,
+                    CreateNoWindow = true,
+                });
+                Log("[更新] 即将安装新版本并重启…");
+                ExitApp();
+            }
+            catch (Exception ex)
+            {
+                AppDialog.Show(this, "启动安装失败：" + ex.Message, "安装更新",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 解压 zip。优先用系统自带的 tar.exe（Win10+ 内置、无需额外依赖），
+        /// 失败再退回 PowerShell 的 Expand-Archive。两者都不引入 NuGet 包，离线可用。
+        /// </summary>
+        private static bool ExtractZip(string zip, string dir)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "tar.exe",
+                    Arguments = " -xf \"" + zip + "\" -C \"" + dir + "\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                };
+                using (var p = System.Diagnostics.Process.Start(psi))
+                {
+                    p.WaitForExit();
+                    if (p.ExitCode == 0) return true;
+                }
+            }
+            catch { }
+            // 兜底：PowerShell Expand-Archive
+            try
+            {
+                string ps = "Expand-Archive -Path '"
+                    + zip.Replace("'", "''") + "' -DestinationPath '"
+                    + dir.Replace("'", "''") + "' -Force";
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -Command " + ps,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using (var p = System.Diagnostics.Process.Start(psi))
+                {
+                    p.WaitForExit();
+                    return p.ExitCode == 0;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private void ShowPendingOnStartup()
