@@ -1206,13 +1206,15 @@
                                                   SelectionChanged="OnSettingChanged">
                                             <ComboBoxItem Content="16  — 省网保守"/>
                                             <ComboBoxItem Content="32  — 保守，够用"/>
-                                            <!-- 【2026-10-03】用户要求「默认线程调为 64」——
-                                                 Settings.Threads 的默认值本来就是 64，这里把下拉项
-                                                 的标注也改成"默认"，避免"标注写 32 是默认、代码却是 64"的错位。 -->
-                                            <ComboBoxItem Content="64  — 默认，跑满多数家宽"/>
-                                            <ComboBoxItem Content="128 — 激进，大文件更快"/>
-                                            <ComboBoxItem Content="256 — 很激进"/>
-                                            <ComboBoxItem Content="512 — 上限，需路由器支持"/>
+                                            <!-- 【2026-10-11 更正文案】标注必须与 Settings.Threads 的默认值一致。
+                                                 默认值已按**实测拐点**从 64 改成 256
+                                                 （docs/CDN并发阈值-实测.md：64 路 4.00 MB/s、128 路 7.98、
+                                                   **256 路 13.94 ← 拐点**、512 路反降到 13.31）。
+                                                 ⚠️ 之前这里一直写着"64 — 默认"，与代码默认值不符，会直接误导用户。 -->
+                                            <ComboBoxItem Content="64  — 省网，速度一般"/>
+                                            <ComboBoxItem Content="128 — 较快"/>
+                                            <ComboBoxItem Content="256 — 默认，实测最快"/>
+                                            <ComboBoxItem Content="512 — 上限，实测反而更慢"/>
                                         </ComboBox>
                                     </Grid>
 
