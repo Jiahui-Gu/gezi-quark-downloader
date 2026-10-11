@@ -7146,7 +7146,7 @@ namespace GeZi
             {
                 try
                 {
-                    var info = await Task.Run(() => QuarkPythonBridge.FetchAccountInfo(cookie));
+                    var info = await Task.Run(() => PanAccountBridge.FetchAccountInfo(cookie));
                     if (info.HasValue && info.Value.Ok)
                     {
                         if (!string.IsNullOrEmpty(info.Value.Nickname))

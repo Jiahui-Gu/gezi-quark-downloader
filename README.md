@@ -32,7 +32,7 @@
 - **分享链接解析**：支持夸克分享链接（含带口令的链接）
 - **免转存直链**：文件右键可选「免转存下载」，不占用网盘空间
 - **二维码识别**：分享页只给二维码图片时，可截图识别（Ctrl+V / 选文件 / 拖拽）
-- **扫码登录**：内置 Python 桥完成扫码登录与账号信息获取
+- **扫码登录**：内置 OpenSSL 通道完成扫码登录与账号信息获取
 - **多账号**：可保存多个账号，一键切换
 
 ### 体验
@@ -62,11 +62,11 @@
 
 ### 方式一：下载发行版（推荐）
 
-1. 从 [Releases](https://github.com/huaotem-bot/gezi-quark-downloader/releases) 下载 `GeZi-v2.2.0-win64.zip` 并解压到任意目录
+1. 从 [Releases](https://github.com/huaotem-bot/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.0-win64.zip` 并解压到任意目录
 2. 双击 `GeZi.exe` 即可运行
 3. 若系统缺少 .NET Framework 4.8，Windows 会弹窗提示，按引导安装即可
 
-> 无需安装 Python —— 运行所需的精简 CPython 已内置于 `Runtime/` 目录。
+> 无需安装 Python —— 扫码登录所需的 OpenSSL 已内置于 `lib/OpenSSL/` 目录。
 
 ### 方式二：从源码构建
 
@@ -104,7 +104,7 @@ GeZi/
 │       ├── Download/             # 分片下载引擎
 │       ├── Support/              # 二维码编解码等工具
 │       ├── lib/ZXing/            # 固化的 ZXing DLL（二维码解码）
-│       └── Runtime/win-x64/      # 内置精简 CPython（扫码登录用）
+│       └── lib/OpenSSL/          # 固化的 OpenSSL 3.5.7（扫码登录通道）
 ├── LICENSE                       # GPL-3.0
 └── THIRD-PARTY-NOTICES.md        # 第三方组件声明
 ```
@@ -139,7 +139,6 @@ GNU General Public License for more details.
 | 组件 | 许可证 |
 |---|---|
 | ZXing.Net | Apache-2.0 |
-| CPython | PSF License |
 | OpenSSL | Apache-2.0 |
 
 ---

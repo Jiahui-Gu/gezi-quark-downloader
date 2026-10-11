@@ -192,7 +192,7 @@ namespace GeZi.Core.Api
         /// <item><b>首选：Python 桥</b>。登录态只能由 <c>pan.quark.cn/account/info?st=</c> 下发，
         ///       而该域把 .NET 的 SChannel 全部 RST 掉（按 ClientHello 指纹过滤）。
         ///       本机若存在"较新 OpenSSL"的 Python，就借它跑这一步 —— 这是唯一能真正拿到
-        ///       <c>__pus</c> 的正路。详见 <see cref="QuarkPythonBridge"/>。</item>
+        ///       <c>__pus</c> 的正路。详见 <see cref="PanAccountBridge"/>。</item>
         /// <item><b>回退：纯 .NET</b>。没有可用 Python 时，退到 uop 域尝试（只能拿到
         ///       <c>_UP_*</c> 系列，通常无法完成登录），并如实说明原因。</item>
         /// </list>
@@ -337,18 +337,18 @@ namespace GeZi.Core.Api
         private string _pythonFailure;
 
         /// <summary>调用 Python 桥换 Cookie。返回 null 表示"本机没有可用 Python，此路不通"。</summary>
-        private static Task<QuarkPythonBridge.ExchangeOutcome?> ExchangeViaPythonAsync(string ticket)
+        private static Task<PanAccountBridge.ExchangeOutcome?> ExchangeViaPythonAsync(string ticket)
         {
             // 探测 + 进程调用都是阻塞式的，放到线程池跑，避免卡住 UI。
-            return Task.Run<QuarkPythonBridge.ExchangeOutcome?>(() =>
+            return Task.Run<PanAccountBridge.ExchangeOutcome?>(() =>
             {
                 try
                 {
-                    return QuarkPythonBridge.Exchange(ticket);
+                    return PanAccountBridge.Exchange(ticket);
                 }
                 catch (Exception ex)
                 {
-                    return new QuarkPythonBridge.ExchangeOutcome
+                    return new PanAccountBridge.ExchangeOutcome
                     {
                         Ok = false,
                         Error = "Python 桥调用异常: " + ex.Message,
