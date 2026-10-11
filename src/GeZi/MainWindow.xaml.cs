@@ -791,8 +791,8 @@ namespace GeZi
 
         // ---------------- 「入队」可终止（2026-10-11） ----------------
 
-        /// <summary>「入队中」按钮的文案（点它即可终止）。</summary>
-        private const string EnqueueBusyText = "入队中（点此终止）";
+        /// <summary>「入队中」按钮的文案（按钮保持可点，再点一次即终止）。</summary>
+        private const string EnqueueBusyText = "入队中";
 
         /// <summary>
         /// 进入「入队中」（**可终止**）。
