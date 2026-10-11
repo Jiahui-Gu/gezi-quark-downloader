@@ -52,16 +52,20 @@ namespace GeZi
         /// 确实漏了。补上后顺带把「多账号」也加了（也是别人常问的）。
         /// 写法要求：**说清"对你有什么好处"**，别只写功能名。
         /// </remarks>
-        private static readonly string[] Features =
+        /// <remarks>
+        /// 【2026-10-11 重排版】改成 **两列小卡**（标题 + 一句说明），
+        /// 所以这里从"一行长文字"拆成两项。写法仍是"说清对你有什么好处"。
+        /// </remarks>
+        private static readonly string[,] Features =
         {
-            "解析分享链接：链接、提取码、整段分享文案都能直接粘",
-            "免转存下载：不往自己网盘写中转文件，省网盘空间、不留垃圾",
-            "扫码登录：浏览「我的网盘」，支持转存与删除",
-            "高速下载：单文件最多 512 个连接，支持断点续传",
-            "两种写入方式：共写同一文件（省空间）/ 独立分片（可边下边看）",
-            "导出直链：纯直链、curl、aria2c 三种格式",
-            "多账号：可保存多个账号，随时一键切换",
-            "托盘常驻 + 悬浮小窗：窗口关掉也在后台继续下",
+            { "解析分享", "链接、提取码、整段分享文案都能直接粘" },
+            { "免转存下载", "不往自己网盘写中转文件，省空间、不留垃圾" },
+            { "高速下载", "单文件最多 512 个连接，支持断点续传" },
+            { "扫码登录", "浏览「我的网盘」，支持转存与删除" },
+            { "两种写入方式", "共写省空间 / 独立分片可边下边看" },
+            { "导出直链", "纯直链、curl、aria2c 三种格式" },
+            { "多账号", "可保存多个账号，随时一键切换" },
+            { "托盘常驻", "关掉窗口也在后台继续下，带悬浮小窗" },
         };
 
         public AboutWindow()
@@ -72,19 +76,25 @@ namespace GeZi
             try
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
-                VersionText.Text = "夸克网盘 · 直链助手 · v" + (ver != null ? ver.ToString(3) : "2.2.0");
+                VersionPillText.Text = "v" + (ver != null ? ver.ToString(3) : "2.2.0");
             }
             catch { }
 
             BuildFeatureList();
             RefreshUpdateDot();
+            RefreshUpdateCard();
 
             Loaded += (s, e) =>
             {
                 DialogChrome.ApplyRoundedCorners(this);
                 // 再刷一次：启动检查是异步的，可能刚好在构造之后才完成。
                 RefreshUpdateDot();
+                RefreshUpdateCard();
+                StartUpdateProgressTimer();   // 更新包下载进度要持续刷新
             };
+
+            // 窗口关掉就别再定时刷了（更新包的下载不受影响，继续在后台跑）
+            Closed += (s, e) => StopUpdateProgressTimer();
         }
 
         // ---------------- 检查更新（2026-10-11 新增） ----------------
@@ -149,31 +159,9 @@ namespace GeZi
                 //    用户只想"不展开详情"却会**永久屏蔽该版本**，手滑代价太大。
                 if (UpdateService.HasUpdate && m != null)
                 {
-                    bool loggedIn = UpdateService.Settings != null
-                        && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
-                    var prompt = new UpdatePromptWindow(m, loggedIn)
-                    {
-                        Owner = this,
-                        DownloadRequested = (manifest, save) =>
-                        {
-                            // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
-                            // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
-                            var main = Application.Current.MainWindow as MainWindow;
-                            if (main != null)
-                                main.StartUpdateDownload(manifest, save);
-                            else
-                                AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
-                        },
-                    };
-                    prompt.ShowDialog();
-
-                    // 用户在详情窗里**明确**点了「忽略此版本」才落盘
-                    if (prompt.IgnoredByUser && UpdateService.Settings != null)
-                    {
-                        UpdateService.IgnoreCurrent(UpdateService.Settings);
-                        SettingsStore.Save(UpdateService.Settings);
-                    }
+                    OpenUpdatePrompt(m);
                     RefreshUpdateDot();
+                    RefreshUpdateCard();
                 }
                 else if (UpdateService.Latest != null
                          && UpdateService.Latest.Version.CompareTo(UpdateService.CurrentVersion) > 0)
@@ -206,39 +194,193 @@ namespace GeZi
             }
         }
 
+        /// <summary>
+        /// 把 <see cref="Features"/> 填成两列小卡（<c>FeatureList</c> 是 UniformGrid，Columns=2）。
+        /// 每格 = 标题（半粗）+ 一句说明（小一号、淡色）。
+        /// </summary>
+        /// <summary>
+        /// 打开「更新详情」窗口，并把用户的选择交给主窗口去下载。
+        /// 抽出来是因为有两个入口：「检查更新」按钮，以及更新卡里的「查看更新详情」。
+        /// </summary>
+        private void OpenUpdatePrompt(GeZi.Core.Update.UpdateManifest m)
+        {
+            if (m == null) return;
+
+            bool loggedIn = UpdateService.Settings != null
+                && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
+            var prompt = new UpdatePromptWindow(m, loggedIn)
+            {
+                Owner = this,
+                DownloadRequested = (manifest, save) =>
+                {
+                    // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
+                    // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
+                    var main = Application.Current.MainWindow as MainWindow;
+                    if (main != null)
+                        main.StartUpdateDownload(manifest, save);
+                    else
+                        AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
+                },
+            };
+            prompt.ShowDialog();
+
+            // 用户在详情窗里**明确**点了「忽略此版本」才落盘
+            if (prompt.IgnoredByUser && UpdateService.Settings != null)
+            {
+                UpdateService.IgnoreCurrent(UpdateService.Settings);
+                SettingsStore.Save(UpdateService.Settings);
+            }
+        }
+
+        // ---------------- 更新卡（更新包下载显示在这里，不进「下载」页） ----------------
+
+        private System.Windows.Threading.DispatcherTimer _updateTimer;
+
+        /// <summary>
+        /// 刷新「更新」卡：正在下载 → 显示进度条；有更新未下载 → 显示版本 + 详情按钮；
+        /// 都没有 → 整卡折叠。
+        ///
+        /// 【为什么要轮询而不是订阅事件】更新包不在任务列表里（用户要求别出现在「下载」页），
+        /// 进度由主窗口维护成快照；本窗口是临时 new 出来的，用定时器读快照最省事，
+        /// 关窗即停（下载本身不受影响，仍在后台跑）。
+        /// </summary>
+        private void RefreshUpdateCard()
+        {
+            try
+            {
+                var main = Application.Current.MainWindow as MainWindow;
+                // ⚠️ 必须先赋初值：调用在 `&&` 右侧，短路时 out 参数不会被赋值，
+                //    不初始化的话编译期就报 CS0165（未赋值的局部变量）。
+                int percent = 0;
+                string text = null;
+                bool running = main != null && main.TryGetUpdateDownloadProgress(out percent, out text);
+
+                if (running)
+                {
+                    UpdateCard.Visibility = Visibility.Visible;
+                    UpdateTitleText.Text = "正在下载更新包";
+                    UpdateSizeText.Text = "";
+                    UpdateStatusText.Text = string.IsNullOrEmpty(text) ? "正在下载…" : text;
+                    UpdateProgress.Visibility = Visibility.Visible;
+                    UpdateProgress.Value = Math.Max(0, Math.Min(100, percent));
+                    UpdateDetailBtn.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                // 没有下载中 → 看有没有待更新的版本。
+                // ⚠️ 重启后 UpdateService.Latest 是 null（只持久化了版本号字符串），
+                //    这时用配置里的版本号显示，点按钮会重新查一次拿到 manifest。
+                var latest = UpdateService.Latest;
+                string verText = latest != null
+                    ? latest.Version.ToString()
+                    : (UpdateService.Settings != null ? UpdateService.Settings.UpdateLatestVersion : null);
+
+                if (UpdateService.HasUpdate && !string.IsNullOrEmpty(verText))
+                {
+                    UpdateCard.Visibility = Visibility.Visible;
+                    UpdateTitleText.Text = "发现新版本 v" + verText;
+                    UpdateSizeText.Text = (latest != null && latest.Size > 0)
+                        ? (latest.Size / 1048576.0).ToString("0.0") + " MB" : "";
+                    UpdateStatusText.Text = "点「查看更新详情」选择下载方式。更新包的下载进度会显示在这里。";
+                    UpdateProgress.Visibility = Visibility.Collapsed;
+                    UpdateDetailBtn.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    UpdateCard.Visibility = Visibility.Collapsed;
+                }
+            }
+            catch { }
+        }
+
+        private void StartUpdateProgressTimer()
+        {
+            try
+            {
+                if (_updateTimer != null) return;
+                _updateTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(400),
+                };
+                _updateTimer.Tick += (s, e) => RefreshUpdateCard();
+                _updateTimer.Start();
+            }
+            catch { }
+        }
+
+        private void StopUpdateProgressTimer()
+        {
+            try
+            {
+                if (_updateTimer == null) return;
+                _updateTimer.Stop();
+                _updateTimer = null;
+            }
+            catch { }
+        }
+
+        /// <summary>更新卡里的「查看更新详情」：没有现成 manifest 就重新查一次。</summary>
+        private void OnUpdateDetailClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var latest = UpdateService.Latest;
+                if (latest != null)
+                {
+                    OpenUpdatePrompt(latest);
+                    RefreshUpdateDot();
+                    RefreshUpdateCard();
+                    return;
+                }
+                // 重启后只剩版本号 → 走一次手动检查（顺便把 manifest 补回来）
+                OnCheckUpdateClick(sender, e);
+            }
+            catch { }
+        }
+
         private void BuildFeatureList()
         {
-            var bullet = (Brush)FindResource("PrimaryBrush");
-            var text = (Brush)FindResource("TextPrimaryBrush");
-            foreach (var f in Features)
+            var title = (Brush)FindResource("TextPrimaryBrush");
+            var desc = (Brush)FindResource("TextTertiaryBrush");
+            var cardBg = (Brush)FindResource("SurfaceAltBrush");
+            var cardBorder = (Brush)FindResource("BorderBrushSoft");
+
+            int rows = Features.GetLength(0);
+            for (int i = 0; i < rows; i++)
             {
-                var row = new Grid { Margin = new Thickness(0, 0, 0, 5) };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                bool leftCol = (i % 2) == 0;
 
-                var dot = new TextBlock
+                var stack = new StackPanel();
+                stack.Children.Add(new TextBlock
                 {
-                    Text = "·",
-                    FontSize = 13,
-                    Width = 14,
-                    Foreground = bullet,
-                    VerticalAlignment = VerticalAlignment.Top,
-                };
-                Grid.SetColumn(dot, 0);
-                row.Children.Add(dot);
-
-                var t = new TextBlock
-                {
-                    Text = f,
+                    Text = Features[i, 0],
                     FontSize = 11.5,
-                    LineHeight = 18,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = title,
+                });
+                stack.Children.Add(new TextBlock
+                {
+                    Text = Features[i, 1],
+                    FontSize = 10.5,
+                    LineHeight = 15,
+                    Margin = new Thickness(0, 3, 0, 0),
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = text,
-                };
-                Grid.SetColumn(t, 1);
-                row.Children.Add(t);
+                    Foreground = desc,
+                });
 
-                FeatureList.Children.Add(row);
+                var cell = new Border
+                {
+                    Child = stack,
+                    Background = cardBg,
+                    BorderBrush = cardBorder,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(9),
+                    Padding = new Thickness(11, 9, 11, 9),
+                    Margin = new Thickness(leftCol ? 0 : 4, i < 2 ? 0 : 8, leftCol ? 4 : 0, 0),
+                    SnapsToDevicePixels = true,
+                };
+
+                FeatureList.Children.Add(cell);
             }
         }
 

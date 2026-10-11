@@ -3574,13 +3574,21 @@ namespace GeZi
             // 整批结束时在日志里汇总一次（原托盘气泡通知已随"后台功能"一起移除）。
             try
             {
-                int ok = jobs.Count(j =>
+                // ⚠️ 不在任务列表里的（更新包）**不参与**这批汇总 —— 它有自己的收尾提示；
+                //    若把它算进来，会被当成"未完成"，打出一句假的「下载失败」。
+                int ok = 0, fail = 0;
+                foreach (var j in jobs)
                 {
                     var t = _tasks.FirstOrDefault(x => x.Job == j);
-                    return t != null && t.State == JobState.Completed;
-                });
-                int fail = jobs.Count - ok;
-                if (ok > 0 && fail == 0)
+                    if (t == null) continue;
+                    if (t.State == JobState.Completed) ok++;
+                    else fail++;
+                }
+                if (ok + fail == 0)
+                {
+                    // 整批都不在任务列表里 → 不打汇总
+                }
+                else if (ok > 0 && fail == 0)
                     Log(string.Format("全部完成：{0} 个文件已下载完成。", ok));
                 else if (ok > 0)
                     Log(string.Format("下载结束：{0} 个完成，{1} 个未完成。", ok, fail));
@@ -3621,8 +3629,68 @@ namespace GeZi
             }
         }
 
+        /// <summary>
+        /// 更新包的进度 / 终态处理 —— 单独一条路。
+        ///
+        /// 🚨 【为什么必须放在 <see cref="OnJobUpdate"/> 最前面】更新包**不在 `_tasks` 里**
+        /// （用户要求：别出现在「下载」页），而 <see cref="OnJobUpdate"/> 开头就有
+        /// <c>if (item == null) return;</c> 的早退 —— 放在下面的话，**下载完成也不会触发安装询问**，
+        /// 表现为"进度跑完就没下文了"。
+        /// </summary>
+        private void HandleUpdateJobUpdate(JobUpdate u)
+        {
+            var p = u.Progress;
+            if (u.State == JobState.Downloading && p != null)
+            {
+                _updateDlPercent = (int)Math.Max(0, Math.Min(100, p.Percent));
+                _updateDlText = Util.FormatSize(p.Done) + " / " + Util.FormatSize(p.Total)
+                    + (p.Speed > 0 ? " · " + Util.FormatSize((long)p.Speed) + "/s" : "");
+                return;
+            }
+
+            if (u.State == JobState.Completed)
+            {
+                string dest = _updateDestPath;
+                _updateJob = null;
+                _updateDestPath = null;
+                _updateDlRunning = false;
+                _updateDlText = "";
+                Log("[更新] 更新包已下载完成：" + dest);
+                OnUpdateDownloadCompleted(dest);
+                return;
+            }
+
+            if (u.State == JobState.Failed || u.State == JobState.Cancelled)
+            {
+                bool cancelled = u.State == JobState.Cancelled;
+                _updateJob = null;
+                _updateDestPath = null;
+                _updateDlRunning = false;
+                _updateDlText = "";
+                Log("[更新] 更新包下载" + (cancelled ? "已取消" : "失败")
+                    + (string.IsNullOrEmpty(u.Error) ? "" : "：" + u.Error));
+
+                // 更新包的下载**不再出现在「下载」页**，失败就没别的地方能看到 ——
+                // 这里必须弹一次，否则用户只会看到"点了下载、什么都没发生"。
+                if (!cancelled)
+                {
+                    AppDialog.Show(this,
+                        "更新包下载失败：" + (string.IsNullOrEmpty(u.Error) ? "未知原因" : u.Error)
+                        + "\n\n你也可以手动打开更新源下载：\n" + UpdateConstants.ShareUrl,
+                        "更新下载", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+        }
+
         private void OnJobUpdate(JobUpdate u)
         {
+            // ---- 更新包：它不在 `_tasks` 里，必须在下面 item==null 早退**之前**处理 ----
+            if (_updateJob != null && u.Job == _updateJob)
+            {
+                HandleUpdateJobUpdate(u);
+                return;
+            }
+
             var item = _tasks.FirstOrDefault(t => t.Job == u.Job);
             if (item == null)
                 return;
@@ -3672,26 +3740,6 @@ namespace GeZi
             // 合并按钮的文案/图标要跟着任务状态走（有在跑的 → 暂停全部；否则 → 恢复全部）
             UpdatePauseAllButton();
 
-            // ---- 更新包下载终态：识别"这是更新包"，收尾后提示安装 ----
-            if (_updateJob != null && u.Job == _updateJob)
-            {
-                if (u.State == JobState.Completed)
-                {
-                    string dest = _updateDestPath;
-                    _updateJob = null;
-                    _updateDestPath = null;
-                    Log("[更新] 更新包已下载完成：" + dest);
-                    OnUpdateDownloadCompleted(dest);
-                }
-                else if (u.State == JobState.Failed || u.State == JobState.Cancelled)
-                {
-                    _updateJob = null;
-                    _updateDestPath = null;
-                    Log("[更新] 更新包下载"
-                        + (u.State == JobState.Cancelled ? "已取消" : "失败")
-                        + (string.IsNullOrEmpty(u.Error) ? "" : "：" + u.Error));
-                }
-            }
         }
 
         /// <summary>上次写入 pending 时的状态签名，用于避免高频重复写盘。</summary>
@@ -4963,6 +5011,28 @@ namespace GeZi
         /// <summary>更新包 zip 的本地路径（下载完成后用来安装）。</summary>
         private string _updateDestPath;
 
+        /// <summary>
+        /// 更新包下载进度快照，供「关于」页显示。
+        ///
+        /// 【为什么用快照而不是事件】更新包**不进任务列表**（用户要求：别出现在「下载」页），
+        /// 而「关于」窗口是临时 new 出来、随时会被关掉的 —— 用事件就得处理订阅/退订的
+        /// 生命周期，快照 + 「关于」页定时读取简单得多，也不会出现"窗口关了还持有引用"。
+        /// </summary>
+        private volatile string _updateDlText = "";
+        private volatile int _updateDlPercent;
+        private volatile bool _updateDlRunning;
+
+        /// <summary>
+        /// 「关于」页轮询它来显示更新包下载进度。
+        /// 返回 <c>false</c> = 当前没有更新包在下载（此时 text/percent 无意义）。
+        /// </summary>
+        public bool TryGetUpdateDownloadProgress(out int percent, out string text)
+        {
+            percent = _updateDlPercent;
+            text = _updateDlText;
+            return _updateDlRunning;
+        }
+
         /// <summary>更新目标版本文本（仅用于安装提示文案）。</summary>
         private string _updateVersionText = "";
 
@@ -4980,8 +5050,7 @@ namespace GeZi
             }
             if (_updateJob != null)
             {
-                Log("[更新] 已有更新包正在下载（可在「下载」页查看进度）");
-                Tabs.SelectedIndex = 1;
+                Log("[更新] 已有更新包正在下载（可在「关于」页查看进度）");
                 return;
             }
 
@@ -5125,10 +5194,14 @@ namespace GeZi
                 };
 
                 _updateJob = job;
-                _tasks.Add(new TaskItem(job, job.Name));
+                // ⚠️ **不加入 `_tasks`** —— 用户要求更新包的下载不要出现在「下载」页，
+                //    改为在「关于」页显示进度（见 TryGetUpdateDownloadProgress）。
+                //    因此这里也**不切到「下载」页**（切过去反而什么都看不到）。
+                _updateDlRunning = true;
+                _updateDlPercent = 0;
+                _updateDlText = "准备下载…";
                 Log("[更新] 已开始下载更新包 " + manifest.FileName
-                    + "（" + (useSave ? "转存后下载" : "免转存下载") + "）— 可在「下载」页查看进度。");
-                Tabs.SelectedIndex = 1;
+                    + "（" + (useSave ? "转存后下载" : "免转存下载") + "）— 可在「关于」页查看进度。");
                 RunJobs(new List<DownloadJob> { job });
             }
             catch (Exception ex)

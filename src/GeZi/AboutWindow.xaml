@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="关于 鸽子下载"
-        Width="430"
+        Width="460"
         SizeToContent="Height"
         WindowStyle="None"
         Background="{DynamicResource SurfaceBrush}"
@@ -16,10 +16,17 @@
         SnapsToDevicePixels="True">
 
     <!--
-        「关于」窗口（2026-10-03 新增，用户要求「和 Python Flet 版那个差不多」）。
+        「关于」窗口（2026-10-11 重排版）。
         ⚠️ 跟主窗/小窗一样走 WindowChrome（不是分层窗口 → ClearType 正常、文字清晰），
            圆角交给 DWM（见 Loaded 里的 ApplyRoundedCorners）。
         ⚠️ CaptionHeight=44 让标题栏能拖动，里面的关闭按钮要 IsHitTestVisibleInChrome。
+
+        【本次改版要点】
+        1. **分区卡片化**：品牌 / 更新 / 链接 / 功能 / 说明 / 赞赏 各自成块，
+           不再是一大坨纯文字流。
+        2. **底部「关闭」固定在 ScrollViewer 外**：内容再长也不会把按钮滚走。
+        3. **功能特性改成 2 列小卡**（原来是一列 5 行长文字）。
+        4. **新增「更新」卡**：更新包的下载进度显示在**这里**，而不是「下载」页。
     -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="0"
@@ -27,11 +34,18 @@
                             UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <Border BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1">
-        <StackPanel>
-            <!-- 标题栏 -->
-            <Grid Height="44" Background="Transparent">
-                <TextBlock Text="关于 鸽子下载" Margin="18,0,44,0"
+    <Border BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1"
+            Background="{DynamicResource AppBgBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- ============ 标题栏 ============ -->
+            <Grid Grid.Row="0" Height="44" Background="Transparent">
+                <TextBlock Text="关于 鸽子下载" Margin="20,0,44,0"
                            VerticalAlignment="Center"
                            FontSize="13.5" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"/>
@@ -47,124 +61,191 @@
                 </Button>
             </Grid>
 
-            <ScrollViewer MaxHeight="600" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="18,0,18,18">
+            <!-- ============ 内容（可滚动） ============ -->
+            <ScrollViewer Grid.Row="1" MaxHeight="560" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
+                <StackPanel Margin="18,0,18,6">
 
-                    <!-- 品牌行：图标 + 名称 / 版本 / 一句话 -->
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="/Resources/app-logo.png" Width="56" Height="56"
-                               VerticalAlignment="Center"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="鸽子下载" FontSize="19" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            <TextBlock x:Name="VersionText" Text="夸克网盘 · 直链助手"
-                                       FontSize="11" Margin="0,3,0,0"
-                                       Foreground="{DynamicResource TextTertiaryBrush}"/>
-                            <TextBlock Text="分享转存 · 直链解析 · 高速下载"
-                                       FontSize="11" Margin="0,1,0,0"
-                                       Foreground="{DynamicResource TextTertiaryBrush}"/>
-                        </StackPanel>
+                    <!-- ① 品牌卡 -->
+                    <Border Style="{StaticResource PrimaryCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- 「检查更新」按钮（2026-10-11 新增）
-                             红点是**右上角那个小圆点**，只在检测到新版本时显示。
-                             ⚠️ 用外层 Grid 承载红点，而不是把 Ellipse 塞进 Button.Content ——
-                                塞进 Content 会被按钮的 Padding 裁掉，且会吃掉点击事件。
-                                IsHitTestVisible=False 保证红点不挡按钮。 -->
-                        <Grid VerticalAlignment="Center" Margin="12,0,0,0">
-                            <Button x:Name="CheckUpdateBtn" Click="OnCheckUpdateClick"
-                                    AutomationProperties.Name="检查更新"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Padding="10,5" FontSize="11.5"
-                                    ToolTip="检查是否有新版本">
-                                <TextBlock Text="检查更新"/>
-                            </Button>
-                            <Ellipse x:Name="UpdateDot" Width="9" Height="9"
-                                     Fill="{DynamicResource DangerBrush}"
-                                     HorizontalAlignment="Right" VerticalAlignment="Top"
-                                     Margin="0,-4,-4,0"
-                                     IsHitTestVisible="False"
-                                     Visibility="Collapsed"/>
-                        </Grid>
-                    </StackPanel>
-
-                    <!-- 作者 B 站（点击跳转） -->
-                    <Button x:Name="BiliBtn" Click="OnBiliClick"
-                            AutomationProperties.Name="打开作者B站主页"
-                            HorizontalAlignment="Left" Margin="0,10,0,0"
-                            Cursor="Hand" Background="Transparent" BorderThickness="0"
-                            Padding="0">
-                        <TextBlock x:Name="BiliText" Text="作者 B 站：b23.tv/gIoEfQM（点击跳转）"
-                                   FontSize="11.5" TextDecorations="Underline"
-                                   Foreground="{DynamicResource PrimaryBrush}"/>
-                    </Button>
-
-                    <!-- 开源地址（点击跳转）—— 与 B 站链接同构 -->
-                    <Button x:Name="RepoBtn" Click="OnRepoClick"
-                            AutomationProperties.Name="打开项目开源地址"
-                            HorizontalAlignment="Left" Margin="0,5,0,0"
-                            Cursor="Hand" Background="Transparent" BorderThickness="0"
-                            Padding="0">
-                        <TextBlock x:Name="RepoText"
-                                   Text="开源地址：github.com/huaotem-bot/gezi-quark-downloader"
-                                   FontSize="11.5" TextDecorations="Underline"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource PrimaryBrush}"/>
-                    </Button>
-
-                    <!-- 应用简介 -->
-                    <TextBlock Text="应用简介" Style="{StaticResource SectionLabel}" Margin="0,16,0,6"/>
-                    <TextBlock Style="{StaticResource ProseText}" TextWrapping="Wrap"
-                               Text="一款夸克网盘分享链接解析与高速下载工具。粘贴分享链接就能直接下载，也可以扫码登录后浏览、下载自己的网盘文件。"/>
-                    <TextBlock Style="{StaticResource ProseText}" TextWrapping="Wrap"
-                               Margin="0,8,0,0"><Run Text="本项目" /><Run
-                                Text="完全开源" FontWeight="SemiBold" /><Run
-                                Text="，采用 GPL-3.0 许可，全部源码公开可审计。软件无广告、无遥测、不收集任何用户数据；登录凭据仅以 Windows DPAPI 加密保存在本机，不会外传。" /></TextBlock>
-
-                    <!-- 功能特性 -->
-                    <TextBlock Text="功能特性" Style="{StaticResource SectionLabel}" Margin="0,14,0,6"/>
-                    <StackPanel x:Name="FeatureList"/>
-
-                    <!-- 开源许可 -->
-                    <TextBlock Text="开源许可" Style="{StaticResource SectionLabel}" Margin="0,16,0,6"/>
-                    <TextBlock Style="{StaticResource ProseText}" TextWrapping="Wrap"
-                               Text="本项目基于 GNU General Public License v3.0 发布：你可以自由使用、修改和再分发，但衍生作品必须以同样的许可开源。第三方组件及其许可详见仓库内的 THIRD-PARTY-NOTICES.md。" />
-
-                    <!-- 赞赏支持 -->
-                    <TextBlock Text="赞赏支持" Style="{StaticResource SectionLabel}" Margin="0,16,0,8"/>
-                    <StackPanel HorizontalAlignment="Center">
-                        <!-- ⚠️ 用真 Button 而不是 Border+MouseLeftButtonUp：
-                             Border 没有 automation peer，**UIA 树里根本找不到它**（点不到、也测不了）；
-                             Button 有 InvokePattern，键盘 Tab+回车 也能用。 -->
-                        <Button x:Name="QrBtn" Click="OnQrClick"
-                                Style="{StaticResource IconGhostButton}"
-                                Width="Auto" Height="Auto" Padding="0"
-                                AutomationProperties.Name="赞赏码（点击放大）"
-                                ToolTip="点击放大">
-                            <Border BorderBrush="{DynamicResource BorderBrushSoft}"
-                                    BorderThickness="1" CornerRadius="8" Padding="6"
-                                    Background="{DynamicResource SurfaceBrush}">
-                                <Image Source="/Resources/reward-qr.png" Width="150" Height="150"
+                            <!-- logo 本身是白底图 → 深色主题下会顶出一个白方块。
+                                 套一个圆角"图标底"把它变成有意的应用图标，两种主题都好看。 -->
+                            <Border Grid.Column="0" Width="62" Height="62" CornerRadius="14"
+                                    Background="White"
+                                    BorderBrush="{DynamicResource BorderBrushSoft}"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Center">
+                                <Image Source="/Resources/app-logo.png" Width="54" Height="54"
                                        RenderOptions.BitmapScalingMode="HighQuality"/>
                             </Border>
+
+                            <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="鸽子下载" FontSize="19" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <!-- 版本号做成小徽章，比混在标语里清楚 -->
+                                    <Border Background="{DynamicResource PrimarySoftBrush}"
+                                            CornerRadius="4" Padding="6,1,6,2" Margin="8,2,0,0"
+                                            VerticalAlignment="Center">
+                                        <TextBlock x:Name="VersionPillText" Text="v?"
+                                                   FontSize="10.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource PrimaryBrush}"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock x:Name="VersionText" Text="夸克网盘 · 直链助手"
+                                           FontSize="11" Margin="0,5,0,0"
+                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                            </StackPanel>
+
+                            <!-- 「检查更新」按钮 + 红点。
+                                 ⚠️ 红点用外层 Grid 承载，而不是塞进 Button.Content ——
+                                    塞进去会被按钮 Padding 裁掉，还会吃掉点击事件。
+                                    IsHitTestVisible=False 保证红点不挡按钮。 -->
+                            <Grid Grid.Column="2" VerticalAlignment="Center">
+                                <Button x:Name="CheckUpdateBtn" Click="OnCheckUpdateClick"
+                                        AutomationProperties.Name="检查更新"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="12,6" FontSize="11.5"
+                                        ToolTip="检查是否有新版本">
+                                    <TextBlock Text="检查更新"/>
+                                </Button>
+                                <Ellipse x:Name="UpdateDot" Width="9" Height="9"
+                                         Fill="{DynamicResource DangerBrush}"
+                                         HorizontalAlignment="Right" VerticalAlignment="Top"
+                                         Margin="0,-4,-4,0"
+                                         IsHitTestVisible="False"
+                                         Visibility="Collapsed"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- ② 更新卡：有更新 / 正在下载时才出现。
+                         更新包的下载**不进「下载」页**，进度就显示在这里。 -->
+                    <Border x:Name="UpdateCard" Style="{StaticResource PrimaryCard}"
+                            Margin="0,12,0,0" Padding="16" Visibility="Collapsed">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="UpdateTitleText" Grid.Column="0"
+                                           Text="发现新版本" FontSize="13" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock x:Name="UpdateSizeText" Grid.Column="1" Text=""
+                                           FontSize="11" Margin="10,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                            </Grid>
+
+                            <TextBlock x:Name="UpdateStatusText" Text="" FontSize="11"
+                                       Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+                            <ProgressBar x:Name="UpdateProgress" Style="{StaticResource SlimProgressBar}"
+                                         Value="0" Margin="0,9,0,0" Visibility="Collapsed"/>
+
+                            <Button x:Name="UpdateDetailBtn" Content="查看更新详情"
+                                    Click="OnUpdateDetailClick"
+                                    AutomationProperties.Name="查看更新详情"
+                                    Style="{StaticResource SecondaryButton}"
+                                    HorizontalAlignment="Left" MinWidth="118"
+                                    Margin="0,11,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字） -->
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="RepoBtn" Click="OnRepoClick"
+                                AutomationProperties.Name="打开项目开源地址"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="12,6" FontSize="11.5"
+                                ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
+                            <TextBlock x:Name="RepoText" Text="开源地址"/>
                         </Button>
-                        <TextBlock Text="点击二维码可放大 · 如果觉得好用，欢迎扫码赞赏支持"
-                                   FontSize="10.5" Margin="0,8,0,0"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
-                        <TextBlock Text="七十鸽 的赞赏码" FontSize="12.5" FontWeight="SemiBold"
-                                   Margin="0,3,0,0" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <Button x:Name="BiliBtn" Click="OnBiliClick"
+                                AutomationProperties.Name="打开作者B站主页"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="12,6" FontSize="11.5" Margin="8,0,0,0"
+                                ToolTip="在浏览器中打开作者 B 站主页">
+                            <TextBlock x:Name="BiliText" Text="作者 B 站"/>
+                        </Button>
                     </StackPanel>
 
-                    <!-- 底部 -->
-                    <Button x:Name="OkBtn" Content="关闭" Click="OnCloseClick"
-                            AutomationProperties.Name="关闭"
-                            Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Right" MinWidth="96" Margin="0,18,0,0"/>
+                    <!-- ④ 功能特性：2 列小卡（由代码填充） -->
+                    <TextBlock Text="功能特性" Style="{StaticResource SectionLabel}" Margin="0,18,0,8"/>
+                    <UniformGrid x:Name="FeatureList" Columns="2"/>
+
+                    <!-- ⑤ 应用简介 + 开源许可：收进一张淡卡，字号压小，别抢主内容 -->
+                    <Border Style="{StaticResource MutedCard}" Margin="0,16,0,0" Padding="14,12">
+                        <StackPanel>
+                            <TextBlock Text="应用简介" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <TextBlock Style="{StaticResource ProseText}" FontSize="11" Margin="0,5,0,0"
+                                       TextWrapping="Wrap"
+                                       Text="一款夸克网盘分享链接解析与高速下载工具。粘贴分享链接即可下载，也可扫码登录后浏览、下载自己的网盘文件。"/>
+                            <TextBlock Style="{StaticResource ProseText}" FontSize="11" Margin="0,6,0,0"
+                                       TextWrapping="Wrap"><Run Text="本项目" /><Run
+                                        Text="完全开源" FontWeight="SemiBold" /><Run
+                                        Text="（GPL-3.0），源码公开可审计。无广告、无遥测、不收集任何用户数据；登录凭据仅以 Windows DPAPI 加密保存在本机，不会外传。第三方组件许可见仓库内 THIRD-PARTY-NOTICES.md。" /></TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ⑥ 赞赏支持 -->
+                    <TextBlock Text="赞赏支持" Style="{StaticResource SectionLabel}" Margin="0,18,0,8"/>
+                    <Border Style="{StaticResource MutedCard}" Padding="14,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <!-- ⚠️ 用真 Button 而不是 Border+MouseLeftButtonUp：
+                                     Border 没有 automation peer，UIA 树里找不到（点不到也测不了）。 -->
+                                <Button x:Name="QrBtn" Click="OnQrClick"
+                                        Style="{StaticResource IconGhostButton}"
+                                        Width="Auto" Height="Auto" Padding="0"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="赞赏码（点击放大）"
+                                        ToolTip="点击放大">
+                                    <Border BorderBrush="{DynamicResource BorderBrushSoft}"
+                                            BorderThickness="1" CornerRadius="8" Padding="5"
+                                            Background="{DynamicResource SurfaceBrush}">
+                                        <Image Source="/Resources/reward-qr.png" Width="108" Height="108"
+                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    </Border>
+                                </Button>
+                                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="七十鸽 的赞赏码" FontSize="12.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="如果觉得好用，欢迎扫码赞赏支持" FontSize="11"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                    <TextBlock Text="点击二维码可放大" FontSize="10.5"
+                                               Margin="0,2,0,0"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
-        </StackPanel>
+
+            <!-- ============ 底部（固定，不随内容滚动） ============ -->
+            <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
+                    Padding="18,12">
+                <Button x:Name="OkBtn" Content="关闭" Click="OnCloseClick"
+                        AutomationProperties.Name="关闭"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right" MinWidth="96"/>
+            </Border>
+        </Grid>
     </Border>
 </Window>

@@ -255,6 +255,19 @@ namespace GeZi
     {
         private static readonly XmlSerializer Ser = new XmlSerializer(typeof(AppSettings));
 
+        /// <summary>
+        /// 配置文件读写的互斥锁。
+        ///
+        /// 🚨 【为什么必须加】Save 走的是"写 .tmp → 删原文件 → File.Move"，
+        /// 而临时文件名是固定的（<c>FilePath + ".tmp"</c>）。**两个线程同时 Save 时**：
+        ///   A 写完 tmp → B 也写同一个 tmp → A 删原文件 → A 把 tmp 移走 →
+        ///   B 再去移 tmp 时文件已经没了 → 抛异常 → **B 这次设置更新被静默丢弃**。
+        /// 现实中确实存在并发：设置页/登录刷新在 **UI 线程** Save，而
+        /// <c>RunPendingUpdateDeletesAsync</c> 里因为用了 <c>ConfigureAwait(false)</c>，
+        /// 它的 Save 落在**线程池线程**上。两者一撞就可能丢设置。
+        /// </summary>
+        private static readonly object IoLock = new object();
+
         private static string _filePath;
         private static bool _loaded;
 
@@ -304,7 +317,13 @@ namespace GeZi
         /// <summary>上一次 Load/Save 是否踩到了异常（供 UI 提示用户设置未能持久化）。</summary>
         public static string LastError { get; private set; }
 
+        /// <summary>读配置。加锁 —— 与 <see cref="Save"/> 共用同一个 .tmp 路径，不能并发。</summary>
         public static AppSettings Load()
+        {
+            lock (IoLock) { return LoadCore(); }
+        }
+
+        private static AppSettings LoadCore()
         {
             LastError = null;
             var s = new AppSettings();
@@ -354,7 +373,13 @@ namespace GeZi
             return s;
         }
 
+        /// <summary>写配置。加锁 —— 见 <see cref="IoLock"/> 的说明（并发写会丢设置）。</summary>
         public static void Save(AppSettings s)
+        {
+            lock (IoLock) { SaveCore(s); }
+        }
+
+        private static void SaveCore(AppSettings s)
         {
             LastError = null;
             if (s == null)
