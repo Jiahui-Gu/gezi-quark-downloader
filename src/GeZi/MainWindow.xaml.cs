@@ -1196,6 +1196,35 @@ namespace GeZi
             }
         }
 
+        /// <summary>
+        /// 设置页「跟随系统代理」开关（2026-10-11 新增）。
+        ///
+        /// 走独立处理器而不是 <see cref="OnSettingChanged"/>（同 <see cref="OnClipboardAutoParseChanged"/>
+        /// 的理由）：这个开关只写一个核心层静态标志，不需要重建下载调度器 ——
+        /// 为它重建调度器反而会打断在途任务。
+        ///
+        /// ⚠️ 静态开关只影响**此后新建**的连接：已发起的请求不会改道，
+        ///    所以日志里要跟用户讲清楚"重新开始下载 / 重新登录后生效"。
+        /// </summary>
+        private void OnUseSystemProxyChanged(object sender, RoutedEventArgs e)
+        {
+            if (_applyingSettings) return;
+            try
+            {
+                bool on = UseSystemProxyCheck.IsChecked == true;
+                _settings.UseSystemProxy = on;
+                SettingsStore.Save(_settings);
+                NetworkOptions.UseSystemProxy = on;
+                Log(on
+                    ? "已开启「跟随系统代理」：之后新建的连接会走 Windows 系统代理（重新开始下载 / 重新登录后生效）。"
+                    : "已关闭「跟随系统代理」：之后的连接一律直连。");
+            }
+            catch (Exception ex)
+            {
+                Log("代理设置保存失败: " + ex.Message);
+            }
+        }
+
         /// <summary>收到「剪贴板内容变了」的系统通知。</summary>
         private void OnClipboardChanged()
         {
@@ -5508,6 +5537,8 @@ namespace GeZi
                 // 剪贴板自动解析（默认开）。注意这里**只回填控件**：真正的注册在窗口句柄
                 // 建好之后由 AttachWindowHooks→ApplyClipboardListener 做。
                 ClipboardAutoParseCheck.IsChecked = _settings.ClipboardAutoParse;
+                // 跟随系统代理（默认关 = 直连）
+                UseSystemProxyCheck.IsChecked = _settings.UseSystemProxy;
                 // 外观主题：把配置里的选择回填到三个单选（_applyingSettings 已挡掉 Checked）
                 SyncThemeRadios();
             }
@@ -5517,6 +5548,9 @@ namespace GeZi
             }
             // 把「分片目录隐藏」告知核心层（静态开关，只影响外观）
             SegmentedDownloader.HidePartsDir = _settings.HideParts;
+            // 把「跟随系统代理」告知核心层（静态开关，影响之后新建的所有连接）。
+            // ⚠️ 必须在**建 QuarkClient / 起下载之前**写进去，否则首批连接仍按旧值建。
+            NetworkOptions.UseSystemProxy = _settings.UseSystemProxy;
             // 把诊断日志接进界面日志框：外部启动是否成功、ShellExecute 返回码多少，
             // 都要能看到 —— 否则每次失败都只能猜。
             ShellLaunch.Log = Log;

@@ -50,6 +50,22 @@ namespace GeZi
         public bool AutoClean { get; set; } = true;
 
         /// <summary>
+        /// 是否跟随 Windows 系统代理（2026-10-11 新增）。默认 **false = 直连**。
+        ///
+        /// 【为什么默认关闭】程序历来强制直连（理由见 <see cref="NetworkOptions"/>：
+        /// 本机代理软件会把夸克接口劫持到 127.0.0.1；代理会改变 TLS ClientHello
+        /// 指纹，而 pan.quark.cn 的 WAF 对指纹敏感）。但"必须经代理才能上网"的
+        /// 环境（公司网络、只放行代理出口的校园网）里，直连等于程序完全不可用 ——
+        /// 所以补一个**显式开关**，把此前那句没有实现的 "UseSystemProxy" 注释做成真功能。
+        ///
+        /// ⚠️ **零回归**：`XmlSerializer` 反序列化**不执行字段初始化器**，老配置里
+        ///    没有这个节点时读到 `default(bool)` = false = 直连，与升级前行为一致。
+        /// ⚠️ 开关只影响**此后新建**的连接：改完要新建下载任务 / 重新登录才生效
+        ///    （在途请求用的还是旧 handler）。
+        /// </summary>
+        public bool UseSystemProxy { get; set; }
+
+        /// <summary>
         /// 分片落盘方式。SharedFile = 直写同一文件（峰值 1×）；SegmentedFiles = 独立分片 + 边合并。
         ///
         /// 🚨 【2026-10-11：默认 SharedFile → **SegmentedFiles**】

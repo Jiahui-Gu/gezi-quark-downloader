@@ -613,13 +613,14 @@ namespace GeZi.Core.Download
                 // DefaultConnectionLimit（受"全局连接预算"约束）。线程数调高后
                 // 连接池必须同步放开，否则线程再高也只能干等空位。
                 MaxConnectionsPerServer = Math.Max(1024, _threads * 2),
-                // 显式关闭代理。默认 HttpClientHandler 会读取 Windows 系统代理(WinINET)，
-                // 而直链下载是到夸克 CDN 的大流量长连接：一旦被本机代理(如某些
-                // VPN/抓包/加速器)接管，轻则限速重则连接被劫持到 127.0.0.1 失败。
-                // Python Flet 版用 urllib 不读系统代理，这里保持一致行为。
-                Proxy = null,
-                UseProxy = false,
             };
+            // 代理策略统一交给 NetworkOptions（默认**直连**）。默认 HttpClientHandler 会读取
+            // Windows 系统代理(WinINET)，而直链下载是到夸克 CDN 的大流量长连接：一旦被本机
+            // 代理(如某些 VPN/抓包/加速器)接管，轻则限速重则连接被劫持到 127.0.0.1 失败。
+            // Python Flet 版用 urllib 不读系统代理，这里保持一致行为。
+            // ⚠️ 与 API 层（QuarkSession）用同一个开关：公司网络下要能整体走代理，
+            //    否则会出现"能解析分享、但直链一条都下不动"的半通状态。
+            NetworkOptions.ApplyTo(handler);
             _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         }
 
