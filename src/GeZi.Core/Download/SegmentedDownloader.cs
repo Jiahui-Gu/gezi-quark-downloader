@@ -1233,6 +1233,66 @@ namespace GeZi.Core.Download
                 long e = Math.Min(s + finalSeg - 1, total - 1);
                 parts.Add((s, e));
             }
+
+            // ==================== 头部变长分片（2026-10-13）====================
+            //
+            // 【治什么】docs/独立分片边合并 §5：真实 CDN 单连接只有 ~40KB/s，而合并
+            // 必须严格按片序 —— 于是目标文件的增长速率被「头部那一片的单连接速率」卡住。
+            // 30GB 按 16MB/片时，头 16MB 要约 **6.7 分钟**才凑齐，起播体验极差。
+            //
+            // 【做法】把文件**头部**单独切成 1MB 的小片，让多条连接并行下头部；
+            // 中后部维持原有的「静态大片 + 尾部动态窃取」（那是实测过的吞吐最优解，
+            // 全局切小会崩吞吐，踩过）。
+            //
+            // ⚠️ **必须是纯函数**：RunSegmentedAsync 每次都会重算 parts 并与 .qmeta 比对
+            //    （`PartsEqual`），一旦不一致就重建 plan、W 全部归零 → **进度全丢**。
+            //    所以这里只允许用 total/threads 推导常量，绝不能用随机数或时钟。
+            // ⚠️ **不能突破 maxSegments**：那是"元数据上限"护栏（防 100GB+ 失控）。
+            //    做法是中后部的片数按 `maxSegments - headParts` 夹取，头部另算。
+            // ⚠️ 头部小片不会被"动态窃取"误伤：MinStealBytes=512KB，1MB 片的
+            //    remainHere 最多 1MB，只在刚开始那一次满足 `>= 2*512KB`，
+            //    即便被切半也只是片更小、起播更快，无害。
+            const long HeadZoneMinTotal = 1L * 1024 * 1024 * 1024;  // 只在 ≥1GB 的文件启用
+            const long HeadZoneBytes = 64L * 1024 * 1024;           // 头部区域最大 64MB
+            const long HeadSegBytes = 1L * 1024 * 1024;             // 头部分片 1MB
+            const int HeadMaxParts = 64;                            // 头部最多 64 片
+
+            if (total >= HeadZoneMinTotal)
+            {
+                long headZone = Math.Min(HeadZoneBytes, total / 16);
+                long headParts = headZone / HeadSegBytes;
+                if (headParts > HeadMaxParts) headParts = HeadMaxParts;
+
+                // 至少 2 片才有并行意义；剩余部分还要够切（否则不如不分）
+                long headEnd = headParts * HeadSegBytes - 1;
+                long remainTotal = total - (headEnd + 1);
+                if (headParts >= 2 && remainTotal >= MinSegBytes)
+                {
+                    // 中后部片数：扣掉头部占用后的额度，仍受 maxSegments 总护栏
+                    long nMid = n;
+                    if (headParts + nMid > maxSegments) nMid = maxSegments - headParts;
+                    if (nMid < 1) nMid = 1;
+                    long midSeg = (remainTotal + nMid - 1) / nMid;
+                    if (midSeg > finalSeg) midSeg = finalSeg;   // 不允许比原来的片更大
+
+                    var v = new List<(long Start, long End)>((int)(headParts + nMid));
+                    long s = 0;
+                    for (long i = 0; i < headParts; i++)
+                    {
+                        v.Add((s, s + HeadSegBytes - 1));
+                        s += HeadSegBytes;
+                    }
+                    for (long i = 0; i < nMid; i++)
+                    {
+                        long ms = headEnd + 1 + i * midSeg;
+                        if (ms >= total) break;
+                        long me = Math.Min(ms + midSeg - 1, total - 1);
+                        v.Add((ms, me));
+                    }
+                    return v;
+                }
+            }
+
             return parts;
         }
 
@@ -1430,7 +1490,27 @@ namespace GeZi.Core.Download
             }
 
             var plan = LoadPlan(metaPath);
-            if (plan == null || plan.Total != total || plan.Parts.Count != parts.Count || !PartsEqual(plan.Parts, parts))
+            // ⚠️ 【2026-10-13】这里加了一条保护：**已有进度的老任务绝不重建 plan**。
+            //
+            // 原逻辑只要 `!PartsEqual(plan.Parts, parts)` 就重建 —— 那意味着"分片算法一变，
+            // 老任务已下载的进度全部作废（W 归零）"。2026-10-13 引入「头部变长分片」后，
+            // 同一文件重算出来的 parts 与旧 .qmeta 必然不同，若不保护，
+            // **每个进行中的老任务升级后都会从头再下一遍** —— 对 30GB 文件是灾难。
+            //
+            // 判据：Total 一致 + Parts 非空 + **确实有进度**（任一片 W>0 或已合并过字节）
+            // ⇒ 沿用 .qmeta 里的旧规划，让这个任务按老分片安安静静下完。
+            // 只在「全新任务 / Total 变了 / 旧规划是空的」时才写入新规划。
+            bool hasOldProgress = plan != null && plan.Total == total
+                                 && plan.Parts != null && plan.Parts.Count > 0
+                                 && plan.Parts.Any(p => p.W > 0);
+            if (hasOldProgress)
+            {
+                Log?.Invoke(string.Format(
+                    "续传: 沿用 .qmeta 中已有的分片规划（{0} 片）——本次不重算，已下载进度不被清零。",
+                    plan.Parts.Count));
+            }
+            else if (plan == null || plan.Total != total || plan.Parts.Count != parts.Count
+                               || !PartsEqual(plan.Parts, parts))
             {
                 plan = new DownloadPlan { Total = total, Parts = new List<PartPlan>() };
                 foreach (var p in parts)
