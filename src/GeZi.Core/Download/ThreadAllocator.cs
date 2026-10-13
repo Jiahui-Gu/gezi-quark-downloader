@@ -135,6 +135,64 @@ namespace GeZi.Core.Download
                 sum--;
             }
 
+            // ---- 水位填充：把「因 perFileCap 封顶而省下的预算」继续分给未封顶的文件 ----
+            //
+            // 【2026-10-13】为什么需要：按比例分配时，一旦某个文件被 perFileCap 封顶，
+            // 它那一份就用不完了，而这部分预算会**白白闲置**。
+            // 实测（用户日志复现，tmp-links 用例 alloc_waterfill）：
+            //   30.78GB + 160.09MB、cap=256、conc=3
+            //   → 大文件 256（撞 cap）、小文件 4（只吃下限）→ **只用掉 260/512，浪费 252**
+            // 而夸克 CDN 是**按连接**限速的（docs/CDN并发阈值-实测.md：64→4.00、256→13.94 MB/s，
+            // 拐点 256），闲置预算 = 白扔的带宽 ⇒ 160MB 小文件只有 4 路，要磨十几分钟。
+            //
+            // ⚠️ 必须**保持大小比例**：slack 只在「未封顶的文件」之间按 size 比例分摊。
+            //    绝不能平均加 —— 那会退化成"平均分配"，直接违背用户当初的要求
+            //    「不要平均分配，按文件大小，大的多分小的少分，但有最低下限」。
+            // ⚠️ 大小未知（size<=0）的文件不参与：它们已在上面走过"平分"分支，
+            //    再灌预算只会把已知大小的份额挤掉。
+            for (int round = 0; round < 64; round++)
+            {
+                long used = 0;
+                for (int i = 0; i < n; i++) used += result[i];
+                long slack = effBudget - used;
+                if (slack <= 0) break;
+
+                long activeSize = 0;
+                for (int i = 0; i < n; i++)
+                    if (sizes[i] > 0 && result[i] < cap) activeSize += sizes[i];
+                if (activeSize <= 0) break;     // 全部封顶 / 全是未知大小 → 无料可分
+
+                bool progressed = false;
+                for (int i = 0; i < n; i++)
+                {
+                    if (sizes[i] <= 0 || result[i] >= cap) continue;
+                    long add = slack * sizes[i] / activeSize;   // 按比例
+                    if (add <= 0) continue;
+                    long room = cap - result[i];
+                    if (add > room) add = room;                 // 不许越过单文件上限
+                    result[i] += (int)add;
+                    progressed = true;
+                }
+                if (progressed) continue;
+
+                // 比例分摊后 floor 全为 0（slack 已不够让每个 active 项各 +1）
+                // → 按大小从大到小逐个 +1，把余数分完即止。
+                // （不引 Linq：这是个纯数学类，保持零依赖；O(n²) 但只在余数分发现场跑一次。）
+                for (int pass = 0; pass < n && slack > 0; pass++)
+                {
+                    int best = -1;
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (sizes[i] <= 0 || result[i] >= cap) continue;
+                        if (best < 0 || sizes[i] > sizes[best]) best = i;
+                    }
+                    if (best < 0) break;
+                    result[best]++;
+                    slack--;
+                }
+                break;
+            }
+
             return result;
         }
     }
