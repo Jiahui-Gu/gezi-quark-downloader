@@ -3122,7 +3122,6 @@ namespace GeZi
                     Threads = i < alloc.Length ? alloc[i] : _settings.Threads,
                     // 写入方式统一取设置页的全局值（原来靠下载区的「边下边播」勾选框，
                     // 与设置页重复且容易误导，已移除该勾选框）。
-                    WriteMode = _settings.WriteMode,
                     PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
                     LinkRefresher = ct => RefreshLinkAsync(item, ct),
                     // 免转存（从分享直接取链）→ 续传取不到新链，失败文案别承诺"可续传"
@@ -3234,8 +3233,6 @@ namespace GeZi
                         Name = item.Name, Url = item.Url, Dest = dest,
                         Cookie = _client.CookieStr,
                         Threads = i < alloc.Length ? alloc[i] : _settings.Threads,
-                        // 写入方式统一取设置页的全局值（原下载区「边下边播」勾选框已移除）。
-                        WriteMode = _settings.WriteMode,
                         // 分片根目录：留空 = 与目标同级（默认）。非空则分片集中存放，
                         // 下载目录不被 .qparts 污染，也支持分片跨盘（如放 SSD）。
                         PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
@@ -3964,8 +3961,8 @@ namespace GeZi
                             Token = pi?.Token,
                             FromShare = pi?.FromShare ?? false,
                             Size = t.Total,
-                            StreamPlay = t.Job.WriteMode == WriteMode.SegmentedFiles,
-                            StreamPlayMode = t.Job.WriteMode == WriteMode.SegmentedFiles,
+                            StreamPlay = true,      // 【2026-10-13】共写模式已删除，恒可边下边播
+                            StreamPlayMode = true,
                             Status = t.StatusText,
                             // ---- 续传所需（重启后重取链）----
                             PwdId = pi?.PwdId,
@@ -5371,7 +5368,6 @@ namespace GeZi
                     // 取链用的客户端（免转存不写网盘；有登录态就用登录态，没有也能下）。
                     Cookie = client.CookieStr,
                     Threads = _settings.Threads,
-                    WriteMode = WriteMode.SharedFile,   // 单文件更新包，直写即可
                     PartsRoot = null,
                     ResumeCannotRefresh = fromShare,
                     SkipPersist = true,
@@ -6000,7 +5996,6 @@ namespace GeZi
                             Dest = dest,
                             Cookie = client.CookieStr,
                             Threads = _settings.Threads,
-                            WriteMode = p.StreamPlayMode ? WriteMode.SegmentedFiles : WriteMode.SharedFile,
                             PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
                             Pending = new PendingInfo
                             {
@@ -6209,9 +6204,6 @@ namespace GeZi
                 ConcurrentBox.Text = _settings.ConcurrentTasks.ToString();
                 OutDirBox.Text = _settings.OutDir;
                 AutoCleanCheck.IsChecked = _settings.AutoClean;
-                // 写入方式改成两张可点击的卡片（下拉框已删）
-                WriteModeSegmentedRadio.IsChecked = _settings.WriteMode == WriteMode.SegmentedFiles;
-                WriteModeSharedRadio.IsChecked = _settings.WriteMode != WriteMode.SegmentedFiles;
                 PartsRootBox.Text = _settings.PartsRoot ?? "";
                 HidePartsCheck.IsChecked = _settings.HideParts;
                 CloseActionBox.SelectedIndex = (int)_settings.OnCloseButton;
@@ -6375,8 +6367,6 @@ namespace GeZi
                 // 外部播放器（VLC）会把它当 URL 协议头而打不开（2026-10-04 实测）。
                 _settings.OutDir = NormalizeDir(OutDirBox.Text);
                 _settings.AutoClean = AutoCleanCheck.IsChecked == true;
-                _settings.WriteMode = WriteModeSegmentedRadio.IsChecked == true
-                    ? WriteMode.SegmentedFiles : WriteMode.SharedFile;
                 // 分片根目录变了 → 把**旧值**记入历史清单，否则旧目录里的残留分片
                 // 之后既扫不到、也没入口清理（用户只能自己去翻磁盘删）。
                 string newPartsRoot = (PartsRootBox.Text ?? "").Trim();

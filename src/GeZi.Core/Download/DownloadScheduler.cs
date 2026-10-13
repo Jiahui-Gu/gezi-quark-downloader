@@ -134,7 +134,7 @@ namespace GeZi.Core.Download
                 {
                     Report(progress, job, JobState.Downloading);
                     using (var dl = new SegmentedDownloader(threads: job.Threads, cookie: job.Cookie,
-                               writeMode: job.WriteMode, partsRoot: job.PartsRoot))
+                               partsRoot: job.PartsRoot))
                     {
                         dl.Log = Log;
                         dl.Diagnostics = Diagnostics;

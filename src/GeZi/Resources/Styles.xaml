@@ -1589,39 +1589,6 @@
         </Setter>
     </Style>
 
-    <!-- 卡片式单选（设置页「分片写入方式」用）：
-         整个方块就是一个 RadioButton，点哪儿都能选 —— 取代原来那个下拉框。
-         选中态用**主色描边加粗**表示（比换底色更轻，也不跟卡片里的文字抢注意力）。
-         ⚠️ 边框从 1 → 2 时要同步把 Padding 减 1，否则选中瞬间卡片会长大 2px（会抖）。 -->
-    <Style x:Key="WriteModeCard" TargetType="RadioButton">
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="Bd" CornerRadius="8" Padding="11,9"
-                            Background="{DynamicResource SurfaceBrush}"
-                            BorderBrush="{DynamicResource BorderBrushSoft}"
-                            BorderThickness="1"
-                            SnapsToDevicePixels="True">
-                        <ContentPresenter/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource BorderBrushStrong}"/>
-                        </Trigger>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
-                            <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
-                            <Setter TargetName="Bd" Property="Padding" Value="10,8"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
 
     <!-- ============================================================
          提示条

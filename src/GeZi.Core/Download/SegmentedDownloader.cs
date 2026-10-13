@@ -30,35 +30,17 @@ using GeZi.Core.Support;
 
 namespace GeZi.Core.Download
 {
-    /// <summary>分片数据的落盘方式。</summary>
-    public enum WriteMode
-    {
-        /// <summary>
-        /// 多个 worker 直接写目标文件的各自区间（峰值 1×，无合并阶段）。
-        /// 代价：文件中间存在空洞，未下完时不是有效媒体文件，不可播放。
-        /// </summary>
-        SharedFile,
-
-        /// <summary>
-        /// 每个分片写独立文件，再由合并线程按序 append 到目标文件并删除分片。
-        /// 目标文件从偏移 0 起连续增长，因此可「边下边播」；峰值 1×+单片。
-        ///
-        /// ⚠️ 【2026-10-11 修正】原来这里写「速度与 SharedFile 相当（瓶颈在 CDN 限速，
-        /// 不在写入方式）」—— **这句是错的，已删**。实测用户反馈：
-        /// 「2.0 后版本都会导致**磁盘占用 100%**，改独立分片就好了」。
-        /// 真相：`SharedFile` 是 512 个 worker **各自 seek 写同一文件 = 随机 I/O**，
-        /// 机械盘上磁头疯狂寻道 → 磁盘打满、**下载速度也被拖住**；
-        /// 本模式是**顺序追加**，磁盘占用正常。两者在 I/O 形态上有本质差异。
-        /// ⇒ 因此把本模式改成了**默认值**（见 `Settings.WriteMode`）。
-        /// </summary>
-        SegmentedFiles,
-    }
-
     /// <summary>
     /// 多连接分片 HTTP 下载器（零外部依赖）。
-    /// 与 Python 版的关键区别：不写分片临时文件、不做合并，而是用多个 FileStream
-    /// 指向同一个目标文件、各自 seek 到自己的区间顺序写（底层同样是 pread/pwrite），
-    /// 因此磁盘峰值占用恒为 1×，且没有合并阶段。续传用 sidecar 文本文件记录各分片已写字节。
+    /// 每个分片写独立文件，再由专用合并线程按序 append 到目标文件并立即删除分片 ——
+    /// 目标文件从偏移 0 起**连续增长**，所以可「边下边播」；磁盘峰值约 1×+单片。
+    /// 续传用 sidecar 文本文件记录各分片已写字节。
+    ///
+    /// 【2026-10-13】另一种落盘方式「共写 SharedFile」已**物理删除**：
+    /// 它是多个 worker 各自 seek 写**同一个**目标文件 = 随机 I/O，机械硬盘上磁头疯狂寻道
+    /// → 磁盘占用 100%、下载速度也被拖住（用户实测反馈「2.0 后版本都会导致磁盘占用 100%」）。
+    /// 而独立分片全程**顺序追加**，是唯一同时满足机械盘与固态盘的方案
+    /// （夸克 CDN 上限 ~16MB/s，远低于 HDD 顺序写 ~150MB/s，顺序 I/O 下磁盘带宽从不是瓶颈）。
     /// </summary>
     public class SegmentedDownloader : IDisposable
     {
@@ -66,7 +48,6 @@ namespace GeZi.Core.Download
         private readonly string _ua;
         private readonly string _referer;
         private readonly string _cookie;
-        private readonly WriteMode _writeMode;
         private readonly CookieContainer _jar;
         private readonly HttpClient _http;
 
@@ -593,13 +574,12 @@ namespace GeZi.Core.Download
         }
 
         public SegmentedDownloader(int threads = 0, string ua = null, string referer = null, string cookie = "",
-            WriteMode writeMode = WriteMode.SharedFile, string partsRoot = null)
+            string partsRoot = null)
         {
             _threads = Math.Max(1, threads > 0 ? threads : QuarkConstants.DownloadThreads);
             _ua = string.IsNullOrEmpty(ua) ? QuarkConstants.DlUa : ua;
             _referer = string.IsNullOrEmpty(referer) ? QuarkConstants.Referer : referer;
             _cookie = cookie ?? "";
-            _writeMode = writeMode;
             _partsRoot = string.IsNullOrWhiteSpace(partsRoot) ? null : partsRoot.Trim();
             _jar = new CookieContainer { Capacity = 500, PerDomainCapacity = 200 };
             SeedCookies(_jar, _cookie);
@@ -803,7 +783,7 @@ namespace GeZi.Core.Download
             _lastProbedTotal = total;
             if (supports && total > 0)
             {
-                // 落盘方式（直写 / 独立分片+边合并）由 _writeMode 决定，
+                // 落盘方式唯一：独立分片 + 边合并，
                 // 在 DownloadSegmentedAsync 内部统一分派，这里不再分支。
                 return await DownloadSegmentedAsync(url, dest, headers, total, progress, cancel, pause, taskStart).ConfigureAwait(false);
             }
@@ -974,7 +954,7 @@ namespace GeZi.Core.Download
             catch { }
 
             // 【关键防御】不要相信"文件长度 == 已下载进度"。
-            // SharedFile 模式会把目标文件预分配成满尺寸（SetLength(total)），
+            // 共写模式会把目标文件预分配成满尺寸（SetLength(total)），该模式已删除；
             // 此时文件长度 == total，但里面可能一个字节都没下。
             // 若此时走单线程兜底（分片阶段失败后），原代码会用 FileMode.Append
             // 从这个"满尺寸空洞文件"的末尾继续写，结果是最终大小变成 2×total，
@@ -1296,18 +1276,20 @@ namespace GeZi.Core.Download
             return parts;
         }
 
-        // ---------------- 分片下载（两种落盘方式共用同一套核心） ----------------
+        // ---------------- 分片下载 ----------------
         //
-        // SharedFile     —— 多个 worker 直接写目标文件的各自区间。峰值 1×、无合并阶段；
-        //                   代价是文件中间存在空洞，未下完时不是有效媒体文件，不能播放。
-        // SegmentedFiles —— 每个分片写独立文件，由专用合并线程按序 append 到目标文件
-        //                   并立即删除该分片。目标文件从偏移 0 起连续增长，
-        //                   因此**可以边下边播**；峰值占用约 1×（目标文件 + 未合并分片），
-        //                   而不是 2×（"全部落盘最后再合并"那种做法才是 2×）。
+        // 【2026-10-13】另一种落盘方式「共写 SharedFile」已**物理删除**：
+        // 它是多个 worker 各自 seek 写**同一个**目标文件 = 随机 I/O，机械硬盘上磁头疯狂寻道
+        // → 磁盘占用 100%、下载速度也被拖住（用户实测「2.0 后版本都会导致磁盘占用 100%」）。
+        // 且文件中间存在空洞，未下完时不是有效媒体文件，不能边下边播。两头不占。
         //
-        // 两种方式速度没有实质差别：对照实验（9.1GB / 64 并发）两次都显示
-        // 「共写同一文件」与「独立分片」在伯仲之间 —— 瓶颈在夸克 CDN 的单连接限速，
-        // 不在写入方式。所以选哪种，取决于要不要边下边播，而不是哪个更快。
+        // 唯一保留：每个分片写独立文件，由专用合并线程按序 append 到目标文件
+        // 并立即删除该分片。目标文件从偏移 0 起**连续增长**，因此可以边下边播；
+        // 峰值占用约 1×（目标文件 + 未合并分片），而不是 2×
+        // ——「全部落盘最后再合并」那种做法才是 2×。
+        //
+        // 这也是唯一**同时满足机械盘与固态盘**的方案：夸克 CDN 上限 ~16MB/s，
+        // 远低于机械盘顺序写 ~150MB/s，只要全程顺序 I/O，磁盘带宽从不是瓶颈。
 
         /// <summary>独立分片模式下分片文件的存放目录（与目标文件同级，便于整体清理）。</summary>
         private static string DefaultPartsDir(string dest) => dest + ".qparts";
@@ -1452,24 +1434,26 @@ namespace GeZi.Core.Download
             Dictionary<string, string> headers, long total, IProgress<DownloadProgress> progress,
             CancellationToken cancel, PauseToken pause, DateTime taskStart)
         {
+            // 【2026-10-13】共写模式（SharedFile）已物理删除，落盘方式唯一：独立分片 + 边合并。
             return await RunSegmentedAsync(url, dest, headers, total, progress, cancel, pause,
-                mergeMode: _writeMode == WriteMode.SegmentedFiles, taskStart: taskStart).ConfigureAwait(false);
+                taskStart: taskStart).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// 分片下载核心。mergeMode=false 直写同一文件；true 走"独立分片 + 边合并"。
-        /// 两条路径共用同一套分片规划、重试、限流制动、停滞看门狗与进度上报逻辑，
-        /// 只有"数据往哪儿写"这一处不同 —— 避免同一套逻辑维护两份。
+        /// 分片下载核心：每个分片写独立文件，由专用合并线程按序 append 到目标文件并立即删除分片。
         /// </summary>
         private async Task<(bool ok, string msg)> RunSegmentedAsync(string url, string dest,
             Dictionary<string, string> headers, long total, IProgress<DownloadProgress> progress,
-            CancellationToken cancel, PauseToken pause, bool mergeMode, DateTime taskStart)
+            CancellationToken cancel, PauseToken pause, DateTime taskStart)
         {
             var parts = Split(total, _threads);
             string metaPath, partsDirBase;
             ResolvePaths(dest, out partsDirBase, out metaPath);
-            // 只有独立分片模式才真的用到分片目录；共写模式不用（但仍保留 meta 路径规划）
-            string partsDir = mergeMode ? partsDirBase : null;
+            string partsDir = partsDirBase;
+
+            // 【2026-10-13】共写模式（SharedFile）已物理删除：本类只支持「独立分片 + 边合并」。
+            // 原来由构造参数 `writeMode` 决定的分支已全部解包，此常量仅为兼容
+            // DiagnosticsSnapshot.MergeMode 字段而保留（现在恒为 true）。
 
             // 把"实际切了几片"明明白白打出来。
             // 用户调大线程数却只跑出 7 个连接时，这一行能让原因立刻可见。
@@ -1520,14 +1504,14 @@ namespace GeZi.Core.Download
 
             // ---- 落盘准备：两种方式在这里分道扬镳 ----
 
-            // 已合并进目标文件的分片数 / 字节数（仅 mergeMode 有意义）
+            // 已合并进目标文件的分片数 / 字节数
             int mergedCount = 0;
             long mergedBytes = 0;
             // 第 mergedCount 片之内、已经合并进目标文件的字节数。
             // 有了它才能"边落盘边合并"：合并进度不必停在分片边界上。
             long mergedInHead = 0;
 
-            // 分片"已完成"标记（仅 mergeMode 使用）：合并线程据此判断能不能安全删掉
+            // 分片"已完成"标记：合并线程据此判断能不能安全删掉
             // 某个分片文件 —— 必须等 worker 关闭文件流之后才能删，否则 worker 后续的
             // 写入会落进一个已删除的文件，数据静默丢失。
             // 【2026-10-11】动态窃取会往 plan.Parts 里**追加**新片（见 SplitLongestPartIfNeeded），
@@ -1536,153 +1520,136 @@ namespace GeZi.Core.Download
             int partCapacity = plan.Parts.Count * 4;
             int[] partDone = new int[partCapacity];
 
-            if (mergeMode)
+            // 【关键】绝不预分配目标文件。
+            // 直写模式会 SetLength(total) 把空间一次占掉，但在这里那等于自毁：
+            // 文件一开就是满尺寸、中间全是零，播放器读到的是一片空洞，
+            // "边下边播"这个唯一的卖点当场作废。所以目标文件必须从 0 开始长。
+            try
             {
-                // 【关键】绝不预分配目标文件。
-                // 直写模式会 SetLength(total) 把空间一次占掉，但在这里那等于自毁：
-                // 文件一开就是满尺寸、中间全是零，播放器读到的是一片空洞，
-                // "边下边播"这个唯一的卖点当场作废。所以目标文件必须从 0 开始长。
+                Directory.CreateDirectory(partsDir);
+                ApplyHidden(partsDir);
+            }
+            catch (Exception ex)
+            {
+                return (false, "无法创建分片目录 " + partsDir + ": " + ex.Message);
+            }
+
+            // 目标文件当前长度 = 已合并进它的字节数。
+            // merge 模式只 append、从不回写，所以文件长度天然就是"连续前缀"的长度，
+            // 不需要（也不能）按分片边界对齐 —— 现在支持"边落盘边合并"，
+            // 合并进度本来就停在某一片的中间。
+            long have = 0;
+            try { if (File.Exists(dest)) have = new FileInfo(dest).Length; } catch { }
+            if (have > total) have = total;
+
+            // 由已合并字节数反推：进度停在第几片、片内偏移多少
+            long acc = 0;
+            for (int i = 0; i < plan.Parts.Count; i++)
+            {
+                long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
+                if (acc + sz > have) break;
+                acc += sz;
+                mergedCount = i + 1;
+            }
+            mergedInHead = have - acc;
+            mergedBytes = have;
+
+            // 对账：目标文件尾部那一段必须是"从第 mergedCount 片的分片文件里读来的"。
+            // 若分片文件比它短，说明目标文件里混进了来路不明的字节，
+            // 只能把这一段截掉重来 —— 宁可少一点，也不能产出内容错误的文件。
+            if (mergedInHead > 0)
+            {
+                long headLen = 0;
                 try
                 {
-                    Directory.CreateDirectory(partsDir);
-                    ApplyHidden(partsDir);
-                }
-                catch (Exception ex)
-                {
-                    return (false, "无法创建分片目录 " + partsDir + ": " + ex.Message);
-                }
-
-                // 目标文件当前长度 = 已合并进它的字节数。
-                // merge 模式只 append、从不回写，所以文件长度天然就是"连续前缀"的长度，
-                // 不需要（也不能）按分片边界对齐 —— 现在支持"边落盘边合并"，
-                // 合并进度本来就停在某一片的中间。
-                long have = 0;
-                try { if (File.Exists(dest)) have = new FileInfo(dest).Length; } catch { }
-                if (have > total) have = total;
-
-                // 由已合并字节数反推：进度停在第几片、片内偏移多少
-                long acc = 0;
-                for (int i = 0; i < plan.Parts.Count; i++)
-                {
-                    long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
-                    if (acc + sz > have) break;
-                    acc += sz;
-                    mergedCount = i + 1;
-                }
-                mergedInHead = have - acc;
-                mergedBytes = have;
-
-                // 对账：目标文件尾部那一段必须是"从第 mergedCount 片的分片文件里读来的"。
-                // 若分片文件比它短，说明目标文件里混进了来路不明的字节，
-                // 只能把这一段截掉重来 —— 宁可少一点，也不能产出内容错误的文件。
-                if (mergedInHead > 0)
-                {
-                    long headLen = 0;
-                    try
-                    {
-                        var hfi = new FileInfo(PartPath(partsDir, mergedCount));
-                        if (hfi.Exists) headLen = hfi.Length;
-                    }
-                    catch { }
-                    if (headLen < mergedInHead)
-                    {
-                        Log?.Invoke(string.Format(
-                            "边合并: 目标文件尾部 {0} 字节在分片 {1} 中找不到对应数据，已截除重下（内容正确优先于省流量）。",
-                            Fmt(mergedInHead), mergedCount));
-                        try
-                        {
-                            using (var fs = new FileStream(dest, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-                                fs.SetLength(acc);
-                        }
-                        catch { }
-                        mergedInHead = 0;
-                        mergedBytes = acc;
-                    }
-                }
-
-                // 与磁盘对账：以分片文件的真实长度为准。
-                // sidecar 里的 W 是"已写入"的记账，但缓冲未落盘时进程被杀，
-                // 记账会大于真实文件长度；反过来也可能因删除失败而残留多余字节。
-                // 两种偏差都会让续传写到错误位置，所以这里强制以磁盘为准。
-                for (int i = mergedCount; i < plan.Parts.Count; i++)
-                {
-                    long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
-                    long len = 0;
-                    try
-                    {
-                        var fi = new FileInfo(PartPath(partsDir, i));
-                        if (fi.Exists) len = fi.Length;
-                    }
-                    catch { }
-                    if (len > sz)
-                    {
-                        try
-                        {
-                            using (var fs = new FileStream(PartPath(partsDir, i), FileMode.Open,
-                                       FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-                                fs.SetLength(sz);
-                        }
-                        catch { }
-                        len = sz;
-                    }
-                    plan.Parts[i].W = len;
-                    // 磁盘上已经完整的分片直接标记完成。
-                    // 这一步不能省：worker 见到"本片已完整"会直接跳过、不置标记，
-                    // 而合并线程要等标记才敢删文件 —— 两边互相干等，实测会死锁
-                    // （续传时目标文件卡在某个分片边界上再也不动）。
-                    if (len >= sz)
-                        partDone[i] = 1;
-                }
-                // 已合并的分片：分片文件应已删除，残留则清掉，并补齐记账
-                for (int i = 0; i < mergedCount; i++)
-                {
-                    plan.Parts[i].W = plan.Parts[i].E - plan.Parts[i].S + 1;
-                    try { File.Delete(PartPath(partsDir, i)); } catch { }
-                }
-                SavePlan(metaPath, plan);
-
-                Log?.Invoke(string.Format(
-                    "写入方式: 独立分片 + 边合并（可边下边播）。分片落盘于 {0}，合并后按序追加到目标文件并立即删除分片，峰值占用约 1×。",
-                    partsDir));
-
-                // 空间预检：merge 模式不预分配，所以"磁盘满"不会在建文件时暴露，
-                // 而是下载到一半才炸，还会留下分片目录垃圾。提前算一次，明确拒绝。
-                try
-                {
-                    string root = Path.GetPathRoot(Path.GetFullPath(dest));
-                    if (!string.IsNullOrEmpty(root))
-                    {
-                        var di = new DriveInfo(root);
-                        if (di.IsReady)
-                        {
-                            long need = total - mergedBytes;
-                            if (di.AvailableFreeSpace < need)
-                            {
-                                return (false, string.Format(
-                                    "磁盘空间不足：本次还需 {0}，而 {1} 仅剩 {2}。请清理空间后重试（已合并的部分会保留，可续传）。",
-                                    Fmt(need), root, Fmt(di.AvailableFreeSpace)));
-                            }
-                            Log?.Invoke(string.Format("空间预检: 本次还需 {0}，{1} 剩余 {2}，充足。",
-                                Fmt(need), root, Fmt(di.AvailableFreeSpace)));
-                        }
-                    }
+                    var hfi = new FileInfo(PartPath(partsDir, mergedCount));
+                    if (hfi.Exists) headLen = hfi.Length;
                 }
                 catch { }
+                if (headLen < mergedInHead)
+                {
+                    Log?.Invoke(string.Format(
+                        "边合并: 目标文件尾部 {0} 字节在分片 {1} 中找不到对应数据，已截除重下（内容正确优先于省流量）。",
+                        Fmt(mergedInHead), mergedCount));
+                    try
+                    {
+                        using (var fs = new FileStream(dest, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                            fs.SetLength(acc);
+                    }
+                    catch { }
+                    mergedInHead = 0;
+                    mergedBytes = acc;
+                }
             }
-            else
+
+            // 与磁盘对账：以分片文件的真实长度为准。
+            // sidecar 里的 W 是"已写入"的记账，但缓冲未落盘时进程被杀，
+            // 记账会大于真实文件长度；反过来也可能因删除失败而残留多余字节。
+            // 两种偏差都会让续传写到错误位置，所以这里强制以磁盘为准。
+            for (int i = mergedCount; i < plan.Parts.Count; i++)
             {
-                // 预分配目标文件：空间立即预留，也避免中途磁盘满
+                long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
+                long len = 0;
                 try
                 {
-                    using (var fs = new FileStream(dest, FileMode.OpenOrCreate, FileAccess.Write,
-                               FileShare.ReadWrite | FileShare.Delete, 1, FileOptions.None))
-                        fs.SetLength(total);
+                    var fi = new FileInfo(PartPath(partsDir, i));
+                    if (fi.Exists) len = fi.Length;
                 }
-                catch (Exception ex)
+                catch { }
+                if (len > sz)
                 {
-                    return (false, ex.GetType().Name + ": " + ex.Message);
+                    try
+                    {
+                        using (var fs = new FileStream(PartPath(partsDir, i), FileMode.Open,
+                                   FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                            fs.SetLength(sz);
+                    }
+                    catch { }
+                    len = sz;
+                }
+                plan.Parts[i].W = len;
+                // 磁盘上已经完整的分片直接标记完成。
+                // 这一步不能省：worker 见到"本片已完整"会直接跳过、不置标记，
+                // 而合并线程要等标记才敢删文件 —— 两边互相干等，实测会死锁
+                // （续传时目标文件卡在某个分片边界上再也不动）。
+                if (len >= sz)
+                    partDone[i] = 1;
+            }
+            // 已合并的分片：分片文件应已删除，残留则清掉，并补齐记账
+            for (int i = 0; i < mergedCount; i++)
+            {
+                plan.Parts[i].W = plan.Parts[i].E - plan.Parts[i].S + 1;
+                try { File.Delete(PartPath(partsDir, i)); } catch { }
+            }
+            SavePlan(metaPath, plan);
+
+            Log?.Invoke(string.Format(
+                "写入方式: 独立分片 + 边合并（可边下边播）。分片落盘于 {0}，合并后按序追加到目标文件并立即删除分片，峰值占用约 1×。",
+                partsDir));
+
+            // 空间预检：merge 模式不预分配，所以"磁盘满"不会在建文件时暴露，
+            // 而是下载到一半才炸，还会留下分片目录垃圾。提前算一次，明确拒绝。
+            try
+            {
+                string root = Path.GetPathRoot(Path.GetFullPath(dest));
+                if (!string.IsNullOrEmpty(root))
+                {
+                    var di = new DriveInfo(root);
+                    if (di.IsReady)
+                    {
+                        long need = total - mergedBytes;
+                        if (di.AvailableFreeSpace < need)
+                        {
+                            return (false, string.Format(
+                                "磁盘空间不足：本次还需 {0}，而 {1} 仅剩 {2}。请清理空间后重试（已合并的部分会保留，可续传）。",
+                                Fmt(need), root, Fmt(di.AvailableFreeSpace)));
+                        }
+                        Log?.Invoke(string.Format("空间预检: 本次还需 {0}，{1} 剩余 {2}，充足。",
+                            Fmt(need), root, Fmt(di.AvailableFreeSpace)));
+                    }
                 }
             }
+            catch { }
 
             var queue = new ConcurrentQueue<int>();
             for (int i = mergedCount; i < plan.Parts.Count; i++)
@@ -2022,9 +1989,9 @@ namespace GeZi.Core.Download
                         // ② 要上报阶段，否则界面冻结在「100% + 速度 0」，用户以为卡死。
                         // ⚠️ 只跳过"抢占/停滞"这两类**网络侧**逻辑；
                         //    诊断快照与每秒 SavePlan（崩溃安全）照常执行。
-                        // ⚠️ **必须同时判 mergeMode**：共写模式（SharedFile）根本没有合并阶段，
-                        //    若只看标志位，收尾那一瞬会错误地显示「正在合并分片」。
-                        bool draining = mergeMode && Volatile.Read(ref workersDoneBox[0]);
+                        // ⚠️ 必须看 workersDoneBox 标志位而不是只看 worker 数：
+                        //    否则收尾那一瞬会错误地显示「正在合并分片」。
+                        bool draining = Volatile.Read(ref workersDoneBox[0]);
                         long d;
                         double speed;
                         if (draining)
@@ -2068,9 +2035,8 @@ namespace GeZi.Core.Download
                         if ((now - lastDiag).TotalSeconds >= 5.0)
                         {
                             lastDiag = now;
-                            string mergeNote = mergeMode
-                                ? string.Format("，已合并 {0}", Fmt(Interlocked.Read(ref mergedBox[0])))
-                                : "";
+                            string mergeNote = string.Format("，已合并 {0}",
+                                Fmt(Interlocked.Read(ref mergedBox[0])));
                             int pc = Volatile.Read(ref preemptedCount);
                             // 对端 IP 分布：直接回答"是不是所有连接都挤在同一个 CDN 节点上"。
                             // 若只有 1 个 IP，说明 DNS 没分散，慢连接抢占也难奏效（重连仍是同节点）。
@@ -2106,8 +2072,8 @@ namespace GeZi.Core.Download
                                     DoneBytes = d,
                                     TotalBytes = total,
                                     PreemptedCount = pc,
-                                    MergeMode = mergeMode,
-                                    MergedBytes = mergeMode ? Interlocked.Read(ref mergedBox[0]) : 0,
+                                    MergeMode = true,
+                                    MergedBytes = Interlocked.Read(ref mergedBox[0]),
                                     PeerIps = ipNote ?? "",
                                     Stalled = Volatile.Read(ref stalledFlag) != 0,
                                     Timestamp = DateTime.Now,
@@ -2158,7 +2124,7 @@ namespace GeZi.Core.Download
                     }
                 });
 
-                // ---- 合并线程（仅 mergeMode） ----
+                // ---- 合并线程 ----
                 // 目标文件必须"从 0 起连续增长"，播放器才可能边读边播，
                 // 所以这里严格按片序合并：第 next 片没合并完，绝不先碰第 next+1 片
                 // （否则目标文件会出现空洞，边下边播立刻失效）。
@@ -2173,215 +2139,212 @@ namespace GeZi.Core.Download
                 long mergedTotal = mergedBytes;
                 Task mergeTask = null;
 
-                if (mergeMode)
+                mergeTask = Task.Run(async () =>
                 {
-                    mergeTask = Task.Run(async () =>
+                    // 【资源安全】文件流必须保证释放。
+                    // 原代码在 catch 里直接 return，而 finally 里仍无条件 mfs.Dispose()——
+                    // 当构造函数抛异常时 mfs 未赋值，那条路径的 Dispose 是空的（甚至编译告警）。
+                    // 这里显式声明并置 null，catch 里清空，finally 里判空后释放，
+                    // 语义明确且不会漏。
+                    FileStream mfs = null;
+                    try
                     {
-                        // 【资源安全】文件流必须保证释放。
-                        // 原代码在 catch 里直接 return，而 finally 里仍无条件 mfs.Dispose()——
-                        // 当构造函数抛异常时 mfs 未赋值，那条路径的 Dispose 是空的（甚至编译告警）。
-                        // 这里显式声明并置 null，catch 里清空，finally 里判空后释放，
-                        // 语义明确且不会漏。
-                        FileStream mfs = null;
-                        try
+                        // Append 语义在这里是对的：合并线程是"只追加、从不回写"，
+                        // 而且目标文件的长度天然就是"已合并的连续前缀"长度
+                        // （见 RunSegmentedAsync 里的对账注释）。
+                        // FileShare.ReadWrite | FileShare.Delete 让播放器/其它进程能同时打开读取 ——
+                        // 这正是"边下边播"得以成立的前提。
+                        mfs = new FileStream(dest, FileMode.Append, FileAccess.Write,
+                                  FileShare.ReadWrite | FileShare.Delete, 1024 * 1024, FileOptions.SequentialScan);
+                    }
+                    catch (Exception ex)
+                    {
+                        AddError("无法打开目标文件用于合并: " + ex.Message);
+                        return;
+                    }
+                    var mbuf = new byte[1024 * 1024];
+                    int next = mergedCount;      // 仅作日志/初值；真正的定位在循环头按 S 做
+                    long inPart = mergedInHead;
+                    // 收到收尾信号后还要连续多少轮"读不到新数据"才真的退出。
+                    // 见下面收尾分支的注释 —— 这个宽限期是必须的。
+                    int stallRounds = 0;
+                    try
+                    {
+                        while (true)
                         {
-                            // Append 语义在这里是对的：合并线程是"只追加、从不回写"，
-                            // 而且目标文件的长度天然就是"已合并的连续前缀"长度
-                            // （见 RunSegmentedAsync 里 mergeMode 分支的对账注释）。
-                            // FileShare.ReadWrite | FileShare.Delete 让播放器/其它进程能同时打开读取 ——
-                            // 这正是"边下边播"得以成立的前提。
-                            mfs = new FileStream(dest, FileMode.Append, FileAccess.Write,
-                                      FileShare.ReadWrite | FileShare.Delete, 1024 * 1024, FileOptions.SequentialScan);
-                        }
-                        catch (Exception ex)
-                        {
-                            AddError("无法打开目标文件用于合并: " + ex.Message);
-                            return;
-                        }
-                        var mbuf = new byte[1024 * 1024];
-                        int next = mergedCount;      // 仅作日志/初值；真正的定位在循环头按 S 做
-                        long inPart = mergedInHead;
-                        // 收到收尾信号后还要连续多少轮"读不到新数据"才真的退出。
-                        // 见下面收尾分支的注释 —— 这个宽限期是必须的。
-                        int stallRounds = 0;
-                        try
-                        {
-                            while (true)
+                            // 🚨🚨 每轮按"目标文件当前长度落在哪个片区间里"**重新定位**下一片。
+                            //
+                            // 【为什么不能按 idx 递增】动态窃取（见 SplitLongestPartIfNeeded）会往
+                            // `plan.Parts` **追加**新片 —— 新片的 idx 排在最后，但它的区间落在
+                            // 被切那片的后半段。若仍按 idx 递增合并，就会把"后半段"拼到"前半段"之前，
+                            // **目标文件直接损坏**（而且是静默损坏，比报错更糟）。
+                            //
+                            // 【为什么用 mfs.Length 定位】目标文件永远是"从 0 起的连续前缀"
+                            // （合并线程只追加、从不回写）—— 所以"下一个该合并的片"就是
+                            // **区间覆盖 target** 的那一片。它天然容忍追加，也天然兼容断点续传。
+                            //
+                            // ⛔⛔ 【2026-10-13 回归修复】这里原来写的是 `S == target`（严格等号），
+                            // **那是错的**：边下边合时 target 经常落在某一片的**中间** ——
+                            // 第一片只落盘 80854 字节就被合并进来，target=80854，而没有任何一片的
+                            // S 等于 80854（S 只会是 0、15MB、30MB…）→ `pick < 0` → 合并线程
+                            // **静默退出**，之后走到 2837 行收尾校验才报「合并后目标文件大小不符」。
+                            // 实录症状：进度 96~98% 但目标文件不足一片、`errors.Count==0`、无任何日志、
+                            // 两次失败实际值不同、重试无效（续传后 target 仍不匹配，立刻再 break）。
+                            // 小文件/快网络不复现（第一片瞬间下完，target 总落在分片边界上）。
+                            // ✅ 区间覆盖同时满足两头：容忍追加片（追加片区间不重叠）+
+                            //    允许合并进度停在分片中间（文档 §3.3 实测过该状态可正常续传）。
+                            long target = mfs.Length;
+                            int pick = -1;
+                            for (int i = 0; i < plan.Parts.Count; i++)
                             {
-                                // 🚨🚨 每轮按"目标文件当前长度落在哪个片区间里"**重新定位**下一片。
-                                //
-                                // 【为什么不能按 idx 递增】动态窃取（见 SplitLongestPartIfNeeded）会往
-                                // `plan.Parts` **追加**新片 —— 新片的 idx 排在最后，但它的区间落在
-                                // 被切那片的后半段。若仍按 idx 递增合并，就会把"后半段"拼到"前半段"之前，
-                                // **目标文件直接损坏**（而且是静默损坏，比报错更糟）。
-                                //
-                                // 【为什么用 mfs.Length 定位】目标文件永远是"从 0 起的连续前缀"
-                                // （合并线程只追加、从不回写）—— 所以"下一个该合并的片"就是
-                                // **区间覆盖 target** 的那一片。它天然容忍追加，也天然兼容断点续传。
-                                //
-                                // ⛔⛔ 【2026-10-13 回归修复】这里原来写的是 `S == target`（严格等号），
-                                // **那是错的**：边下边合时 target 经常落在某一片的**中间** ——
-                                // 第一片只落盘 80854 字节就被合并进来，target=80854，而没有任何一片的
-                                // S 等于 80854（S 只会是 0、15MB、30MB…）→ `pick < 0` → 合并线程
-                                // **静默退出**，之后走到 2837 行收尾校验才报「合并后目标文件大小不符」。
-                                // 实录症状：进度 96~98% 但目标文件不足一片、`errors.Count==0`、无任何日志、
-                                // 两次失败实际值不同、重试无效（续传后 target 仍不匹配，立刻再 break）。
-                                // 小文件/快网络不复现（第一片瞬间下完，target 总落在分片边界上）。
-                                // ✅ 区间覆盖同时满足两头：容忍追加片（追加片区间不重叠）+
-                                //    允许合并进度停在分片中间（文档 §3.3 实测过该状态可正常续传）。
-                                long target = mfs.Length;
-                                int pick = -1;
-                                for (int i = 0; i < plan.Parts.Count; i++)
-                                {
-                                    if (plan.Parts[i].S <= target && target <= plan.Parts[i].E)
-                                    { pick = i; break; }
-                                }
-                                if (pick < 0)
-                                {
-                                    // target 落在所有片区之外。正常只有一种情况：已全部合并完
-                                    // （target == total）。若不是，说明续传后目标文件残留了一段
-                                    // 与当前分片规划对不上的数据 —— 必须留痕，否则下次还是全靠倒推。
-                                    // ⚠️ 不能在这里清进度/截断文件：那会毁掉用户已经下了几个小时的成果。
-                                    if (target != total)
-                                        Log?.Invoke(string.Format(
-                                            "合并提前退出：目标文件已有 {0} 字节，但没有任何分片覆盖该偏移（期望 {1}）。"
-                                            + "未合并的分片已保留，重试会自动续传。",
-                                            target, total));
-                                    break;                   // 找不到覆盖 target 的片 → 全合并完毕（或还没轮到）
-                                }
-                                next = pick;
-                                inPart = target - plan.Parts[next].S;
+                                if (plan.Parts[i].S <= target && target <= plan.Parts[i].E)
+                                { pick = i; break; }
+                            }
+                            if (pick < 0)
+                            {
+                                // target 落在所有片区之外。正常只有一种情况：已全部合并完
+                                // （target == total）。若不是，说明续传后目标文件残留了一段
+                                // 与当前分片规划对不上的数据 —— 必须留痕，否则下次还是全靠倒推。
+                                // ⚠️ 不能在这里清进度/截断文件：那会毁掉用户已经下了几个小时的成果。
+                                if (target != total)
+                                    Log?.Invoke(string.Format(
+                                        "合并提前退出：目标文件已有 {0} 字节，但没有任何分片覆盖该偏移（期望 {1}）。"
+                                        + "未合并的分片已保留，重试会自动续传。",
+                                        target, total));
+                                break;                   // 找不到覆盖 target 的片 → 全合并完毕（或还没轮到）
+                            }
+                            next = pick;
+                            inPart = target - plan.Parts[next].S;
 
-                                long sz = plan.Parts[next].E - plan.Parts[next].S + 1;
-                                string pp = PartPath(partsDir, next);
+                            long sz = plan.Parts[next].E - plan.Parts[next].S + 1;
+                            string pp = PartPath(partsDir, next);
 
-                                // 分片文件当前在盘上有多少字节。worker 是顺序追加写，
-                                // 长度单调增长，所以"已落盘长度"始终是该分片的合法前缀 ——
-                                // 读它不会读到脏数据，最多只是读到得少一点（缓冲还没落盘）。
-                                long onDisk = 0;
+                            // 分片文件当前在盘上有多少字节。worker 是顺序追加写，
+                            // 长度单调增长，所以"已落盘长度"始终是该分片的合法前缀 ——
+                            // 读它不会读到脏数据，最多只是读到得少一点（缓冲还没落盘）。
+                            long onDisk = 0;
+                            try
+                            {
+                                var pfi = new FileInfo(pp);
+                                if (pfi.Exists) onDisk = pfi.Length;
+                            }
+                            catch { }
+                            if (onDisk > sz) onDisk = sz;
+
+                            // 把"新落盘、还没合并"的那一段追加到目标文件
+                            if (onDisk > inPart)
+                            {
+                                long copied = 0;
+                                long pending = onDisk - inPart;
                                 try
                                 {
-                                    var pfi = new FileInfo(pp);
-                                    if (pfi.Exists) onDisk = pfi.Length;
-                                }
-                                catch { }
-                                if (onDisk > sz) onDisk = sz;
-
-                                // 把"新落盘、还没合并"的那一段追加到目标文件
-                                if (onDisk > inPart)
-                                {
-                                    long copied = 0;
-                                    long pending = onDisk - inPart;
-                                    try
+                                    using (var pfs = new FileStream(pp, FileMode.Open, FileAccess.Read,
+                                               FileShare.ReadWrite | FileShare.Delete, 1024 * 1024, FileOptions.SequentialScan))
                                     {
-                                        using (var pfs = new FileStream(pp, FileMode.Open, FileAccess.Read,
-                                                   FileShare.ReadWrite | FileShare.Delete, 1024 * 1024, FileOptions.SequentialScan))
+                                        pfs.Seek(inPart, SeekOrigin.Begin);
+                                        while (copied < pending)
                                         {
-                                            pfs.Seek(inPart, SeekOrigin.Begin);
-                                            while (copied < pending)
-                                            {
-                                                int want = (int)Math.Min(mbuf.Length, pending - copied);
-                                                int n = await pfs.ReadAsync(mbuf, 0, want).ConfigureAwait(false);
-                                                if (n <= 0) break;
-                                                await mfs.WriteAsync(mbuf, 0, n).ConfigureAwait(false);
-                                                copied += n;
-                                            }
+                                            int want = (int)Math.Min(mbuf.Length, pending - copied);
+                                            int n = await pfs.ReadAsync(mbuf, 0, want).ConfigureAwait(false);
+                                            if (n <= 0) break;
+                                            await mfs.WriteAsync(mbuf, 0, n).ConfigureAwait(false);
+                                            copied += n;
                                         }
                                     }
-                                    catch (Exception ex)
-                                    {
-                                        AddError("合并分片 " + next + " 失败: " + ex.Message);
-                                        return;
-                                    }
-
-                                    if (copied > 0)
-                                    {
-                                        inPart += copied;
-                                        mergedTotal += copied;
-                                        stallRounds = 0;          // 有进展，宽限期重新计时
-                                        Interlocked.Exchange(ref mergedBox[0], mergedTotal);
-                                        // 立刻 flush：不 flush 的话数据会滞留在 1MB 缓冲里，
-                                        // 播放器迟迟读不到这一段，边下边播会明显滞后。
-                                        await mfs.FlushAsync().ConfigureAwait(false);
-                                    }
-                                    else if (pending > 0)
-                                    {
-                                        // 打算读 pending 字节却一个都没读到：说明分片文件
-                                        // 比 onDisk 报出来的还短。这属于异常状态，必须留痕，
-                                        // 否则只会表现为"目标文件莫名短了一截"。
-                                        Log?.Invoke(string.Format(
-                                            "合并线程: 分片 {0} 读出 0 字节（想读 {1}，盘上 {2}，已合并 {3}）。",
-                                            next, pending, onDisk, inPart));
-                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    AddError("合并分片 " + next + " 失败: " + ex.Message);
+                                    return;
                                 }
 
-                                // 整片合并完毕 → 删掉分片文件，把峰值占用压回 1×。
-                                // 若留到最后统一删，峰值就会退化成 2×，白白多占一倍空间。
-                                if (inPart >= sz)
+                                if (copied > 0)
                                 {
-                                    // 必须等 worker 关闭文件流（partDone 置位）再删：
-                                    // 提前删会让 worker 后续的写入落进一个已删除的文件，数据静默丢失。
-                                    if (Volatile.Read(ref partDone[next]) == 0)
-                                    {
-                                        if (mergeStop.IsCancellationRequested
-                                            && ++stallRounds >= MergeStallRounds)
-                                        {
-                                            Log?.Invoke(string.Format(
-                                                "合并线程: 分片 {0} 数据已齐（{1} 字节）但 worker 未置完成标记，收尾退出。",
-                                                next, inPart));
-                                            break;
-                                        }
-                                        await Task.Delay(100).ConfigureAwait(false);
-                                        continue;
-                                    }
-                                    stallRounds = 0;
-                                    try { File.Delete(pp); } catch { }
-                                    // 【2026-10-13】不再 `next++` / `inPart = 0` ——
-                                    // 循环头会按"区间覆盖目标文件当前长度"重新定位下一片。
-                                    // （动态窃取会追加新片，idx 顺序 ≠ 区间顺序，不能靠递增。）
-                                    continue;                     // 立刻看下一片，可能已经就绪
+                                    inPart += copied;
+                                    mergedTotal += copied;
+                                    stallRounds = 0;          // 有进展，宽限期重新计时
+                                    Interlocked.Exchange(ref mergedBox[0], mergedTotal);
+                                    // 立刻 flush：不 flush 的话数据会滞留在 1MB 缓冲里，
+                                    // 播放器迟迟读不到这一段，边下边播会明显滞后。
+                                    await mfs.FlushAsync().ConfigureAwait(false);
                                 }
-
-                                if (mergeStop.IsCancellationRequested)
+                                else if (pending > 0)
                                 {
-                                    // 【关键】收到收尾信号**不能立刻退出**。
-                                    //
-                                    // 时机是这样的：worker 写完最后一段后先 Dispose 文件流
-                                    // （把缓冲里那几十 KB 真正落到盘上），才置 partDone 并结束。
-                                    // 而主线程是在 Task.WhenAll 返回后才取消 mergeStop 的 ——
-                                    // 看上去"worker 都结束了"，但合并线程可能正好在
-                                    // worker 落盘之前读到过旧的、偏小的文件长度，
-                                    // 此时若直接退出，这一片剩下的数据就永远留在分片文件里，
-                                    // 目标文件短一截，任务却报"大小不符"，用户一脸茫然。
-                                    //
-                                    // 所以这里要求**连续若干轮都读不到新数据**才认定确实没得合并了。
-                                    // 正常情况下这个宽限期根本不会用到（分片都已就绪，直接排空）。
-                                    if (++stallRounds >= MergeStallRounds)
+                                    // 打算读 pending 字节却一个都没读到：说明分片文件
+                                    // 比 onDisk 报出来的还短。这属于异常状态，必须留痕，
+                                    // 否则只会表现为"目标文件莫名短了一截"。
+                                    Log?.Invoke(string.Format(
+                                        "合并线程: 分片 {0} 读出 0 字节（想读 {1}，盘上 {2}，已合并 {3}）。",
+                                        next, pending, onDisk, inPart));
+                                }
+                            }
+
+                            // 整片合并完毕 → 删掉分片文件，把峰值占用压回 1×。
+                            // 若留到最后统一删，峰值就会退化成 2×，白白多占一倍空间。
+                            if (inPart >= sz)
+                            {
+                                // 必须等 worker 关闭文件流（partDone 置位）再删：
+                                // 提前删会让 worker 后续的写入落进一个已删除的文件，数据静默丢失。
+                                if (Volatile.Read(ref partDone[next]) == 0)
+                                {
+                                    if (mergeStop.IsCancellationRequested
+                                        && ++stallRounds >= MergeStallRounds)
                                     {
                                         Log?.Invoke(string.Format(
-                                            "合并线程: 收尾退出，停在分片 {0}/{1}（该片已合并 {2}/{3} 字节，盘上 {4}）。剩余分片留给续传。",
-                                            next, plan.Parts.Count, inPart, sz, onDisk));
+                                            "合并线程: 分片 {0} 数据已齐（{1} 字节）但 worker 未置完成标记，收尾退出。",
+                                            next, inPart));
                                         break;
                                     }
+                                    await Task.Delay(100).ConfigureAwait(false);
+                                    continue;
                                 }
-                                else
-                                {
-                                    stallRounds = 0;      // 还没到收尾阶段，只是暂时没数据，不算停滞
-                                }
-
-                                await Task.Delay(100).ConfigureAwait(false);
+                                stallRounds = 0;
+                                try { File.Delete(pp); } catch { }
+                                // 【2026-10-13】不再 `next++` / `inPart = 0` ——
+                                // 循环头会按"区间覆盖目标文件当前长度"重新定位下一片。
+                                // （动态窃取会追加新片，idx 顺序 ≠ 区间顺序，不能靠递增。）
+                                continue;                     // 立刻看下一片，可能已经就绪
                             }
+
+                            if (mergeStop.IsCancellationRequested)
+                            {
+                                // 【关键】收到收尾信号**不能立刻退出**。
+                                //
+                                // 时机是这样的：worker 写完最后一段后先 Dispose 文件流
+                                // （把缓冲里那几十 KB 真正落到盘上），才置 partDone 并结束。
+                                // 而主线程是在 Task.WhenAll 返回后才取消 mergeStop 的 ——
+                                // 看上去"worker 都结束了"，但合并线程可能正好在
+                                // worker 落盘之前读到过旧的、偏小的文件长度，
+                                // 此时若直接退出，这一片剩下的数据就永远留在分片文件里，
+                                // 目标文件短一截，任务却报"大小不符"，用户一脸茫然。
+                                //
+                                // 所以这里要求**连续若干轮都读不到新数据**才认定确实没得合并了。
+                                // 正常情况下这个宽限期根本不会用到（分片都已就绪，直接排空）。
+                                if (++stallRounds >= MergeStallRounds)
+                                {
+                                    Log?.Invoke(string.Format(
+                                        "合并线程: 收尾退出，停在分片 {0}/{1}（该片已合并 {2}/{3} 字节，盘上 {4}）。剩余分片留给续传。",
+                                        next, plan.Parts.Count, inPart, sz, onDisk));
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                stallRounds = 0;      // 还没到收尾阶段，只是暂时没数据，不算停滞
+                            }
+
+                            await Task.Delay(100).ConfigureAwait(false);
                         }
-                        catch (Exception ex)
-                        {
-                            AddError("合并线程异常: " + ex.GetType().Name + ": " + ex.Message);
-                        }
-                        finally
-                        {
-                            try { if (mfs != null) mfs.Dispose(); } catch { }
-                        }
-                    });
-                }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddError("合并线程异常: " + ex.GetType().Name + ": " + ex.Message);
+                    }
+                    finally
+                    {
+                        try { if (mfs != null) mfs.Dispose(); } catch { }
+                    }
+                });
 
                 // 真实并发 = min(用户设的线程数, 分片数, 物理天花板)。
                 // 用户设的档位是"意图"，实际能开多少受物理约束。
@@ -2563,8 +2526,7 @@ namespace GeZi.Core.Download
                                     // 该分片在磁盘上已经完整（续传时很常见）。
                                     // 这里必须补一次完成标记：合并线程要等到它才敢删分片文件，
                                     // 漏掉就是双方永久互相等待（实测到的死锁）。
-                                    if (mergeMode)
-                                        Volatile.Write(ref partDone[idx], 1);
+                                    Volatile.Write(ref partDone[idx], 1);
                                     continue;
                                 }
 
@@ -2677,31 +2639,20 @@ namespace GeZi.Core.Download
                                                 // ② 512 个流句柄长期占用
                                                 // 所以改回每片独立流：Dispose 时自动 flush，简单且正确。
                                                 FileStream wfs;
-                                                if (mergeMode)
-                                                {
-                                                    // 独立分片：写到自己的分片文件，从当前已写长度续写。
-                                                    // 注意 reqStart 是"在整个文件里的偏移"，
-                                                    // 而分片文件里只需从尾部追加 —— 两者语义不同，别混。
-                                                    // 同上：Asynchronous 让写盘不占线程（overlapped IO）
-                                                    wfs = new FileStream(PartPath(partsDir, idx), FileMode.OpenOrCreate,
-                                                              FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024,
-                                                              FileOptions.SequentialScan | FileOptions.Asynchronous);
-                                                    wfs.Seek(0, SeekOrigin.End);
-                                                }
-                                                else
-                                                {
-                                                    // FileOptions.Asynchronous：**必须加**。
-                                                    // 不加的话，.NET Framework 的 FileStream.WriteAsync
-                                                    // 会退化成"在线程池上同步写" —— 每个 worker 写盘时
-                                                    // 真的占住一个线程池线程，512 并发就要 512 个线程，
-                                                    // 于是 NetworkConfig 里不得不 SetMinThreads(512)，
-                                                    // 上下文切换 + GC 暂停被放大 → CPU 飙高。
-                                                    // 加了之后走 overlapped IO，写盘不再占线程。
-                                                    wfs = new FileStream(dest, FileMode.Open, FileAccess.Write,
-                                                              FileShare.ReadWrite | FileShare.Delete, 64 * 1024,
-                                                              FileOptions.RandomAccess | FileOptions.Asynchronous);
-                                                    wfs.Seek(reqStart, SeekOrigin.Begin);
-                                                }
+                                                // 独立分片：写到自己的分片文件，从当前已写长度续写。
+                                                // 注意 reqStart 是"在整个文件里的偏移"，
+                                                // 而分片文件里只需从尾部追加 —— 两者语义不同，别混。
+                                                // FileOptions.Asynchronous：**必须加**。
+                                                // 不加的话，.NET Framework 的 FileStream.WriteAsync
+                                                // 会退化成"在线程池上同步写" —— 每个 worker 写盘时
+                                                // 真的占住一个线程池线程，512 并发就要 512 个线程，
+                                                // 于是 NetworkConfig 里不得不 SetMinThreads(512)，
+                                                // 上下文切换 + GC 暂停被放大 → CPU 飙高。
+                                                // 加了之后走 overlapped IO，写盘不再占线程。
+                                                wfs = new FileStream(PartPath(partsDir, idx), FileMode.OpenOrCreate,
+                                                          FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024,
+                                                          FileOptions.SequentialScan | FileOptions.Asynchronous);
+                                                wfs.Seek(0, SeekOrigin.End);
 
                                                 using (wfs)
                                                 {
@@ -2740,8 +2691,7 @@ namespace GeZi.Core.Download
                                             // 本分片完整落盘、且文件流已关闭 → 通知合并线程可以取走了。
                                             // 必须在 using 之外置位：提前置位会让合并线程
                                             // 在文件还没 flush/关闭时就去读，拿到残缺数据。
-                                            if (mergeMode)
-                                                Volatile.Write(ref partDone[idx], 1);
+                                            Volatile.Write(ref partDone[idx], 1);
 
                                             lastErr = null;
                                             break;   // 本分片完成
@@ -2821,9 +2771,9 @@ namespace GeZi.Core.Download
                     // 于是整个收尾期（100GB 文件可能好几分钟）界面**完全冻结**在
                     // 「进度 100% + 速度 0 + 状态下载中」→ 用户判定为卡死（实测反馈）。
                     //
-                    // ⚠️ 值取 `mergeMode` 而不是恒 `true`：共写模式没有合并阶段，
-                    //    标志位若为 true，reporter 会在收尾那一瞬误报「正在合并分片」。
-                    Volatile.Write(ref workersDoneBox[0], mergeMode);
+                    // ⚠️ 必须是**真正的收尾标志**而不是恒 true：恒 true 会让每一次
+                    //    worker 收尾都被当成合并阶段，reporter 误报「正在合并分片」。
+                    Volatile.Write(ref workersDoneBox[0], true);
 
                     // 合并线程收尾：先让它把"已经就绪"的分片排空，再退出。
                     // 直接取消而不排空，会留下一批已经下好、却白占空间的分片文件。
@@ -2863,19 +2813,12 @@ namespace GeZi.Core.Download
                             // 数据其实已经全下全了、却报"失败"，用户会以为文件坏了不敢用。
                             // （10-04 那次只补了 errors 分支，漏了 cancelled 这条。）
                             bool cancelledButComplete;
-                            if (mergeMode)
-                            {
-                                // 独立分片模式：目标文件是按序追加的，长度到位 ⇒ 每片都已合并进去。
-                                // 走到这里合并线程已经被排空（上面的 finally），所以这个判据有效。
-                                long finalLen = -1;
-                                try { finalLen = new FileInfo(dest).Length; } catch { }
-                                cancelledButComplete = finalLen == total;
-                            }
-                            else
-                            {
-                                // 共写模式：文件一开始就 SetLength(total)，看长度没意义，看实际写入字节数。
-                                cancelledButComplete = Interlocked.Read(ref done) >= total;
-                            }
+                            // 目标文件是按序追加的，长度到位 ⇒ 每片都已合并进去。
+                            // 走到这里合并线程已经被排空（上面的 finally），所以这个判据有效。
+                            // 注意：变量名不能叫 finalLen —— 收尾校验处已有一个同名局部变量。
+                            long finalLenA = -1;
+                            try { finalLenA = new FileInfo(dest).Length; } catch { }
+                            cancelledButComplete = finalLenA == total;
                             if (cancelledButComplete)
                             {
                                 Log?.Invoke("注意: 下载中途被判中断，但数据已全部到位（"
@@ -2906,20 +2849,11 @@ namespace GeZi.Core.Download
                     //   注意：走到这里说明 cancelled == 0（用户取消/停滞都在上面 return 了），
                     //   所以不存在"用户明确不要了却报成功"的问题。
                     bool dataComplete;
-                    if (mergeMode)
-                    {
-                        // 独立分片模式：目标文件是**按序追加**出来的（不预分配），
-                        // 长度到位 ⇒ 每一片都已经合并进去了。
-                        long finalLen = -1;
-                        try { finalLen = new FileInfo(dest).Length; } catch { }
-                        dataComplete = finalLen == total;
-                    }
-                    else
-                    {
-                        // 共写模式：文件一开始就 SetLength(total)，看长度没意义，
-                        // 得看"真正写进去的字节数"是不是已经等于总大小。
-                        dataComplete = Interlocked.Read(ref done) >= total;
-                    }
+                    // 目标文件是**按序追加**出来的（不预分配），长度到位 ⇒ 每一片都已合并进去。
+                    // 注意：变量名不能叫 finalLen —— 上面 cancelled 分支 + 收尾校验处都有同名局部变量。
+                    long finalLenB = -1;
+                    try { finalLenB = new FileInfo(dest).Length; } catch { }
+                    dataComplete = finalLenB == total;
 
                     if (!dataComplete)
                         return (false, msg);
@@ -2929,32 +2863,26 @@ namespace GeZi.Core.Download
                 }
 
                 // ---- 收尾校验 ----
-                // merge 模式必须确认目标文件真的长到了 total。
+                // 必须确认目标文件真的长到了 total。
                 // 差一个字节都不能算成功 —— 否则用户会拿到一个损坏的文件，
                 // 界面上却显示"已完成"，比直接报错更糟。
-                if (mergeMode)
+                long finalLen = -1;
+                try { finalLen = new FileInfo(dest).Length; } catch { }
+                if (finalLen != total)
                 {
-                    long finalLen = -1;
-                    try { finalLen = new FileInfo(dest).Length; } catch { }
-                    if (finalLen != total)
-                    {
-                        return (false, string.Format(
-                            "合并后目标文件大小不符：期望 {0}，实际 {1}。分片与进度已保留，可重试续传。",
-                            total, finalLen));
-                    }
+                    return (false, string.Format(
+                        "合并后目标文件大小不符：期望 {0}，实际 {1}。分片与进度已保留，可重试续传。",
+                        total, finalLen));
                 }
 
                 try { File.Delete(metaPath); } catch { }
-                if (mergeMode)
+                // 分片文件在每片合并后即已删除，这里兜底清掉目录本身
+                try
                 {
-                    // 分片文件在每片合并后即已删除，这里兜底清掉目录本身
-                    try
-                    {
-                        if (Directory.Exists(partsDir))
-                            Directory.Delete(partsDir, true);
-                    }
-                    catch { }
+                    if (Directory.Exists(partsDir))
+                        Directory.Delete(partsDir, true);
                 }
+                catch { }
                 // 指定了 partsRoot 时，hash 目录是我们建的，空了也一并收掉（避免堆积空壳）
                 if (!string.IsNullOrEmpty(_partsRoot))
                 {
@@ -3010,12 +2938,9 @@ namespace GeZi.Core.Download
                             "说明已跑满、无需再调高；若明显偏低且是外网盘，可尝试再升一档。", mbps));
                     }
 
-                    if (mergeMode)
-                    {
-                        Log?.Invoke(string.Format(
-                            "边合并完成: 目标文件已按序拼装完毕（{0}），分片目录已清理，全程峰值占用约 1×。",
-                            Fmt(total)));
-                    }
+                    Log?.Invoke(string.Format(
+                        "边合并完成: 目标文件已按序拼装完毕（{0}），分片目录已清理，全程峰值占用约 1×。",
+                        Fmt(total)));
                 }
                 catch { }
 

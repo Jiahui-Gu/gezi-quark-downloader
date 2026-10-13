@@ -32,12 +32,6 @@ namespace GeZi.Core.Download
         public int Threads { get; set; } = 0;
 
         /// <summary>
-        /// 分片数据的落盘方式。默认直写同一文件（峰值 1×、速度与另一种相当）；
-        /// 需要"边下边播"时改为 SegmentedFiles。
-        /// </summary>
-        public WriteMode WriteMode { get; set; } = WriteMode.SharedFile;
-
-        /// <summary>
         /// 分片/续传元数据的根目录覆盖。null/空 = 与目标文件同级（默认）。
         /// 见 SegmentedDownloader 的 _partsRoot 说明。
         /// </summary>
