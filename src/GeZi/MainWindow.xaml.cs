@@ -1584,6 +1584,15 @@ namespace GeZi
             }
         }
 
+        /// <summary>
+        /// 【2026-10-14 用户要求】解析历史面板右上角的关闭叉号。
+        /// 复用既有的 HideHistoryPanel（与 Esc、点遮罩走同一条路径）。
+        /// </summary>
+        private void OnHistoryCloseClick(object sender, RoutedEventArgs e)
+        {
+            HideHistoryPanel();
+        }
+
         private void HideHistoryPanel()
         {
             try { if (HistoryOverlay != null) HistoryOverlay.Visibility = Visibility.Collapsed; } catch { }

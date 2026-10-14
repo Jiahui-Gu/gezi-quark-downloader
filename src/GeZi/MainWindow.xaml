@@ -409,8 +409,9 @@
                           <Grid>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>   <!-- 扫码按钮 -->
+                                    <!-- 【2026-10-14 用户要求】扫码按钮移到「输入框」与「提取码」之间 -->
                                     <ColumnDefinition Width="*"/>      <!-- 输入框 -->
+                                    <ColumnDefinition Width="Auto"/>   <!-- 扫码按钮 -->
                                     <ColumnDefinition Width="Auto"/>   <!-- 提取码 输入框 -->
                                     <ColumnDefinition Width="Auto"/>   <!-- 解析 按钮 -->
                                 </Grid.ColumnDefinitions>
@@ -435,9 +436,9 @@
                                      原来是绝对定位贴在输入框内部右缘，与清空按钮挤在一起、
                                      还逼得输入框右内边距要留 58px —— 现在独立成列，输入框干净了。 -->
                                 <Button x:Name="ScanQrBtn" Click="OnScanQrClick"
-                                        Grid.Column="0"
+                                        Grid.Column="1"
                                         VerticalAlignment="Center"
-                                        Margin="0,0,8,0" Width="32" Height="32"
+                                        Margin="8,0,8,0" Width="32" Height="32"
                                         Cursor="Hand" Focusable="False"
                                         AutomationProperties.Name="识别二维码"
                                         ToolTip="识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）">
@@ -474,7 +475,7 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
-                                <Grid Grid.Column="1">
+                                <Grid Grid.Column="0">
                                     <!-- 【2026-10-14 UI 改造 · Raycast 式来源栏】
                                          目标：把「输入框 + 扫码/清空/解析」合成**一个整体**，
                                          而不是三个各自带边框的控件排一排（那是"控件堆叠"感）。
@@ -1951,11 +1952,21 @@
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                             </StackPanel>
-                            <Button x:Name="HistoryClearBtn" Grid.Column="1" Content="清空"
-                                    Click="OnHistoryClearClick"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Padding="12,5" FontSize="12"
-                                    ToolTip="清空全部解析历史"/>
+                            <!-- 【2026-10-14 用户要求】右上角改为**关闭叉号**（原来这里是「清空」按钮，
+                                 现在「清空」移到面板右下角）。 -->
+                            <Button x:Name="HistoryCloseBtn" Grid.Column="1"
+                                    Click="OnHistoryCloseClick"
+                                    Style="{StaticResource IconGhostButton}"
+                                    Width="28" Height="28" Focusable="False"
+                                    AutomationProperties.Name="关闭解析历史"
+                                    ToolTip="关闭">
+                                <Path Data="{StaticResource IconClose}" Stretch="Uniform"
+                                      Width="11" Height="11"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"/>
+                            </Button>
                         </Grid>
 
                         <!-- 列表（内容由 RebuildHistoryPanel 生成） -->
@@ -1964,13 +1975,26 @@
                             <StackPanel x:Name="HistoryListPanel"/>
                         </ScrollViewer>
 
-                        <!-- 脚：关闭方式 -->
+                        <!-- 脚：左侧提示 + 右下角「清空」按钮
+                             【2026-10-14 用户要求】「清空」从右上角移到这里（右下角）。 -->
                         <Border Grid.Row="2" BorderThickness="0,1,0,0"
                                 BorderBrush="{DynamicResource BorderBrushSoft}"
-                                Padding="18,11">
-                            <TextBlock FontSize="11.5" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextTertiaryBrush}"
-                                       Text="点任意一条即可重新解析该分享 · 右键可置顶或删除 · 按 Esc、或点面板外的空白处关闭"/>
+                                Padding="18,10,14,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="11.5" TextWrapping="Wrap"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextTertiaryBrush}"
+                                           Text="点任意一条即可重新解析该分享 · 右键可置顶或删除 · 按 Esc、或点面板外的空白处关闭"/>
+                                <Button x:Name="HistoryClearBtn" Grid.Column="1" Content="清空"
+                                        Click="OnHistoryClearClick"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Padding="12,5" FontSize="12" Margin="12,0,0,0"
+                                        ToolTip="清空全部解析历史"/>
+                            </Grid>
                         </Border>
                     </Grid>
                 </Border>

@@ -104,14 +104,10 @@ namespace GeZi
             Grid.SetRow(title, 0);
             root.Children.Add(title);
 
-            var hint = DialogChrome.Hint(
-                "把夸克分享二维码图片识别成链接。支持三种方式：\n"
-                + "· 截图后按 Ctrl+V 直接粘贴（最快）\n"
-                + "· 点「选择图片…」从电脑里挑一张\n"
-                + "· 把图片文件拖到本窗口",
-                0, 12);
-            Grid.SetRow(hint, 1);
-            root.Children.Add(hint);
+            // 【2026-10-14 用户要求】原本这里有一段三行的操作说明文字
+            //（"把夸克分享二维码图片识别成链接。支持三种方式：…"），已**删除**。
+            // 理由：三种方式在界面上本就一目了然（拖放区有提示、下方有「选择图片…」按钮），
+            // 再堆三行文字是"加噪音"。Row 1 保留为空 Auto 行（高度 0）。
 
             // 预览区：一个虚线框感的卡片，里面放拖放提示或已选图片
             var dropHint = new TextBlock
