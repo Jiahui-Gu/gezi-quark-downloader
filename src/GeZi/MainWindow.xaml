@@ -993,6 +993,36 @@
                                            Foreground="{DynamicResource TextTertiaryBrush}"
                                            Opacity="0.85"/>
                             </StackPanel>
+                            <!-- 【2026-10-14 UI 重构】任务分类 Tab（参考 Motrix 的任务列表分类）。
+                                 原来所有任务混在一个列表里，"哪个失败了"得自己一行行扫。
+                                 4 个分类**共用同一个 TaskList**，只切换 ICollectionView 的过滤器
+                                 （用 TabItem 会需要 4 份列表副本 → 状态不同步）。 -->
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <RadioButton x:Name="TaskFilterAll" Content="全部"
+                                             GroupName="TaskFilter" IsChecked="True"
+                                             Style="{StaticResource FilterTabRadio}"
+                                             Checked="OnTaskFilterChanged"
+                                             AutomationProperties.Name="全部任务"/>
+                                <RadioButton x:Name="TaskFilterActive" Content="进行中"
+                                             GroupName="TaskFilter"
+                                             Style="{StaticResource FilterTabRadio}"
+                                             Checked="OnTaskFilterChanged"
+                                             AutomationProperties.Name="进行中的任务"/>
+                                <RadioButton x:Name="TaskFilterFailed" Content="失败"
+                                             GroupName="TaskFilter"
+                                             Style="{StaticResource FilterTabRadio}"
+                                             Checked="OnTaskFilterChanged"
+                                             AutomationProperties.Name="失败的任务"/>
+                                <RadioButton x:Name="TaskFilterDone" Content="已完成"
+                                             GroupName="TaskFilter"
+                                             Style="{StaticResource FilterTabRadio}"
+                                             Checked="OnTaskFilterChanged"
+                                             AutomationProperties.Name="已完成的任务"/>
+                                <!-- 计数：让用户一眼看到每类有几条（不用切过去看） -->
+                                <TextBlock x:Name="TaskFilterCountText" FontSize="11"
+                                           VerticalAlignment="Center" Margin="2,0,0,0"
+                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
+                            </StackPanel>
                         </StackPanel>
 
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">

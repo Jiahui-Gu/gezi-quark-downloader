@@ -59,6 +59,16 @@ namespace GeZi
     {
         private readonly ObservableCollection<ShareFileItem> _files = new ObservableCollection<ShareFileItem>();
         private readonly ObservableCollection<TaskItem> _tasks = new ObservableCollection<TaskItem>();
+
+        // ─────────────────────────────────────────────────────────────
+        // 【2026-10-14 UI 重构】任务分类过滤（参考 Motrix 的任务列表分类）
+        //
+        // 4 个分类**共用同一个 _tasks 集合**，只切换 ICollectionView 的过滤器 ——
+        // 这样任务状态变化时不需要重建列表，也不会出现"4 份列表副本状态不同步"。
+        // 分类：全部 / 进行中（Queued+Downloading+Paused）/ 失败（Failed+Cancelled）/ 已完成
+        // ─────────────────────────────────────────────────────────────
+        private string _taskFilter = "all";
+        private System.ComponentModel.ICollectionView _taskView;
         private readonly List<string> _pathList = new List<string>();
         private readonly Stack<string> _fidStack = new Stack<string>();
 
@@ -223,7 +233,10 @@ namespace GeZi
                 return w.Length == 0 ||
                        (f.Name ?? "").IndexOf(w, StringComparison.CurrentCultureIgnoreCase) >= 0;
             };
-            TaskList.ItemsSource = _tasks;
+            // 用 ICollectionView 包一层：分类 Tab 切换时只 Refresh 过滤器，不动数据源
+            _taskView = System.Windows.Data.CollectionViewSource.GetDefaultView(_tasks);
+            _taskView.Filter = TaskFilterPredicate;
+            TaskList.ItemsSource = _taskView;
             ShareModeRadio.IsChecked = true;
 
             // 侧栏导航（ListBox）与内容区（TabControl）的初始对齐。
@@ -257,6 +270,8 @@ namespace GeZi
             _tasks.CollectionChanged += (s, e) =>
             {
                 UpdateEmptyStates();
+                // 【2026-10-14】任务增删后同步分类 Tab 的计数（"共 N 条"）
+                UpdateTaskFilterCounts();
                 // 【2026-10-03】任务被移出列表时必须同步「未完成任务」记录，
                 // 否则删掉的任务下次启动还会被当成可续传任务弹出来。
                 // 放在这里而不是各个删除点，是为了覆盖所有移除路径。
@@ -4825,6 +4840,74 @@ namespace GeZi
         private Window _diagWindow;
 
         /// <summary>下载器诊断回调（在下载线程上执行，只做存储）。</summary>
+        /// <summary>分类过滤谓词（供 ICollectionView 调用）。</summary>
+        private bool TaskFilterPredicate(object o)
+        {
+            var t = o as TaskItem;
+            if (t == null) return false;
+            switch (_taskFilter)
+            {
+                case "active":
+                    return t.State == JobState.Queued || t.State == JobState.Downloading
+                        || t.State == JobState.Paused;
+                case "failed":
+                    return t.State == JobState.Failed || t.State == JobState.Cancelled;
+                case "done":
+                    return t.State == JobState.Completed;
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>
+        /// 【2026-10-14 UI 重构】分类 Tab 切换。只改过滤器 + Refresh，
+        /// 不重建集合 —— 保证滚动位置、选中项、绑定都不受影响。
+        /// </summary>
+        private void OnTaskFilterChanged(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (TaskFilterActive == null) return;   // 初始化期间控件尚未就绪
+                if (TaskFilterAll.IsChecked == true) _taskFilter = "all";
+                else if (TaskFilterActive.IsChecked == true) _taskFilter = "active";
+                else if (TaskFilterFailed.IsChecked == true) _taskFilter = "failed";
+                else _taskFilter = "done";
+                if (_taskView != null) _taskView.Refresh();
+                UpdateTaskFilterCounts();
+            }
+            catch { }
+        }
+
+        /// <summary>更新分类 Tab 右侧的计数（"共 N 条"），让用户不用切过去就知道有几条。</summary>
+        private void UpdateTaskFilterCounts()
+        {
+            try
+            {
+                if (TaskFilterCountText == null) return;
+                int n = 0;
+                foreach (var t in _tasks)
+                {
+                    if (t == null) continue;
+                    bool hit;
+                    switch (_taskFilter)
+                    {
+                        case "active":
+                            hit = t.State == JobState.Queued || t.State == JobState.Downloading
+                               || t.State == JobState.Paused; break;
+                        case "failed":
+                            hit = t.State == JobState.Failed || t.State == JobState.Cancelled; break;
+                        case "done":
+                            hit = t.State == JobState.Completed; break;
+                        default:
+                            hit = true; break;
+                    }
+                    if (hit) n++;
+                }
+                TaskFilterCountText.Text = n > 0 ? "共 " + n + " 条" : "";
+            }
+            catch { }
+        }
+
         private void OnDiagnostics(DiagnosticsSnapshot snap)
         {
             if (snap == null) return;

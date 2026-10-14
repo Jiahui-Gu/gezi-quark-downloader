@@ -1662,6 +1662,48 @@
         </Setter>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════
+         任务页顶部分类 Tab（2026-10-14 UI 重构）
+         ══════════════════════════════════════════════════════════
+         参考 Motrix 的任务列表分类（全部 / 进行中 / 失败 / 已完成）。
+         原来所有任务混在一个列表里，用户要找"哪个失败了"得自己一行行扫。
+
+         ⚠️ 用 RadioButton 而不是 TabItem：4 个分类**共用同一个任务列表**
+            （只切换过滤器），用 TabItem 就得放 4 份列表副本 —— 状态会不同步。
+         视觉与设置页的 Tab 保持一致（下划线式、深灰而非蓝）。 -->
+    <Style x:Key="FilterTabRadio" TargetType="RadioButton">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="0,0,0,7"/>
+        <Setter Property="Margin" Value="0,0,24,0"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bd" Background="Transparent"
+                            BorderThickness="0,0,0,2" BorderBrush="Transparent"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="SettingsTabItem" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
