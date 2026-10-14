@@ -1331,7 +1331,8 @@
                 <!-- ============ 设置 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
-                        <StackPanel Margin="20,18,20,24" MaxWidth="900" HorizontalAlignment="Left">
+                        <!-- 【2026-10-14 UI 改造】外边距统一 24px（与下载页/任务页一致） -->
+                        <StackPanel Margin="24,24,24,24" MaxWidth="900" HorizontalAlignment="Left">
 
                             <TextBlock Text="设置" Style="{StaticResource PageTitleText}" Margin="0,0,0,4"/>
                             <TextBlock Text="所有改动即时生效，无需保存"
@@ -1689,7 +1690,8 @@
                 <!-- ============ 登录 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
-                        <StackPanel Margin="20,18,20,24" MaxWidth="960" HorizontalAlignment="Left">
+                        <!-- 【2026-10-14 UI 改造】外边距统一 24px -->
+                        <StackPanel Margin="24,24,24,24" MaxWidth="960" HorizontalAlignment="Left">
 
                             <TextBlock Text="登录" Style="{StaticResource PageTitleText}" Margin="0,0,0,4"/>
                             <TextBlock Text="登录后可浏览「我的网盘」、转存分享文件；不登录也能用直链下载"
