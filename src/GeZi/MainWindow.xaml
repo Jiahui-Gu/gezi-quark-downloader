@@ -643,9 +643,12 @@
                                     </ScrollViewer>
                                 </Grid>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Border CornerRadius="8" Background="{DynamicResource SurfaceBrush}"
-                                            BorderBrush="{DynamicResource BorderBrushStrong}"
-                                            BorderThickness="1" Height="32" Width="190" Margin="0,0,8,0">
+                                    <!-- 【2026-10-14 UI 改造】搜索框：从"白底描边胶囊"改为"凹陷底色无边框"。
+                                         与来源栏（LinkBox）同一套语言，工具栏区视觉统一。
+                                         外层 Border 只负责圆角和凹陷底色，不画边框。 -->
+                                    <Border CornerRadius="8"
+                                            Background="{DynamicResource SurfaceSunkenBrush}"
+                                            Height="32" Width="190" Margin="0,0,8,0">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
