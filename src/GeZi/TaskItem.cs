@@ -42,6 +42,73 @@ namespace GeZi
             set { _state = value; OnChanged(nameof(State)); OnChanged(nameof(StatusText)); OnChanged(nameof(DetailText)); OnChanged(nameof(SpeedText)); OnChanged(nameof(CanPlay)); }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // 【2026-10-14】Ketch 式「连接车道」
+        //
+        // 参考 Ketch 的招牌设计：把**每条连接**可视化成一条"活的车道"。
+        // 我们这里按比例映射 —— 256 并发不可能真画 256 格，所以固定 20 格，
+        // 用"填充了几格"表达**并发吃满了没有**（这才是用户真正想看的：
+        // 是服务端限速、还是客户端没把连接发出去）。
+        //
+        // 数据来源：MainWindow.OnDiagnostics 从 DiagnosticsSnapshot 填充
+        //（ActiveConnections / WorkerCount 都是内核已经采集好的，无需改下载器）。
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>车道格子总数（固定 20，按比例映射并发数）。</summary>
+        public const int LaneSlots = 20;
+
+        private int _activeConns;
+        /// <summary>当前活跃连接数（内核 DiagnosticsSnapshot.ActiveConnections）。</summary>
+        public int ActiveConnections
+        {
+            get => _activeConns;
+            set
+            {
+                if (_activeConns == value) return;
+                _activeConns = value;
+                OnChanged(nameof(ActiveConnections));
+                OnChanged(nameof(Lanes));
+                OnChanged(nameof(LaneText));
+            }
+        }
+
+        private int _workerCount;
+        /// <summary>本次任务实际启用的并发上限（DiagnosticsSnapshot.WorkerCount）。</summary>
+        public int WorkerCount
+        {
+            get => _workerCount;
+            set
+            {
+                if (_workerCount == value) return;
+                _workerCount = value;
+                OnChanged(nameof(WorkerCount));
+                OnChanged(nameof(Lanes));
+                OnChanged(nameof(LaneText));
+            }
+        }
+
+        /// <summary>
+        /// 车道格子：长度固定 <see cref="LaneSlots"/>，前 N 个为 true（= 点亮）。
+        /// N = round(活跃/上限 × 20)，所以"格子亮了多少"直接反映并发占用率。
+        /// </summary>
+        public System.Collections.Generic.IEnumerable<bool> Lanes
+        {
+            get
+            {
+                int wc = _workerCount;
+                int ac = _activeConns;
+                if (ac < 0) ac = 0;
+                if (wc > 0 && ac > wc) ac = wc;
+                int filled = wc > 0 ? (int)System.Math.Round((double)ac / wc * LaneSlots) : 0;
+                var arr = new bool[LaneSlots];
+                for (int i = 0; i < filled && i < LaneSlots; i++) arr[i] = true;
+                return arr;
+            }
+        }
+
+        /// <summary>车道文字："12/16 连接"。未开始（无并发上限）时为空串。</summary>
+        public string LaneText => _workerCount > 0 ? _activeConns + "/" + _workerCount + " 连接" : "";
+
         /// <summary>
         /// 这个任务现在能不能「播放」—— 决定任务行右边那个「播放」按钮显不显示。
         /// </summary>

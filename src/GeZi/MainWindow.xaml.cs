@@ -4833,6 +4833,21 @@ namespace GeZi
                 _diagLast = snap;
                 string key = string.IsNullOrEmpty(snap.Name) ? "(未命名)" : snap.Name;
                 _diagLatest[key] = snap;
+                
+                // 【2026-10-14】把连接数喂给任务行，驱动 Ketch 式「连接车道」。
+                // 按文件名匹配任务（快照里的 Name 就是文件名）。
+                if (!string.IsNullOrEmpty(snap.Name))
+                {
+                    foreach (var t in _tasks)
+                    {
+                        if (t != null && t.Name == snap.Name)
+                        {
+                            t.ActiveConnections = snap.ActiveConnections;
+                            t.WorkerCount = snap.WorkerCount;
+                            break;
+                        }
+                    }
+                }
             }
             catch { }
         }
