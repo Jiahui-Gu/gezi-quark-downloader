@@ -231,10 +231,10 @@
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                                 <Border Background="{DynamicResource SurfaceSunkenBrush}"
                                         BorderBrush="{DynamicResource BorderBrushStrong}"
-                                        BorderThickness="1" CornerRadius="4"
+                                        BorderThickness="1" CornerRadius="6"
                                         Padding="5,0" Margin="4,0" MinWidth="34"
                                         VerticalAlignment="Center">
-                                    <TextBlock Text="Shift" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="Shift" FontSize="11" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
@@ -248,10 +248,10 @@
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                                 <Border Background="{DynamicResource SurfaceSunkenBrush}"
                                         BorderBrush="{DynamicResource BorderBrushStrong}"
-                                        BorderThickness="1" CornerRadius="4"
+                                        BorderThickness="1" CornerRadius="6"
                                         Padding="5,0" Margin="4,0" MinWidth="34"
                                         VerticalAlignment="Center">
-                                    <TextBlock Text="右键" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="右键" FontSize="11" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </Border>
@@ -261,7 +261,7 @@
                         </StackPanel>
 
                         <Border x:Name="AccountCard" Grid.Row="3" Margin="12,0,12,12"
-                                Style="{StaticResource MutedCard}" Padding="11"
+                                Style="{StaticResource MutedCard}" Padding="12"
                                 Cursor="Hand" MouseLeftButtonUp="OnAccountCardClick"
                                 ToolTip="点击进入「登录」页">
                                 <Grid>
@@ -278,7 +278,7 @@
                                             VerticalAlignment="Center">
                                         <Grid>
                                             <TextBlock x:Name="AvatarText" Text="?"
-                                                       FontSize="14" FontWeight="SemiBold"
+                                                       FontSize="12" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextOnPrimaryBrush}"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"/>
@@ -287,7 +287,7 @@
                                             <Image x:Name="AvatarImage" Stretch="UniformToFill"
                                                    Visibility="Collapsed">
                                                 <Image.Clip>
-                                                    <EllipseGeometry Center="17,17" RadiusX="17" RadiusY="17"/>
+                                                    <EllipseGeometry Center="14,14" RadiusX="14" RadiusY="14"/>
                                                 </Image.Clip>
                                             </Image>
                                         </Grid>
@@ -309,7 +309,7 @@
                                             <ProgressBar x:Name="CapacityBar"
                                                          Style="{StaticResource CapacityBar}"/>
                                             <TextBlock x:Name="CapacityText" Text=""
-                                                       FontSize="10" Margin="0,4,0,0"
+                                                       FontSize="11" Margin="0,4,0,0"
                                                        Foreground="{DynamicResource TextTertiaryBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
@@ -342,7 +342,11 @@
 
                 <!-- ============ 下载 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
-                    <Grid Margin="20,18,20,18">
+                    <!-- 【2026-10-14 UI 改造】页面外框留白统一到 8px 网格：
+                         左右 24px（建议规范的「页面左右边距」档），上下 24px。
+                         原来是 20,18,20,18 —— 18 不是网格值，且上下留白偏少，
+                         底部按钮区贴边，观感"被硬塞在窗口底部"。 -->
+                    <Grid Margin="24,24,24,24">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -351,15 +355,16 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- 页头 -->
-                        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                        <!-- 页头：标题与副标题之间用 4px（紧凑），整块与下方内容之间 20px。
+                             【2026-10-14】原来是 16px，改成 20px 让"标题区"与"操作区"分层更清楚。 -->
+                        <StackPanel Grid.Row="0" Margin="0,0,0,20">
                             <TextBlock Text="下载" Style="{StaticResource PageTitleText}"/>
                             <TextBlock Text="粘贴分享链接解析，或先登录后在「我的网盘」里选择文件"
                                        Style="{StaticResource TertiaryText}" Margin="0,3,0,0"/>
                         </StackPanel>
 
                         <!-- 模式切换：分段控件 -->
-                        <Border Grid.Row="1" HorizontalAlignment="Left" CornerRadius="9"
+                        <Border Grid.Row="1" HorizontalAlignment="Left" CornerRadius="8"
                                 Background="{DynamicResource SurfaceSunkenBrush}" Padding="3" Margin="0,0,0,12">
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="ShareModeRadio" Content="分享链接"
@@ -381,7 +386,31 @@
                                ③ 提取码标签与按钮前的间距不一致（12/10 混用），节奏乱。
                              现在统一成：三个控件**同高 34px**、提取码框加宽到 120px、
                              间距统一 14px，按钮 padding 放宽到 20 让它不像个"方块"。 -->
-                        <Border x:Name="SharePanel" Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <!-- 【2026-10-14 UI 改造】SharePanel 加**聚焦态**：
+                             LinkBox 获得焦点时，整张卡片边框变主色 + 一层极淡发光
+                             （Raycast 的大搜索框体验：聚焦时"整个条"有反应，而不是只输入框自己变）。
+                             用 IsKeyboardFocusWithin 触发，这样点扫码/清空按钮时焦点仍在条内，
+                             ���不会闪烁。发光用 DropShadowEffect（这里是 Border 不是 Popup，
+                             不存在 ContextMenu 那种被窗口裁切的问题）。 -->
+                        <!-- ⚠️ Style 只能设一次：这里用 <Border.Style>（BasedOn Card），
+                             不再在标签上写 Style="{StaticResource Card}"，否则 MC3024。 -->
+                        <Border x:Name="SharePanel" Grid.Row="2" Margin="0,0,0,14">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                            <Setter Property="Effect">
+                                                <Setter.Value>
+                                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
+                                                                      BlurRadius="12" ShadowDepth="0"
+                                                                      Direction="0" Opacity="0.18"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                           <Grid>
                             <!-- 装饰层：卡片四周的留白太空，点缀一颗星星。
                                  ① 画在内容**之前**（在下层）→ 控件会盖住它，只在留白处露出来；
@@ -424,12 +453,31 @@
                                      34 也不再裁字。这里仍保留 42，是为了和提取码框、解析
                                      按钮同高（视觉上一排整齐），不是为了躲裁切。 -->
                                 <Grid Grid.Column="1">
-                                    <TextBox x:Name="LinkBox" Style="{StaticResource AppTextBox}"
-                                             Height="42"
-                                             Padding="10,7,58,7"
+                                    <!-- 【2026-10-14 UI 改造 · Raycast 式来源栏】
+                                         目标：把「输入框 + 扫码/清空/解析」合成**一个整体**，
+                                         而不是三个各自带边框的控件排一排（那是"控件堆叠"感）。
+                                         做法（Raycast 的做法）：**输入框本身无边框，边框只在容器上**。
+                                         ⚠️ 这里用局部 Style 覆盖 AppTextBox 的边框三件套，
+                                         不改全局 AppTextBox（PassBox 等还要用它原来的样子）。
+                                         ⚠️ 高度仍保持 42：那是实测出来的下限（34/36/38/40 都会裁字），
+                                         且与提取码框、解析按钮同高，视觉上一排整齐。
+                                         ⚠️ Padding 右内边距仍 58：给 ScanQrBtn + LinkClearBtn 留位（红线）。 -->
+                                    <TextBox x:Name="LinkBox" Height="42"
+                                             Padding="12,7,58,7"
                                              AutomationProperties.Name="分享链接输入框"
                                              DataObject.Pasting="OnLinkBoxPasting"
-                                             ToolTip="支持含提取码的完整链接，也可只粘贴链接再单独填提取码"/>
+                                             ToolTip="支持含提取码的完整链接，也可只粘贴链接再单独填提取码">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBox}">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                                <!-- 聚焦时靠外层容器的边框变主色来表达（见下方 SharePanel 的 Trigger），
+                                                     所以这里不再自己画聚焦框，避免双重框。 -->
+                                                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
                                     <!-- 【2026-10-04】扫码识别：夸克分享有时只给二维码图片、不给链接。
                                          贴在输入框右侧内缘、清空按钮的左边（所以 Padding 右内边距从 34 加到 58）。
                                          点击后弹出取图方式（粘贴剪贴板 / 选文件 / 拖拽），解出的文本自动填进本框。
@@ -446,7 +494,7 @@
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border x:Name="Bd" Background="Transparent"
-                                                                    CornerRadius="5">
+                                                                    CornerRadius="6">
                                                                 <Path Data="{StaticResource IconScan}"
                                                                       Stretch="Uniform" Width="13" Height="13"
                                                                       HorizontalAlignment="Center"
@@ -486,7 +534,7 @@
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border x:Name="Bd" Background="Transparent"
-                                                                    CornerRadius="5">
+                                                                    CornerRadius="6">
                                                                 <Path Data="{StaticResource IconClose}"
                                                                       Stretch="Uniform" Width="9" Height="9"
                                                                       HorizontalAlignment="Center"
@@ -758,28 +806,18 @@
                                          喊"还没有内容"，误导用户。现在拆开，由
                                          code-behind 的 UpdateFileStates() 统一裁决可见性。 -->
 
-                                    <!-- 加载中 -->
+                                    <!-- 加载中
+                                         【2026-10-14 UI 改造】去掉**旋转动画**（规范里"不要做"的一项：
+                                         旋转加载圈是最典型的 AI 味元素）。保留图标 + 文案，
+                                         改为静态显示 —— 加载态靠文字说明，不靠动效抢注意力。
+                                         ⚠️ 这不影响 UiBusy.cs 的按钮「加载中」态（那是另一套，MinBusyMs=280），
+                                         也不影响 LoadingSpinner 样式本身（仍在 Styles.xaml，可复用）。 -->
                                     <StackPanel x:Name="FileLoadingState" IsHitTestVisible="False"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Visibility="Collapsed">
                                         <Path Data="{StaticResource IconSpinner}"
                                               Style="{StaticResource LoadingSpinner}"
-                                              HorizontalAlignment="Center">
-                                            <Path.RenderTransform>
-                                                <RotateTransform Angle="0"/>
-                                            </Path.RenderTransform>
-                                            <Path.Triggers>
-                                                <EventTrigger RoutedEvent="Path.Loaded">
-                                                    <BeginStoryboard>
-                                                        <Storyboard RepeatBehavior="Forever">
-                                                            <DoubleAnimation
-                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                                From="0" To="360" Duration="0:0:0.9"/>
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </EventTrigger>
-                                            </Path.Triggers>
-                                        </Path>
+                                              HorizontalAlignment="Center"/>
                                         <TextBlock Text="正在加载…" Margin="0,10,0,0"
                                                    HorizontalAlignment="Center"
                                                    Style="{StaticResource TertiaryText}"/>
@@ -789,19 +827,25 @@
                                     <StackPanel x:Name="FileEmptyState" IsHitTestVisible="False"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Visibility="Collapsed">
-                                        <!-- 【2026-10-03】图标按用户指定从「收纳盒」换成「云+斜杠」，
-                                             颜色与描边粗细保持不变（用户原话「颜色不变只改图标样式」）。 -->
-                                        <Path Data="{StaticResource IconCloudOff}" Stretch="Uniform" Width="40"
-                                              Height="40" HorizontalAlignment="Center"
-                                              Stroke="{DynamicResource BorderBrushStrong}" StrokeThickness="1.5"
+                                        <!-- 【2026-10-14 UI 改造】空状态改 Notion 式三级层级：
+                                             ① 图标 40 → 64px，颜色从 BorderBrushStrong（描边色，极淡、几乎看不见）
+                                                改成 PrimarySoftBrush（主色浅版）—— 空状态是全页最该被"看见"的引导，
+                                                不该是最淡的元素；
+                                             ② 标题「还没有内容」从 TertiaryText 提到 14px SemiBold + TextPrimaryBrush；
+                                             ③ 引导文案保持 12px TertiaryText。
+                                             改前两级都是三级灰字，主次不分、整体发虚。 -->
+                                        <Path Data="{StaticResource IconCloudOff}" Stretch="Uniform" Width="64"
+                                              Height="64" HorizontalAlignment="Center" Margin="0,0,0,16"
+                                              Stroke="{DynamicResource PrimarySoftBrush}" StrokeThickness="1.5"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                               StrokeLineJoin="Round"/>
                                         <TextBlock x:Name="FileEmptyText" Text="还没有内容"
-                                                   Margin="0,10,0,0" HorizontalAlignment="Center"
-                                                   Style="{StaticResource TertiaryText}"/>
+                                                   Margin="0,0,0,6" HorizontalAlignment="Center"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
                                         <TextBlock Text="粘贴分享链接解析，或切到「我的网盘」选择文件"
-                                                   Margin="0,4,0,0" HorizontalAlignment="Center"
-                                                   Style="{StaticResource TertiaryText}" FontSize="11"/>
+                                                   Margin="0,0,0,0" HorizontalAlignment="Center"
+                                                   Style="{StaticResource TertiaryText}" FontSize="12"/>
                                     </StackPanel>
 
                                     <!-- 【2026-10-09】分页提示：目录大时列表一次只"露"一批条目，
@@ -815,8 +859,17 @@
                             </Border>
                         </Grid>
 
-                        <!-- 操作按钮 -->
-                        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0">
+                        <!-- 操作按钮
+                             【2026-10-14 UI 改造】上方留白 12 → 24，与内容区拉开呼吸。
+                             这是"AI味"诊断里指出的「按钮区像被硬塞在窗口底部」的正解：
+                             **用空间分隔，不画分割线**（Linear 的做法 —— 线是噪音，留白才是层级）。 -->
+                        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,24,0,0">
+                            <!-- 【2026-10-14 UI 改造】Fluent 主次原则：**一个视图只有一个实心主操作**。
+                                 改前「下载选中」实心、「下载全部」描边 —— 其实已经是主次分明的。
+                                 这里做的是**统一三者的视觉重量**：下载全部从 SecondaryButton 降为
+                                 GhostButton（更轻），让「下载选中」成为唯一焦点；
+                                 获取直链本来就是次要操作，保持 GhostButton。
+                                 ⚠️ 若想改回"两个实心"，把 DownloadAllBtn 的 Style 换回 SecondaryButton 即可。 -->
                             <Button x:Name="DownloadSelBtn" Click="OnDownloadSelected"
                                     Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
@@ -829,7 +882,7 @@
                                 </StackPanel>
                             </Button>
                             <Button x:Name="DownloadAllBtn" Click="OnDownloadAll"
-                                    Style="{StaticResource SecondaryButton}" Margin="0,0,8,0">
+                                    Style="{StaticResource GhostButton}" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource IconDownload}" Stretch="Uniform" Width="14"
                                           Height="14" VerticalAlignment="Center"
@@ -866,7 +919,11 @@
 
                 <!-- ============ 任务 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
-                    <Grid Margin="20,18,20,18">
+                    <!-- 【2026-10-14 UI 改造】页面外框留白统一到 8px 网格：
+                         左右 24px（建议规范的「页面左右边距」档），上下 24px。
+                         原来是 20,18,20,18 —— 18 不是网格值，且上下留白偏少，
+                         底部按钮区贴边，观感"被硬塞在窗口底部"。 -->
+                    <Grid Margin="24,24,24,24">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -1079,16 +1136,20 @@
                             <StackPanel x:Name="TaskEmptyState" IsHitTestVisible="False"
                                         HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Visibility="Visible">
-                                <Path Data="{StaticResource IconActivity}" Stretch="Uniform" Width="40"
-                                      Height="40" HorizontalAlignment="Center"
-                                      Stroke="{DynamicResource BorderBrushStrong}" StrokeThickness="1.5"
+                                <!-- 【2026-10-14 UI 改造】与下载页空状态保持同一套 Notion 式三级层级：
+                                     图标 64px + PrimarySoftBrush、标题 14px SemiBold TextPrimary、
+                                     引导 12px TertiaryText。两个空状态必须一致，否则一精一糙。 -->
+                                <Path Data="{StaticResource IconActivity}" Stretch="Uniform" Width="64"
+                                      Height="64" HorizontalAlignment="Center" Margin="0,0,0,16"
+                                      Stroke="{DynamicResource PrimarySoftBrush}" StrokeThickness="1.5"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"/>
-                                <TextBlock Text="暂无下载任务" Margin="0,10,0,0" HorizontalAlignment="Center"
-                                           Style="{StaticResource TertiaryText}"/>
+                                <TextBlock Text="暂无下载任务" Margin="0,0,0,6" HorizontalAlignment="Center"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 <TextBlock Text="在「下载」页解析链接并选择文件后，任务会出现在这里"
-                                           Margin="0,4,0,0" HorizontalAlignment="Center"
-                                           Style="{StaticResource TertiaryText}" FontSize="11"/>
+                                           Margin="0,0,0,0" HorizontalAlignment="Center"
+                                           Style="{StaticResource TertiaryText}" FontSize="12"/>
                             </StackPanel>
                         </Grid>
 
@@ -1131,7 +1192,7 @@
                                     <TextBlock Text="界面外观。切换后立即生效"
                                                Style="{StaticResource TertiaryText}" Margin="0,0,0,14"/>
 
-                                    <Border HorizontalAlignment="Left" CornerRadius="9"
+                                    <Border HorizontalAlignment="Left" CornerRadius="8"
                                             Background="{DynamicResource SurfaceSunkenBrush}"
                                             Padding="3">
                                         <StackPanel Orientation="Horizontal">
@@ -1163,23 +1224,45 @@
                                                Margin="0,10,0,0"
                                                Text="跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。"/>
 
-                                    <!-- 主题版预览（三张小色块）：让用户不用切来切去也能看到效果 -->
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                        <Border x:Name="ThemeSwatchBg" Width="34" Height="22" CornerRadius="5"
-                                                Background="{DynamicResource AppBgBrush}"
-                                                BorderBrush="{DynamicResource BorderBrushSoft}"
-                                                BorderThickness="1"/>
-                                        <Border x:Name="ThemeSwatchSurface" Width="34" Height="22" CornerRadius="5"
-                                                Margin="6,0,0,0"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                BorderBrush="{DynamicResource BorderBrushSoft}"
-                                                BorderThickness="1"/>
-                                        <Border x:Name="ThemeSwatchPrimary" Width="34" Height="22" CornerRadius="5"
-                                                Margin="6,0,0,0"
-                                                Background="{DynamicResource PrimaryBrush}"/>
-                                        <TextBlock Text="当前配色的底色、卡片色、主色"
-                                                   Style="{StaticResource TertiaryText}"
-                                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                    <!-- 主题版预览：让用户不用切来切去也能看到效果
+                                         【2026-10-14 UI 改造】色块 34×22 → 40×40、圆角 5 → 8，
+                                         并且**每个色块下方带自己的标签**（页面底 / 卡片 / 主色 / 正文）。
+                                         改前只有末尾一行笼统的「当前配色的底色、卡片色、主色」——
+                                         用户得数着猜哪个是哪个（"AI味"诊断里准确的一条：色块展示原始）。
+                                         每个色块包成「色块 + 标签」的竖排小单元，间距 12px。 -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                        <StackPanel Margin="0,0,12,0">
+                                            <Border x:Name="ThemeSwatchBg" Width="40" Height="40" CornerRadius="8"
+                                                    Background="{DynamicResource AppBgBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrushSoft}"
+                                                    BorderThickness="1"/>
+                                            <TextBlock Text="页面底" Style="{StaticResource TertiaryText}"
+                                                       FontSize="11" HorizontalAlignment="Center"
+                                                       Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,12,0">
+                                            <Border x:Name="ThemeSwatchSurface" Width="40" Height="40" CornerRadius="8"
+                                                    Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrushSoft}"
+                                                    BorderThickness="1"/>
+                                            <TextBlock Text="卡片" Style="{StaticResource TertiaryText}"
+                                                       FontSize="11" HorizontalAlignment="Center"
+                                                       Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,12,0">
+                                            <Border x:Name="ThemeSwatchPrimary" Width="40" Height="40" CornerRadius="8"
+                                                    Background="{DynamicResource PrimaryBrush}"/>
+                                            <TextBlock Text="主色" Style="{StaticResource TertiaryText}"
+                                                       FontSize="11" HorizontalAlignment="Center"
+                                                       Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <Border Width="40" Height="40" CornerRadius="8"
+                                                    Background="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="正文" Style="{StaticResource TertiaryText}"
+                                                       FontSize="11" HorizontalAlignment="Center"
+                                                       Margin="0,6,0,0"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -1603,14 +1686,14 @@
                                                         VerticalAlignment="Center">
                                                     <Grid>
                                                         <TextBlock x:Name="LoginAvatarText" Text="?"
-                                                                   FontSize="14" FontWeight="SemiBold"
+                                                                   FontSize="12" FontWeight="SemiBold"
                                                                    Foreground="{DynamicResource TextOnPrimaryBrush}"
                                                                    HorizontalAlignment="Center"
                                                                    VerticalAlignment="Center"/>
                                                         <Image x:Name="LoginAvatarImage" Stretch="UniformToFill"
                                                                Visibility="Collapsed">
                                                             <Image.Clip>
-                                                                <EllipseGeometry Center="17,17" RadiusX="17" RadiusY="17"/>
+                                                                <EllipseGeometry Center="14,14" RadiusX="14" RadiusY="14"/>
                                                             </Image.Clip>
                                                         </Image>
                                                     </Grid>
@@ -1781,7 +1864,7 @@
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1"
-                        CornerRadius="14">
+                        CornerRadius="12">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>

@@ -77,7 +77,7 @@
 
                             <!-- logo 本身是白底图 → 深色主题下会顶出一个白方块。
                                  套一个圆角"图标底"把它变成有意的应用图标，两种主题都好看。 -->
-                            <Border Grid.Column="0" Width="62" Height="62" CornerRadius="14"
+                            <Border Grid.Column="0" Width="62" Height="62" CornerRadius="12"
                                     Background="White"
                                     BorderBrush="{DynamicResource BorderBrushSoft}"
                                     BorderThickness="1"
@@ -93,7 +93,7 @@
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <!-- 版本号做成小徽章，比混在标语里清楚 -->
                                     <Border Background="{DynamicResource PrimarySoftBrush}"
-                                            CornerRadius="4" Padding="6,1,6,2" Margin="8,2,0,0"
+                                            CornerRadius="6" Padding="6,1,6,2" Margin="8,2,0,0"
                                             VerticalAlignment="Center">
                                         <TextBlock x:Name="VersionPillText" Text="v?"
                                                    FontSize="10.5" FontWeight="SemiBold"

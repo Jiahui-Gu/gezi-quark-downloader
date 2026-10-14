@@ -19,7 +19,7 @@
         方形按钮、左上角大图标），跟本项目自绘的圆角卡片 UI 完全两个世界。
         这里按同一套设计令牌重画：圆角 14、淡阴影、主色按钮。
     -->
-    <Border x:Name="RootCard" Margin="16" CornerRadius="14"
+    <Border x:Name="RootCard" Margin="16" CornerRadius="12"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrushSoft}"
             BorderThickness="1">
@@ -64,6 +64,9 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- 图标圆：38×38 容器，CornerRadius=19（= 宽高一半）才是**正圆**。
+                     【2026-10-14】曾被圆角收敛脚本误改成 12（会变方角），已改回。
+                     ⚠️ 教训：圆角收敛**不能无脑映射** —— 圆形容器的圆角 = 尺寸/2，不参与档位。 -->
                 <Border x:Name="IconBox" Grid.Column="0" Width="38" Height="38"
                         CornerRadius="19" VerticalAlignment="Top" Margin="0,1,14,0"
                         Background="{DynamicResource PrimaryLightBrush}">
