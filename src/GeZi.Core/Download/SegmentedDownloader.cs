@@ -1248,26 +1248,37 @@ namespace GeZi.Core.Download
                 long remainTotal = total - (headEnd + 1);
                 if (headParts >= 2 && remainTotal >= MinSegBytes)
                 {
-                    // 中后部片数：扣掉头部占用后的额度，仍受 maxSegments 总护栏
-                    long nMid = n;
-                    if (headParts + nMid > maxSegments) nMid = maxSegments - headParts;
-                    if (nMid < 1) nMid = 1;
-                    long midSeg = (remainTotal + nMid - 1) / nMid;
-                    if (midSeg > finalSeg) midSeg = finalSeg;   // 不允许比原来的片更大
+                    // 中后部**必须沿用上面已经验证过能覆盖到 total 的 `finalSeg`**，
+                    // 绝不能按 `nMid` 重新算 `midSeg = remainTotal / nMid` ——
+                    //
+                    // 🚨 2026-10-14 实测踩坑（用户 4.97GB 文件，并发 512 档）：
+                    // `n = 4096`、`finalSeg = 1301609`（能完整覆盖 total）。
+                    // 变长分支里 `headParts(64) + nMid(4096) = 4160 > maxSegments(4096)`
+                    // → `nMid` 被夹成 4032 → 若按 4032 重算 `midSeg` 会更大、被夹回 finalSeg，
+                    // 但 `4032 × 1301609 + 67108864 = 5315594752` **够不到 total**，
+                    // 而循环靠 `if (ms >= total) break` 提前退出 → **尾部 15.4MB 被静默丢掉**。
+                    // 症状：所有分片 100% 下完、meta 记录完整、但目标文件就是差一截，
+                    // 且 `.qparts` 已被清空 → 无法续传补下，只能整文件重下。
+                    //
+                    // ✅ 正解：片大小直接用 finalSeg（它对整个 total 是精确的），
+                    //    片数按"实际能切出多少片"自然得出，末尾余量并入最后一片。
+                    long midSeg = finalSeg;
 
-                    var v = new List<(long Start, long End)>((int)(headParts + nMid));
+                    var v = new List<(long Start, long End)>((int)(headParts + n));
                     long s = 0;
                     for (long i = 0; i < headParts; i++)
                     {
                         v.Add((s, s + HeadSegBytes - 1));
                         s += HeadSegBytes;
                     }
-                    for (long i = 0; i < nMid; i++)
+                    // 中后部：从 headEnd+1 起按 midSeg 连续切，最后一片吃到 total-1。
+                    // 用 while 而不是 for(nMid) —— 片数由覆盖关系自然决定，
+                    // 不会再出现"算好的片数切不完整个区间"的缺口。
+                    while (s < total)
                     {
-                        long ms = headEnd + 1 + i * midSeg;
-                        if (ms >= total) break;
-                        long me = Math.Min(ms + midSeg - 1, total - 1);
-                        v.Add((ms, me));
+                        long e = Math.Min(s + midSeg - 1, total - 1);
+                        v.Add((s, e));
+                        s = e + 1;
                     }
                     return v;
                 }
@@ -1447,6 +1458,30 @@ namespace GeZi.Core.Download
             CancellationToken cancel, PauseToken pause, DateTime taskStart)
         {
             var parts = Split(total, _threads);
+            // 🚨 【2026-10-14 保险】分片规划**必须完整覆盖 [0, total)**。
+            // 2026-10-14 出过一次：变长分片的 nMid 被 maxSegments 夹小后按它重算片大小，
+            // 导致尾部 15.4MB 根本没被切出来 → 分片全部下完、meta 完整、目标文件却差一截，
+            // 而且 .qparts 已清空、无法续传，只能整文件重下（用户实测 4.97GB 文件踩中）。
+            // 这里做一次覆盖性断言：一旦不闭合就打日志，绝不再静默。
+            if (parts.Count > 0)
+            {
+                long covered = 0;
+                bool contiguous = true;
+                long expect = 0;
+                foreach (var p in parts)
+                {
+                    if (p.Start != expect) { contiguous = false; break; }
+                    covered = p.End + 1;
+                    expect = p.End + 1;
+                }
+                if (!contiguous || covered != total)
+                {
+                    Log?.Invoke(string.Format(
+                        "⚠️ 分片规划异常：{0} 片、覆盖到 {1}，而文件应为 {2}（缺口 {3} 字节）。"
+                        + "这会导致目标文件缺失尾部数据且无法续传 —— 请把此行日志反馈给开发者。",
+                        parts.Count, covered, total, total - covered));
+                }
+            }
             string metaPath, partsDirBase;
             ResolvePaths(dest, out partsDirBase, out metaPath);
             string partsDir = partsDirBase;
