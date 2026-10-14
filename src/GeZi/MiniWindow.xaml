@@ -44,7 +44,7 @@
                       StrokeLineJoin="Round"/>
                 <TextBlock x:Name="TitleText" Text="下载中"
                            Margin="32,0,36,0" VerticalAlignment="Center"
-                           FontSize="12.5" FontWeight="SemiBold"
+                           FontSize="12" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            TextTrimming="CharacterEllipsis"/>
                 <!-- 收起：只是隐藏小窗，程序继续在托盘跑 -->

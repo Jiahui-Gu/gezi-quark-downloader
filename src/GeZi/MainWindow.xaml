@@ -41,7 +41,7 @@
                         <!-- 【2026-10-03】按用户要求标题栏**只留文字、不要图标**：
                              「这里我决定不要图标了只要文字」。
                              （窗口/任务栏图标仍是应用图标，那是 Window.Icon，与这里无关。） -->
-                        <TextBlock Text="鸽子下载" FontSize="12.5" FontWeight="SemiBold"
+                        <TextBlock Text="鸽子下载" FontSize="12" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -130,7 +130,7 @@
                                          → 图标比文字**高 1.5px**；水平方向文字右缘 151、图标左缘 163
                                          → 间隙 11px（偏大）。据此把图标下移 1.5px、左移 5px。 -->
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="鸽子下载" FontSize="15" FontWeight="SemiBold"
+                                        <TextBlock Text="鸽子下载" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
                                         <Button x:Name="AboutBtn" Click="OnAboutClick"
                                                 Style="{StaticResource IconGhostButton}"
@@ -155,7 +155,7 @@
                                             </Path>
                                         </Button>
                                     </StackPanel>
-                                    <TextBlock Text="夸克网盘直链助手" FontSize="10.5"
+                                    <TextBlock Text="夸克网盘直链助手" FontSize="11"
                                                Foreground="{DynamicResource TextTertiaryBrush}"/>
                                 </StackPanel>
                             </StackPanel>
@@ -296,11 +296,11 @@
                                     <StackPanel Grid.Column="1" Margin="10,0,0,0"
                                                 VerticalAlignment="Center">
                                         <TextBlock x:Name="AccountText" Text="未登录"
-                                                   FontSize="12.5" FontWeight="SemiBold"
+                                                   FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <TextBlock x:Name="AccountHintText" Text="登录后可浏览网盘"
-                                                   FontSize="10.5" Margin="0,1,0,0"
+                                                   FontSize="11" Margin="0,1,0,0"
                                                    Foreground="{DynamicResource TextTertiaryBrush}"
                                                    TextTrimming="CharacterEllipsis"/>
 
@@ -661,7 +661,7 @@
                                                      TextChanged="OnFileFilterChanged" BorderThickness="0"
                                                      Background="Transparent" Padding="6,0,7,0"
                                                      VerticalContentAlignment="Center"
-                                                     FontSize="12.5"
+                                                     FontSize="12"
                                                      CaretBrush="{DynamicResource TextPrimaryBrush}"
                                                      ToolTip="按名称筛选当前目录的文件/文件夹"/>
                                         </Grid>
@@ -897,7 +897,7 @@
                                                Visibility="Collapsed"
                                                HorizontalAlignment="Center" Margin="0,2,0,10"
                                                Foreground="{DynamicResource TextTertiaryBrush}"
-                                               FontSize="11.5"/>
+                                               FontSize="11"/>
                                 </Grid>
                             </Border>
                         </Grid>
@@ -1311,7 +1311,7 @@
                             <Border Style="{StaticResource PrimaryCard}" Margin="0,0,0,18">
                                 <StackPanel>
                                     <TextBlock Text="个性化" Style="{StaticResource CardTitleText}"
-                                               FontSize="15" Margin="0,0,0,4"/>
+                                               FontSize="14" Margin="0,0,0,4"/>
                                     <TextBlock Text="界面外观。切换后立即生效"
                                                Style="{StaticResource TertiaryText}" Margin="0,0,0,14"/>
 
@@ -1394,7 +1394,7 @@
                             <Border Style="{StaticResource PrimaryCard}" Margin="0,0,0,18">
                                 <StackPanel>
                                     <TextBlock Text="下载与网络" Style="{StaticResource CardTitleText}"
-                                               FontSize="15" Margin="0,0,0,4"/>
+                                               FontSize="14" Margin="0,0,0,4"/>
                                     <TextBlock Text="决定下载速度与磁盘占用，日常只会改这里"
                                                Style="{StaticResource TertiaryText}" Margin="0,0,0,18"/>
 
@@ -1673,7 +1673,7 @@
                                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                                                 <TextBlock Text="扫码登录"
                                                            Style="{StaticResource CardTitleText}"
-                                                           Margin="7,0,0,0" FontSize="15"/>
+                                                           Margin="7,0,0,0" FontSize="14"/>
                                             </StackPanel>
                                             <TextBlock Text="用手机「夸克 App」扫描二维码并在手机上确认"
                                                        Style="{StaticResource TertiaryText}"
@@ -1714,7 +1714,7 @@
                                                                Margin="0,10,0,0"
                                                                HorizontalAlignment="Center"
                                                                Foreground="{DynamicResource TextTertiaryBrush}"
-                                                               FontSize="11.5"/>
+                                                               FontSize="11"/>
                                                 </StackPanel>
                                             </Border>
                                         </Grid>
@@ -1824,7 +1824,7 @@
                                                 <StackPanel Grid.Column="1" Margin="10,0,0,0"
                                                             VerticalAlignment="Center">
                                                     <TextBlock x:Name="LoginWhoText" Text="未登录"
-                                                               FontSize="13.5" FontWeight="SemiBold"
+                                                               FontSize="13" FontWeight="SemiBold"
                                                                Foreground="{DynamicResource TextPrimaryBrush}"
                                                                TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock x:Name="LoginSubText"
@@ -1984,10 +1984,10 @@
                                       Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.8"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"/>
-                                <TextBlock Text="解析历史" Margin="9,0,0,0" FontSize="15"
+                                <TextBlock Text="解析历史" Margin="9,0,0,0" FontSize="14"
                                            FontWeight="SemiBold" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="HistoryCountText" Margin="9,0,0,0" FontSize="11.5"
+                                <TextBlock x:Name="HistoryCountText" Margin="9,0,0,0" FontSize="11"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                             </StackPanel>
@@ -2024,7 +2024,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontSize="11.5" TextWrapping="Wrap"
+                                <TextBlock Grid.Column="0" FontSize="11" TextWrapping="Wrap"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextTertiaryBrush}"
                                            Text="点任意一条即可重新解析该分享 · 右键可置顶或删除 · 按 Esc、或点面板外的空白处关闭"/>

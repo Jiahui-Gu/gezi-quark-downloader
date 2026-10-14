@@ -47,7 +47,7 @@
             <Grid Grid.Row="0" Height="44" Background="Transparent">
                 <TextBlock Text="关于 鸽子下载" Margin="20,0,44,0"
                            VerticalAlignment="Center"
-                           FontSize="13.5" FontWeight="SemiBold"
+                           FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"/>
                 <Button x:Name="CloseBtn" Click="OnCloseClick"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"
@@ -88,7 +88,7 @@
 
                             <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="鸽子下载" FontSize="19" FontWeight="SemiBold"
+                                    <TextBlock Text="鸽子下载" FontSize="20" FontWeight="SemiBold"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <!-- 版本号做成小徽章，比混在标语里清楚 -->
@@ -96,7 +96,7 @@
                                             CornerRadius="6" Padding="6,1,6,2" Margin="8,2,0,0"
                                             VerticalAlignment="Center">
                                         <TextBlock x:Name="VersionPillText" Text="v?"
-                                                   FontSize="10.5" FontWeight="SemiBold"
+                                                   FontSize="11" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource PrimaryBrush}"/>
                                     </Border>
                                 </StackPanel>
@@ -113,7 +113,7 @@
                                 <Button x:Name="CheckUpdateBtn" Click="OnCheckUpdateClick"
                                         AutomationProperties.Name="检查更新"
                                         Style="{StaticResource SecondaryButton}"
-                                        Padding="12,6" FontSize="11.5"
+                                        Padding="12,6" FontSize="11"
                                         ToolTip="检查是否有新版本">
                                     <TextBlock Text="检查更新"/>
                                 </Button>
@@ -169,14 +169,14 @@
                         <Button x:Name="RepoBtn" Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="12,6" FontSize="11.5"
+                                Padding="12,6" FontSize="11"
                                 ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
                             <TextBlock x:Name="RepoText" Text="开源地址"/>
                         </Button>
                         <Button x:Name="BiliBtn" Click="OnBiliClick"
                                 AutomationProperties.Name="打开作者B站主页"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="12,6" FontSize="11.5" Margin="8,0,0,0"
+                                Padding="12,6" FontSize="11" Margin="8,0,0,0"
                                 ToolTip="在浏览器中打开作者 B 站主页">
                             <TextBlock x:Name="BiliText" Text="作者 B 站"/>
                         </Button>
@@ -189,7 +189,7 @@
                     <!-- ⑤ 应用简介 + 开源许可：收进一张淡卡，字号压小，别抢主内容 -->
                     <Border Style="{StaticResource MutedCard}" Margin="0,16,0,0" Padding="14,12">
                         <StackPanel>
-                            <TextBlock Text="应用简介" FontSize="11.5" FontWeight="SemiBold"
+                            <TextBlock Text="应用简介" FontSize="11" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                             <TextBlock Style="{StaticResource ProseText}" FontSize="11" Margin="0,5,0,0"
                                        TextWrapping="Wrap"
@@ -222,12 +222,12 @@
                                     </Border>
                                 </Button>
                                 <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="七十鸽 的赞赏码" FontSize="12.5" FontWeight="SemiBold"
+                                    <TextBlock Text="七十鸽 的赞赏码" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <TextBlock Text="如果觉得好用，欢迎扫码赞赏支持" FontSize="11"
                                                Margin="0,4,0,0" TextWrapping="Wrap"
                                                Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                    <TextBlock Text="点击二维码可放大" FontSize="10.5"
+                                    <TextBlock Text="点击二维码可放大" FontSize="11"
                                                Margin="0,2,0,0"
                                                Foreground="{DynamicResource TextTertiaryBrush}"/>
                                 </StackPanel>

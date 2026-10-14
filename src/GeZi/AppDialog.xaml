@@ -43,7 +43,7 @@
                   MouseLeftButtonDown="OnTitleBarDown">
                 <TextBlock x:Name="TitleText" Text="提示"
                            Margin="20,0,44,0" VerticalAlignment="Center"
-                           FontSize="13.5" FontWeight="SemiBold"
+                           FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            TextTrimming="CharacterEllipsis"/>
                 <Button x:Name="CloseBtn" Click="OnCancel"
