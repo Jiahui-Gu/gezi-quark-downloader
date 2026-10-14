@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="鸽子下载 · 夸克网盘直链助手"
         Icon="/Resources/app.ico"
-        Height="780" Width="1120" MinHeight="640" MinWidth="900"
+        Height="780" Width="1240" MinHeight="640" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBgBrush}"
         FontFamily="{StaticResource AppFontFamily}"
@@ -407,35 +407,18 @@
                                 </Style>
                             </Border.Style>
                           <Grid>
-                            <!-- 装饰层：卡片四周的留白太空，点缀一颗星星。
-                                 ① 画在内容**之前**（在下层）→ 控件会盖住它，只在留白处露出来；
-                                 ② IsHitTestVisible=False → 绝不吃点击；
-                                 ③ 透明度压得低（0.30）→ 是水印，不是主体。
-                                 ⚠️ Margin="-18" 是**必须**的：卡片 Padding=18，装饰层若只铺
-                                 内容区，那一行控件（输入框+提取码+解析按钮）会把它整片盖住
-                                 —— 用户反馈「解析按钮右边看不到星星」就是这个原因。
-                                 ⚠️ 右边那两颗**已挪到解析按钮上**（见下面 ParseBtn 外层 Grid）：
-                                     「解析」按钮右边缘 == 卡片内容区右边缘，星星放在右边那条
-                                     18px 留白带里，会被按钮切掉一大块，看起来像"碎掉的星星"。
-                                     用户原话：「这个位置的星星我是让放你这个位置的放在按钮」。 -->
-                            <Grid IsHitTestVisible="False" Margin="-18">
-                                <Path Data="{StaticResource IconSparkle}"
-                                      Fill="{DynamicResource TextPrimaryBrush}"
-                                      Opacity="0.30"
-                                      Width="11" Height="11" Stretch="Uniform"
-                                      HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                      Margin="14,0,0,3"/>
-                            </Grid>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>   <!-- 扫码按钮 -->
+                                    <ColumnDefinition Width="*"/>      <!-- 输入框 -->
+                                    <ColumnDefinition Width="Auto"/>   <!-- 提取码 输入框 -->
+                                    <ColumnDefinition Width="Auto"/>   <!-- 解析 按钮 -->
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="分享链接" VerticalAlignment="Center" Margin="0,0,10,0"
-                                           Style="{StaticResource BodyText}"/>
+                                <!-- 【2026-10-14 布局修复】原「分享链接」文字标签删除，改用 placeholder。
+                                     原因：Auto 列总宽超出可用宽度 → Grid 不压缩 Auto 列 → 右侧「解析」按钮
+                                     被挤出窗口（UIA 实测解析按钮右边缘 1345 > 窗口 1240，溢出 105px）。
+                                     去掉两个文字标签省下约 160px，且 placeholder 是现代表单的标准做法
+                                     （Raycast / Notion 都这么干）。 -->
                                 <!-- ⚠️ 高度必须是 42，不能是 34 —— 这是实测出来的下限。
                                      AppTextBox 的模板把 Padding(10,7) 当作 ScrollViewer 的 Margin，
                                      再加上 1px 边框，内容区需要约 26px 才放得下一行字。
@@ -447,6 +430,50 @@
                                      缩进），天然高度因此虚高到 46.5。修完天然高度 32.5，
                                      34 也不再裁字。这里仍保留 42，是为了和提取码框、解析
                                      按钮同高（视觉上一排整齐），不是为了躲裁切。 -->
+                                <!-- 【2026-10-14 用户反馈】扫码按钮**移到输入框外**（独立一列，在输入框左侧）。
+                                     用户原话：「扫描二维码的图标拿出到输入框外」。
+                                     原来是绝对定位贴在输入框内部右缘，与清空按钮挤在一起、
+                                     还逼得输入框右内边距要留 58px —— 现在独立成列，输入框干净了。 -->
+                                <Button x:Name="ScanQrBtn" Click="OnScanQrClick"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,8,0" Width="32" Height="32"
+                                        Cursor="Hand" Focusable="False"
+                                        AutomationProperties.Name="识别二维码"
+                                        ToolTip="识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Bd" Background="Transparent"
+                                                                CornerRadius="6">
+                                                            <Path Data="{StaticResource IconScan}"
+                                                                  Stretch="Uniform" Width="13" Height="13"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"
+                                                                  Stroke="{DynamicResource TextTertiaryBrush}"
+                                                                  StrokeThickness="1.8"
+                                                                  StrokeStartLineCap="Round"
+                                                                  StrokeEndLineCap="Round"
+                                                                  StrokeLineJoin="Round"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Bd" Property="Background"
+                                                                        Value="{DynamicResource SurfaceAltBrush}"/>
+                                                                <Setter TargetName="Bd" Property="Opacity" Value="1"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <!-- 常年可见：这是功能入口，不能像清空按钮那样空着就藏起来 -->
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Setter Property="Opacity" Value="0.85"/>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                                 <Grid Grid.Column="1">
                                     <!-- 【2026-10-14 UI 改造 · Raycast 式来源栏】
                                          目标：把「输入框 + 扫码/清空/解析」合成**一个整体**，
@@ -458,7 +485,7 @@
                                          且与提取码框、解析按钮同高，视觉上一排整齐。
                                          ⚠️ Padding 右内边距仍 58：给 ScanQrBtn + LinkClearBtn 留位（红线）。 -->
                                     <TextBox x:Name="LinkBox" Height="42"
-                                             Padding="12,7,58,7"
+                                             Padding="12,7,30,7"
                                              AutomationProperties.Name="分享链接输入框"
                                              DataObject.Pasting="OnLinkBoxPasting"
                                              ToolTip="支持含提取码的完整链接，也可只粘贴链接再单独填提取码">
@@ -477,49 +504,22 @@
                                             </Style>
                                         </TextBox.Style>
                                     </TextBox>
-                                    <!-- 【2026-10-04】扫码识别：夸克分享有时只给二维码图片、不给链接。
-                                         贴在输入框右侧内缘、清空按钮的左边（所以 Padding 右内边距从 34 加到 58）。
-                                         点击后弹出取图方式（粘贴剪贴板 / 选文件 / 拖拽），解出的文本自动填进本框。
-                                         ⚠️ 必须排在 LinkClearBtn **之前**，否则会盖住清空按钮的命中区。 -->
-                                    <Button x:Name="ScanQrBtn" Click="OnScanQrClick"
-                                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                                            Margin="0,0,30,0" Width="22" Height="22"
-                                            Cursor="Hand" Focusable="False"
-                                            AutomationProperties.Name="识别二维码"
-                                            ToolTip="识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）">
-                                        <Button.Style>
-                                            <Style TargetType="Button">
-                                                <Setter Property="Template">
-                                                    <Setter.Value>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border x:Name="Bd" Background="Transparent"
-                                                                    CornerRadius="6">
-                                                                <Path Data="{StaticResource IconScan}"
-                                                                      Stretch="Uniform" Width="13" Height="13"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      Stroke="{DynamicResource TextTertiaryBrush}"
-                                                                      StrokeThickness="1.8"
-                                                                      StrokeStartLineCap="Round"
-                                                                      StrokeEndLineCap="Round"
-                                                                      StrokeLineJoin="Round"/>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="Bd" Property="Background"
-                                                                            Value="{DynamicResource SurfaceAltBrush}"/>
-                                                                    <Setter TargetName="Bd" Property="Opacity" Value="1"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Setter.Value>
-                                                </Setter>
-                                                <!-- 常年可见：这是功能入口，不能像清空按钮那样空着就藏起来 -->
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                                <Setter Property="Opacity" Value="0.85"/>
+                                    <!-- placeholder：替代被删的「分享链接」文字标签（省 Auto 列宽度，修溢出） -->
+                                    <TextBlock Text="粘贴夸克分享链接…"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"
+                                               IsHitTestVisible="False" Margin="12,0,0,0"
+                                               VerticalAlignment="Center" FontSize="13">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=LinkBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
                                             </Style>
-                                        </Button.Style>
-                                    </Button>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <!-- 一键清空：贴在输入框右侧内缘。
                                          只在有内容时出现（空的时候显示一个点了没反应的叉很别扭）。 -->
                                     <Button x:Name="LinkClearBtn" Click="OnClearLinkBox"
@@ -563,36 +563,34 @@
                                         </Button.Style>
                                     </Button>
                                 </Grid>
-                                <TextBlock Text="提取码" Grid.Column="2" VerticalAlignment="Center"
-                                           Margin="14,0,10,0" Style="{StaticResource BodyText}"/>
-                                <TextBox x:Name="PassBox" Grid.Column="3" Width="120" Height="42"
-                                         AutomationProperties.Name="提取码输入框"
-                                         Style="{StaticResource AppTextBox}"/>
-                                <!-- 「解析」按钮 + 按钮**表面**的装饰星星。
-                                     ⚠️ 星星必须画在 Button **之后**（同层 Grid 里后添加的在上层），
-                                        这样才是"印在按钮上"；画在之前会被按钮整块盖住。
-                                        用白色 + 低透明度：主按钮是蓝底，白星才看得见。
-                                        用户明确要求：「这个位置的星星我是让放你这个位置的放在按钮」。 -->
-                                <Grid Grid.Column="4" Margin="14,0,0,0">
-                                    <Button x:Name="ParseBtn" Content="解析"
-                                            Click="OnParseClick"
-                                            Height="42" Padding="20,0" VerticalAlignment="Center"
-                                            Style="{StaticResource PrimaryButton}"/>
-                                    <Grid IsHitTestVisible="False">
-                                        <Path Data="{StaticResource IconSparkle}"
-                                              Fill="White"
-                                              Opacity="0.55"
-                                              Width="12" Height="12" Stretch="Uniform"
-                                              HorizontalAlignment="Right" VerticalAlignment="Top"
-                                              Margin="0,5,7,0"/>
-                                        <Path Data="{StaticResource IconSparkle}"
-                                              Fill="White"
-                                              Opacity="0.38"
-                                              Width="9" Height="9" Stretch="Uniform"
-                                              HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                              Margin="8,0,0,6"/>
-                                    </Grid>
+                                <!-- 提取码：包一层 Grid 以便叠加 placeholder（原「提取码」标签已删） -->
+                                <Grid Grid.Column="2" Margin="14,0,0,0">
+                                    <TextBox x:Name="PassBox" Width="130" Height="42"
+                                             AutomationProperties.Name="提取码输入框"
+                                             Style="{StaticResource AppTextBox}"/>
+                                    <TextBlock Text="提取码"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"
+                                               IsHitTestVisible="False" Margin="12,0,0,0"
+                                               VerticalAlignment="Center" FontSize="13">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=PassBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </Grid>
+                                <!-- 【2026-10-14 用户反馈】解析按钮上的 2 颗装饰星已删除（用户：「加的几颗星星反而让它更丑了」）。
+                                     现在就是一个干净的实心块。 -->
+                                <Button x:Name="ParseBtn" Grid.Column="3" Content="解析"
+                                        Click="OnParseClick"
+                                        Height="42" Padding="24,0" VerticalAlignment="Center"
+                                        Margin="14,0,0,0"
+                                        Style="{StaticResource PrimaryButton}"/>
                             </Grid>
                           </Grid>
                         </Border>
@@ -735,26 +733,71 @@
                                              MouseRightButtonUp="OnFileListRightClick">
                                         <ListBox.ContextMenu>
                                             <ContextMenu>
-                                                <MenuItem Header="下载选中" Click="OnDownloadSelected"/>
-                                                <!-- 【2026-10-03 新增】免转存下载：不往自己网盘写中转文件，
-                                                     直接从分享取链。登录状态下默认走「转存→取直链」，
-                                                     所以需要这个显式入口。只在分享模式有意义，
-                                                     由 OnFileListRightClick 按模式控制可见性。
-                                                     【2026-10-06】括号内容改为「无法续传」——
-                                                     免转存取链依赖分享的 stoken，而续传时**不会重新换 stoken**
-                                                     （全代码只在解析时取一次），stoken 过期就取不到新链，
-                                                     中途断了只能重新解析分享、从头再来。必须让用户在点之前就知道。 -->
+                                                <!-- 【2026-10-14 右键菜单重设计】按行业标准（参考用户给的下载器截图）：
+                                                     每项 = 线性图标 + 文字 + 快捷键；破坏性操作（删除）用红色。
+                                                     图标 14px、统一 22px 图标列宽，保证文字左对齐。 -->
+                                                <MenuItem Header="下载选中" Click="OnDownloadSelected">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="{StaticResource IconDownload}" Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              Stroke="{DynamicResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <!-- 【2026-10-03】免转存下载：不往自己网盘写中转文件，直接从分享取链。
+                                                     ⚠️ 续传时不会重新换 stoken（全代码只在解析时取一次），
+                                                     stoken 过期就取不到新链 → 中途断了只能重新解析分享、从头再来。
+                                                     必须让用户在点之前就知道，所以括号里写明「无法续传」。 -->
                                                 <MenuItem x:Name="NoSaveDownloadMenuItem"
                                                           Header="免转存下载（无法续传）"
                                                           ToolTip="不往自己网盘写中转文件，省网盘空间。&#x0a;但中断后无法续传 —— 分享凭证过期就取不到新链，只能重新解析分享从头下。"
-                                                          Click="OnDownloadSelectedNoSave"/>
-                                                <MenuItem Header="获取直链…" Click="OnFetchLinks"/>
+                                                          Click="OnDownloadSelectedNoSave">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="{StaticResource IconFile}" Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              Stroke="{DynamicResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
+                                                <MenuItem Header="获取直链…" Click="OnFetchLinks">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="{StaticResource IconLink}" Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              Stroke="{DynamicResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
-                                                <MenuItem Header="全选" Click="OnFileListSelectAll"/>
+                                                <MenuItem Header="全选" Click="OnFileListSelectAll">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="{StaticResource IconCheck}" Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              Stroke="{DynamicResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
-                                                <MenuItem Header="删除网盘文件…（仅我的网盘）" Click="OnDeleteCloudSelected"/>
-                                                <!-- 【2026-10-03】原「创建分享链接…」已删 —— 用户反馈「没有用」。
-                                                     连处理函数 OnCreateShareSelected 一并删除，不留死代码。 -->
+                                                <!-- 破坏性操作：整项（含图标）用红色，与普通项区分 -->
+                                                <MenuItem Header="删除网盘文件…（仅我的网盘）"
+                                                          Click="OnDeleteCloudSelected"
+                                                          Foreground="{DynamicResource DangerBrush}">
+                                                    <MenuItem.Icon>
+                                                        <Path Data="{StaticResource IconXCircle}" Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              Stroke="{DynamicResource DangerBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              StrokeLineJoin="Round"/>
+                                                    </MenuItem.Icon>
+                                                </MenuItem>
                                             </ContextMenu>
                                         </ListBox.ContextMenu>
                                         <ListBox.ItemTemplate>
@@ -1004,12 +1047,53 @@
                                      MouseDoubleClick="OnTaskListDoubleClick">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="暂停" Click="OnTaskPause"/>
-                                        <MenuItem Header="恢复" Click="OnTaskResume"/>
-                                        <MenuItem Header="取消" Click="OnTaskCancel"/>
+                                        <MenuItem Header="暂停" Click="OnTaskPause">
+                                            <MenuItem.Icon>
+                                                <Path Data="{StaticResource IconPause}" Stretch="Uniform"
+                                                      Width="14" Height="14"
+                                                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="恢复" Click="OnTaskResume">
+                                            <MenuItem.Icon>
+                                                <Path Data="{StaticResource IconPlay}" Stretch="Uniform"
+                                                      Width="14" Height="14"
+                                                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="取消" Click="OnTaskCancel"
+                                                          Foreground="{DynamicResource DangerBrush}">
+                                            <MenuItem.Icon>
+                                                <Path Data="{StaticResource IconClose}" Stretch="Uniform"
+                                                      Width="14" Height="14"
+                                                      Stroke="{DynamicResource DangerBrush}" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
                                         <Separator Style="{StaticResource MenuSeparator}"/>
-                                        <MenuItem Header="播放文件" Click="OnOpenTaskFile"/>
-                                        <MenuItem Header="在资源管理器中定位" Click="OnLocateTaskFile"/>
+                                        <MenuItem Header="播放文件" Click="OnOpenTaskFile">
+                                            <MenuItem.Icon>
+                                                <Path Data="{StaticResource IconFile}" Stretch="Uniform"
+                                                      Width="14" Height="14"
+                                                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="在资源管理器中定位" Click="OnLocateTaskFile">
+                                            <MenuItem.Icon>
+                                                <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
+                                                      Width="14" Height="14"
+                                                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.7"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
                                         <Separator Style="{StaticResource MenuSeparator}"/>
                                         <MenuItem Header="删除本地文件…" Click="OnTaskDeleteLocal"/>
                                         <MenuItem Header="仅移除记录" Click="OnTaskRemoveRecord"/>
@@ -1791,30 +1875,6 @@
                                     <Border Grid.Row="2" Style="{StaticResource InfoBanner}"
                                             VerticalAlignment="Stretch">
                                       <Grid>
-                                        <!-- 装饰层：小贴士的文字只占左边一小块，右侧一大片空着
-                                             （用户反馈「这个地方感觉右边也有点太空了」）。
-                                             点缀几颗星星填充右侧，画在文字**之前**（在下层），
-                                             不吃点击、透明度压低，不与正文抢注意力。 -->
-                                        <Grid IsHitTestVisible="False">
-                                            <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource TextPrimaryBrush}"
-                                                  Opacity="0.62"
-                                                  Width="30" Height="30" Stretch="Uniform"
-                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                  Margin="0,0,18,0"/>
-                                            <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource TextPrimaryBrush}"
-                                                  Opacity="0.46"
-                                                  Width="16" Height="16" Stretch="Uniform"
-                                                  HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                  Margin="0,14,60,0"/>
-                                            <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource TextPrimaryBrush}"
-                                                  Opacity="0.36"
-                                                  Width="11" Height="11" Stretch="Uniform"
-                                                  HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                  Margin="0,0,16,18"/>
-                                        </Grid>
                                         <StackPanel>
                                             <TextBlock Text="小贴士" FontSize="12" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextPrimaryBrush}"

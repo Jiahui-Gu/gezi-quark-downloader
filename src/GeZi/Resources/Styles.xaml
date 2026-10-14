@@ -1262,13 +1262,19 @@
                             Padding="{TemplateBinding Padding}">
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <!-- 【2026-10-14 右键菜单重设计】新增图标列（固定 22px，保证各菜单项文字左对齐） -->
+                                <ColumnDefinition Width="22"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}"
+                            <!-- 图标：14px 线性图标；未设 Icon 的项该列留空，文字仍对齐 -->
+                            <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                              VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                              VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
                                        Foreground="{DynamicResource TextTertiaryBrush}"
-                                       Margin="16,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                                       Margin="20,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
