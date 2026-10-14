@@ -340,10 +340,49 @@
     <!-- ============================================================
          按钮：工具条小按钮（暂停/恢复/取消等一排）
          ============================================================ -->
-    <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-        <Setter Property="Padding" Value="12,5"/>
+    <!-- 【2026-10-14 UI 重构】工具栏按钮：从"白底描边胶囊"改为**无边框幽灵按钮**。
+         改前问题（用户反馈「这几个按钮感觉突兀」）：5 个白底描边按钮排一排，
+         **视觉重量完全一样** —— 像 5 个同等重要的操作堆在一起；而实际上
+         「暂停全部」是主操作、「打开下载目录」是次要，不该同等对待。
+         改后：透明底无边框，**悬停才浮出淡灰圆角块** —— 与面包屑按钮
+         （BreadcrumbButton）同一套语言。这也是 Linear / Motrix 的做法：
+         工具类操作靠"图标+文字+悬停反馈"表达，不靠常驻边框。 -->
+    <Style x:Key="ToolButton" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="12"/>
-        <Setter Property="Margin" Value="0,0,8,0"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Margin" Value="0,0,4,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="6"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          RecognizesAccessKey="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SurfaceAltBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ============================================================
