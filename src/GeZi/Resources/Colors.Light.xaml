@@ -31,6 +31,13 @@
     <Color x:Key="SurfaceAltColor">#FFF9FAFC</Color>
     <Color x:Key="SurfaceSunkenColor">#FFF1F3F8</Color>
 
+    <!-- ────────── 实心主按钮（2026-10-14 去蓝新增）
+         浅色主题：深灰底 + 白字。刻意用中性深灰而非品牌蓝（参考 Motrix：全站零彩色）。
+         ⚠️ 不能用 TextPrimaryColor 当按钮底 —— 深色主题下它是浅色，配白字会"看不见"。
+            所以这里单独开一对**主题安全**的令牌：两套主题各自给出合适的底/字。 -->
+    <Color x:Key="SolidBtnBgColor">#FF1F2430</Color>
+    <Color x:Key="SolidBtnFgColor">#FFFFFFFF</Color>
+
     <!-- ────────── 主色（靛蓝，全应用唯一强调色） -->
     <Color x:Key="PrimaryColor">#FF4F6BED</Color>
     <Color x:Key="PrimaryHoverColor">#FF3D57D6</Color>

@@ -30,6 +30,12 @@
     <!-- Sunken = 比 AppBg 更暗（凹槽感），亮色版它是"比底色略深" → 这里更深 -->
     <Color x:Key="SurfaceSunkenColor">#FF15181D</Color>
 
+    <!-- ────────── 实心主按钮（2026-10-14 去蓝新增）
+         深色主题：**浅灰底 + 深字**（与浅色主题反向，保证对比度）。
+         ⚠️ 两份色源的键名必须逐一对齐，缺一个深色下就会出现刺眼白块。 -->
+    <Color x:Key="SolidBtnBgColor">#FFE8EAF0</Color>
+    <Color x:Key="SolidBtnFgColor">#FF1A1D23</Color>
+
     <!-- ────────── 主色（靛蓝，全应用唯一强调色；深底上提亮约 6%） -->
     <Color x:Key="PrimaryColor">#FF5B74F0</Color>
     <Color x:Key="PrimaryHoverColor">#FF6D83F3</Color>

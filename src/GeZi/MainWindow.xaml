@@ -399,14 +399,9 @@
                                 <Style TargetType="Border" BasedOn="{StaticResource Card}">
                                     <Style.Triggers>
                                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
-                                            <Setter Property="Effect">
-                                                <Setter.Value>
-                                                    <DropShadowEffect Color="{DynamicResource PrimaryColor}"
-                                                                      BlurRadius="12" ShadowDepth="0"
-                                                                      Direction="0" Opacity="0.18"/>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <!-- 【2026-10-14 去蓝】聚焦反馈从"边框变蓝 + 蓝色发光"改成
+                                                 "边框加深"—— 克制、不引入彩色。发光也去掉（那是 AI 味来源）。 -->
+                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
                                         </Trigger>
                                     </Style.Triggers>
                                 </Style>
@@ -425,7 +420,7 @@
                                      用户原话：「这个位置的星星我是让放你这个位置的放在按钮」。 -->
                             <Grid IsHitTestVisible="False" Margin="-18">
                                 <Path Data="{StaticResource IconSparkle}"
-                                      Fill="{DynamicResource PrimaryBrush}"
+                                      Fill="{DynamicResource TextPrimaryBrush}"
                                       Opacity="0.30"
                                       Width="11" Height="11" Stretch="Uniform"
                                       HorizontalAlignment="Left" VerticalAlignment="Bottom"
@@ -468,12 +463,16 @@
                                              DataObject.Pasting="OnLinkBoxPasting"
                                              ToolTip="支持含提取码的完整链接，也可只粘贴链接再单独填提取码">
                                         <TextBox.Style>
+                                            <!-- 【2026-10-14 修正】上一版按 Raycast 做成"输入框完全无边框无底色"，
+                                                 结果在白卡片上**彻底看不见** —— 用户反馈「解析框不见了」，
+                                                 根本不知道那里能输入。可用性 > 风格。
+                                                 ✅ 折中：保留"无硬边框"（不画 1px 灰线，那是 AI 味的来源），
+                                                 改用**极淡的凹陷底色**（SurfaceSunken）表达"这里可以输入"。
+                                                 配合外层 SharePanel 聚焦时边框变主色 + 淡光。 -->
                                             <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBox}">
-                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
                                                 <Setter Property="BorderBrush" Value="Transparent"/>
                                                 <Setter Property="BorderThickness" Value="0"/>
-                                                <!-- 聚焦时靠外层容器的边框变主色来表达（见下方 SharePanel 的 Trigger），
-                                                     所以这里不再自己画聚焦框，避免双重框。 -->
                                                 <Setter Property="VerticalContentAlignment" Value="Center"/>
                                             </Style>
                                         </TextBox.Style>
@@ -664,7 +663,7 @@
                                                      Background="Transparent" Padding="6,0,7,0"
                                                      VerticalContentAlignment="Center"
                                                      FontSize="12.5"
-                                                     CaretBrush="{DynamicResource PrimaryBrush}"
+                                                     CaretBrush="{DynamicResource TextPrimaryBrush}"
                                                      ToolTip="按名称筛选当前目录的文件/文件夹"/>
                                         </Grid>
                                     </Border>
@@ -836,7 +835,7 @@
                                              改前两级都是三级灰字，主次不分、整体发虚。 -->
                                         <Path Data="{StaticResource IconCloudOff}" Stretch="Uniform" Width="64"
                                               Height="64" HorizontalAlignment="Center" Margin="0,0,0,16"
-                                              Stroke="{DynamicResource PrimarySoftBrush}" StrokeThickness="1.5"
+                                              Stroke="{DynamicResource TextTertiaryBrush}" StrokeThickness="1.5"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                               StrokeLineJoin="Round"/>
                                         <TextBlock x:Name="FileEmptyText" Text="还没有内容"
@@ -1043,7 +1042,7 @@
                                                                     <DataTrigger Binding="{Binding State}"
                                                                                  Value="Downloading">
                                                                         <Setter Property="Fill"
-                                                                                Value="{DynamicResource PrimaryBrush}"/>
+                                                                                Value="{DynamicResource TextPrimaryBrush}"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding State}"
                                                                                  Value="Completed">
@@ -1118,7 +1117,7 @@
                                                 <TextBlock Grid.Column="1" Text="{Binding SpeedText}"
                                                            Margin="12,0,0,0" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" MinWidth="72"
-                                                           Foreground="{DynamicResource PrimaryBrush}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
                                                            Style="{StaticResource NumericText}"/>
                                                 <TextBlock Grid.Column="2" Text="{Binding DoneText}"
                                                            Margin="12,0,0,0" VerticalAlignment="Center"
@@ -1141,7 +1140,7 @@
                                      引导 12px TertiaryText。两个空状态必须一致，否则一精一糙。 -->
                                 <Path Data="{StaticResource IconActivity}" Stretch="Uniform" Width="64"
                                       Height="64" HorizontalAlignment="Center" Margin="0,0,0,16"
-                                      Stroke="{DynamicResource PrimarySoftBrush}" StrokeThickness="1.5"
+                                      Stroke="{DynamicResource TextTertiaryBrush}" StrokeThickness="1.5"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"/>
                                 <TextBlock Text="暂无下载任务" Margin="0,0,0,6" HorizontalAlignment="Center"
@@ -1251,7 +1250,7 @@
                                         </StackPanel>
                                         <StackPanel Margin="0,0,12,0">
                                             <Border x:Name="ThemeSwatchPrimary" Width="40" Height="40" CornerRadius="8"
-                                                    Background="{DynamicResource PrimaryBrush}"/>
+                                                    Background="{DynamicResource TextPrimaryBrush}"/>
                                             <TextBlock Text="主色" Style="{StaticResource TertiaryText}"
                                                        FontSize="11" HorizontalAlignment="Center"
                                                        Margin="0,6,0,0"/>
@@ -1545,7 +1544,7 @@
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                 <Path Data="{StaticResource IconQr}" Stretch="Uniform"
                                                       Width="16" Height="16" VerticalAlignment="Center"
-                                                      Stroke="{DynamicResource PrimaryBrush}"
+                                                      Stroke="{DynamicResource TextPrimaryBrush}"
                                                       StrokeThickness="1.8"
                                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                                                 <TextBlock Text="扫码登录"
@@ -1798,19 +1797,19 @@
                                              不吃点击、透明度压低，不与正文抢注意力。 -->
                                         <Grid IsHitTestVisible="False">
                                             <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource PrimaryBrush}"
+                                                  Fill="{DynamicResource TextPrimaryBrush}"
                                                   Opacity="0.62"
                                                   Width="30" Height="30" Stretch="Uniform"
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   Margin="0,0,18,0"/>
                                             <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource PrimaryBrush}"
+                                                  Fill="{DynamicResource TextPrimaryBrush}"
                                                   Opacity="0.46"
                                                   Width="16" Height="16" Stretch="Uniform"
                                                   HorizontalAlignment="Right" VerticalAlignment="Top"
                                                   Margin="0,14,60,0"/>
                                             <Path Data="{StaticResource IconSparkle}"
-                                                  Fill="{DynamicResource PrimaryBrush}"
+                                                  Fill="{DynamicResource TextPrimaryBrush}"
                                                   Opacity="0.36"
                                                   Width="11" Height="11" Stretch="Uniform"
                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -1818,7 +1817,7 @@
                                         </Grid>
                                         <StackPanel>
                                             <TextBlock Text="小贴士" FontSize="12" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource PrimaryBrush}"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
                                                        Margin="0,0,0,6"/>
                                             <TextBlock Style="{StaticResource ProseText}"
                                                        Text="· 登录信息经系统加密后存在本地配置里，不会上传到任何服务器。"/>
@@ -1882,7 +1881,7 @@
                                         VerticalAlignment="Center">
                                 <Path Data="{StaticResource IconHistory}" Stretch="Uniform"
                                       Width="17" Height="17" VerticalAlignment="Center"
-                                      Stroke="{DynamicResource PrimaryBrush}" StrokeThickness="1.8"
+                                      Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.8"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"/>
                                 <TextBlock Text="解析历史" Margin="9,0,0,0" FontSize="15"

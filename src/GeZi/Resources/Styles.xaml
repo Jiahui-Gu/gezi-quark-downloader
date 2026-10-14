@@ -121,11 +121,15 @@
     <!-- ============================================================
          按钮：主色实心
          ============================================================ -->
+    <!-- 【2026-10-14 全站去蓝】主按钮从实心靛蓝改成**深灰底白字**。
+         参考 Motrix：全站几乎零彩色，主操作用深色而非品牌蓝。
+         保留"唯一实心"的层级（与描边/幽灵按钮区分），只是把颜色从蓝换成中性深灰。
+         ⚠️ TextOnPrimaryBrush 在深色主题下仍是白字，正好复用，不用新增画笔。 -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextOnPrimaryBrush}"/>
-        <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SolidBtnFgBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SolidBtnBgBrush}"/>
         <Setter Property="Padding" Value="16,7"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -135,7 +139,7 @@
                     <Grid>
                         <!-- 焦点环：默认隐藏，键盘聚焦时才出现（不改变按钮本体几何） -->
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource PrimarySoftBrush}"
+                                BorderBrush="{DynamicResource BorderStrongBrush}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -146,13 +150,18 @@
                         </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- 悬停/按下用中性灰的明暗变化（不再用蓝色系）。
+                             BorderStrong 比 TextPrimary 略亮 = 悬停提亮；
+                             TextSecondary 更深 = 按下压暗。深浅主题下都是灰阶，不引入彩色。 -->
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryHoverBrush}"/>
+                                    Value="{DynamicResource SolidBtnBgBrush}"/>
+                                    <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryPressedBrush}"/>
+                                    Value="{DynamicResource SolidBtnBgBrush}"/>
+                                    <Setter TargetName="Bd" Property="Opacity" Value="0.72"/>
                         </Trigger>
                         <!--
                             Focus 态：此前完全缺失 —— 用键盘 Tab 走一遍，界面上
@@ -196,7 +205,7 @@
                 <ControlTemplate TargetType="Button">
                     <Grid>
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource PrimarySoftBrush}"
+                                BorderBrush="{DynamicResource BorderStrongBrush}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -213,11 +222,11 @@
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceAltBrush}"/>
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
@@ -295,7 +304,7 @@
                 <ControlTemplate TargetType="Button">
                     <Grid>
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource PrimarySoftBrush}"
+                                BorderBrush="{DynamicResource BorderStrongBrush}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -309,11 +318,11 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceAltBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
@@ -367,11 +376,11 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceAltBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -385,7 +394,7 @@
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="Padding" Value="6,2"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
@@ -419,7 +428,7 @@
                             <TextBlock x:Name="Go" Grid.Column="1" Text="打开 →"
                                        Margin="10,0,2,0" VerticalAlignment="Center"
                                        FontSize="11.5" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource PrimaryBrush}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
                                        Opacity="0"/>
                         </Grid>
                     </Border>
@@ -431,7 +440,7 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -499,7 +508,7 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -569,8 +578,8 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushStrong}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="10,7"/>
-        <Setter Property="CaretBrush" Value="{DynamicResource PrimaryBrush}"/>
-        <Setter Property="SelectionBrush" Value="{DynamicResource PrimarySoftBrush}"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource SurfaceSunkenBrush}"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <!--
             ⚠️ 单行输入框必须显式写 Disabled，不能沿用 WPF 默认的 Hidden。
@@ -609,7 +618,7 @@
                         <!-- 聚焦：边框变主色 + 外发光 -->
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter TargetName="Bd" Property="Effect">
                                 <Setter.Value>
                                     <DropShadowEffect Color="#4F6BED" BlurRadius="10"
@@ -737,7 +746,7 @@
                         </Trigger>
                         <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -761,12 +770,12 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -802,14 +811,14 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Box" Property="Background"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter TargetName="Box" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Box" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>
@@ -827,7 +836,7 @@
         <Setter Property="Height" Value="6"/>
         <Setter Property="Minimum" Value="0"/>
         <Setter Property="Maximum" Value="100"/>
-        <Setter Property="Background" Value="{DynamicResource PrimaryLightBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -889,9 +898,9 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -974,10 +983,10 @@
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceBrush}"/>
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter TargetName="Bd" Property="Margin" Value="0,0,0,-1"/>
                             <Setter Property="Foreground"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -1018,7 +1027,7 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1059,7 +1068,7 @@
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceAltBrush}"/>
                             <Setter TargetName="Ico" Property="Stroke"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <!-- 已暂停 → 换成播放三角，并染成警示色，一眼看出"点它能继续" -->
                         <DataTrigger Binding="{Binding State}" Value="Paused">
@@ -1104,13 +1113,13 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimarySoftBrush}"/>
+                                    Value="{DynamicResource BorderStrongBrush}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource PrimaryBrush}"/>
+                                    Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1205,7 +1214,7 @@
                 <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{DynamicResource PrimaryLightBrush}"/>
+                <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -1265,7 +1274,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45"/>
@@ -1431,10 +1440,12 @@
                         <Border x:Name="Bd" CornerRadius="8" Background="Transparent"
                                 BorderThickness="1" BorderBrush="Transparent">
                             <Grid>
-                                <!-- 选中：左侧 3px 主色竖条 -->
+                                <!-- 选中：左侧 3px 指示竖条。
+                                     【2026-10-14 去蓝】从主色蓝改成 TextPrimary（深灰/黑）——
+                                     蓝色只留给 Logo。指示性靠这条深色竖线 + 底色 + 粗体共同表达。 -->
                                 <Border x:Name="SelBar" Width="3" CornerRadius="2"
                                         HorizontalAlignment="Left" Margin="2,7"
-                                        Background="{DynamicResource PrimaryBrush}"
+                                        Background="{DynamicResource TextPrimaryBrush}"
                                         Visibility="Collapsed"/>
                                 <ContentPresenter Margin="14,10" VerticalAlignment="Center"/>
                             </Grid>
@@ -1442,7 +1453,7 @@
                         <!-- 焦点环：与 Bd 同几何（不设 Margin），只用描边区分，
                              避免出现"外面套一圈更大的框" -->
                         <Border x:Name="FocusRing" CornerRadius="8"
-                                BorderBrush="{DynamicResource PrimaryBrush}"
+                                BorderBrush="{DynamicResource TextPrimaryBrush}"
                                 BorderThickness="1.5" Visibility="Collapsed"
                                 IsHitTestVisible="False"/>
                     </Grid>
@@ -1452,10 +1463,16 @@
                                     Value="{DynamicResource SurfaceAltBrush}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
+                            <!-- 【2026-10-14 去 AI 味】选中底色从 PrimaryLightBrush（淡蓝块）
+                                 改成 SurfaceSunkenBrush（中性浅灰）。
+                                 为什么：白底 + 淡蓝选中块 + 蓝色图标是"AI 生成 UI"的典型配方，
+                                 用户一眼就认出"模板感"。改成中性灰后，蓝色只出现在左侧那条
+                                 3px 竖线上 —— 克制、有指示性、不抢戏（VSCode / Linear 的做法）。
+                                 文字用 TextPrimary + SemiBold 表达"被选中"，不再靠变蓝。 -->
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryLightBrush}"/>
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
                             <Setter TargetName="SelBar" Property="Visibility" Value="Visible"/>
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
                         <!--
@@ -1524,15 +1541,16 @@
          固定放在侧栏底部；容量用进度条而不是一串数字 —— 数字要读，
          进度条一眼就知道。占用率越高颜色越警示（状态色编码）。
          ============================================================ -->
-    <!-- 【2026-10-14 UI 改造】账号卡瘦身：头像 34 → 28px（CornerRadius 同步 17 → 14）。
-         整卡目标 56px 高。⚠️ 改这里的尺寸，MainWindow.xaml 里 AvatarImage 的
-         Image.Clip / EllipseGeometry 的 Center 与 Radius **必须同步改成 14**，
-         否则方图会盖住圆形边框的角（Border 不会把子元素裁到圆角里）。 -->
+    <!-- 【2026-10-14 去 AI 味】头像底色从 PrimaryBrush（实心蓝圆）改成
+         SurfaceSunkenBrush（中性浅灰圆）+ 文字 TextPrimary。
+         为什么：左下角一个实心蓝圆是整页最抢眼的色块，但账号卡的重要性排不上号
+         （"AI味"诊断里指出"控件比例失调"）。改成中性后蓝色彻底从侧栏区域消失，
+         只留在该用的地方（主按钮、聚焦态、选中竖线）。 -->
     <Style x:Key="AvatarBorder" TargetType="Border">
         <Setter Property="Width" Value="28"/>
         <Setter Property="Height" Value="28"/>
         <Setter Property="CornerRadius" Value="14"/>
-        <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
     </Style>
 
@@ -1585,9 +1603,12 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
+                            <!-- 选中 = 白底（浮起）+ 深色粗体字，**不再把文字变蓝**。
+                                 【2026-10-14 去 AI 味】与侧栏选中态同一套逻辑：
+                                 蓝色越少越不像模板。指示性靠"浮起的白底 + 加粗"表达。 -->
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource SurfaceBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -1601,7 +1622,7 @@
          提示条
          ============================================================ -->
     <Style x:Key="InfoBanner" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource PrimaryLightBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
         <Setter Property="CornerRadius" Value="10"/>
         <Setter Property="Padding" Value="12,10"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -1622,7 +1643,7 @@
         <Setter Property="Width" Value="22"/>
         <Setter Property="Height" Value="22"/>
         <Setter Property="Stretch" Value="Uniform"/>
-        <Setter Property="Stroke" Value="{DynamicResource PrimaryBrush}"/>
+        <Setter Property="Stroke" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="StrokeThickness" Value="2"/>
         <Setter Property="StrokeStartLineCap" Value="Round"/>
         <Setter Property="StrokeEndLineCap" Value="Round"/>

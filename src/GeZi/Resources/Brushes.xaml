@@ -13,6 +13,10 @@
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="{DynamicResource SurfaceAltColor}"/>
     <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{DynamicResource SurfaceSunkenColor}"/>
 
+    <!-- ────────── 实心主按钮（主题安全：浅色深底白字 / 深色浅底深字） -->
+    <SolidColorBrush x:Key="SolidBtnBgBrush" Color="{DynamicResource SolidBtnBgColor}"/>
+    <SolidColorBrush x:Key="SolidBtnFgBrush" Color="{DynamicResource SolidBtnFgColor}"/>
+
     <!-- ────────── 主色 -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}"/>
     <SolidColorBrush x:Key="PrimaryHoverBrush" Color="{DynamicResource PrimaryHoverColor}"/>
