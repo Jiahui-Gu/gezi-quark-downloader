@@ -6517,37 +6517,26 @@ namespace GeZi
 
         // ================= 外观主题（2026-10-04 新增） =================
 
-        /// <summary>主题切换「圆形揭示」的覆盖层（懒建，整窗最顶层）。</summary>
-        private Grid _themeRevealLayer;
         /// <summary>连续点击时只让最后一次收尾。</summary>
         private int _themeRevealSeq;
-        /// <summary>连续点击主题时的序号：只有最后一次才启动波纹（前面的滑块动画照常播）。</summary>
-        private int _themeSwitchSeq;
-
-        /// <summary>取根容器（Content 是 Border，里面那层 Grid 才是真正的宿主）。</summary>
-        private Panel GetRootPanel(FrameworkElement rootEl)
-        {
-            var p = rootEl as Panel;
-            if (p != null) return p;
-            var b = rootEl as Border;
-            if (b != null) return b.Child as Panel;
-            var d = rootEl as Decorator;
-            if (d != null) return d.Child as Panel;
-            return null;
-        }
 
         /// <summary>
         /// 把当前视觉树抓成位图。
         /// ⚠️ 用 RenderTargetBitmap（同步绘制视觉树），不用屏幕截图 ——
         ///    不会把别的程序拍进来，也不受窗口遮挡/最小化影响。
         /// </summary>
-        private static RenderTargetBitmap CaptureRoot(FrameworkElement rootEl)
+        private static RenderTargetBitmap CaptureRoot(FrameworkElement rootEl, double scale = 1.0)
         {
+            // ⚠️ scale < 1 是为了**降低抓图耗时**：RenderTargetBitmap.Render 在 UI 线程同步执行，
+            //    全分辨率（1550×975）实测要 ~100ms，会把滑块动画一起冻住，
+            //    用户感觉"点了半天才动"。0.6 倍把渲染量降到 36%，耗时 ~30ms。
+            //    代价：过渡期间圆外的旧图会略糊（只有 420ms，且注意力在圆边缘，实测可接受）。
             var dpi = VisualTreeHelper.GetDpi(rootEl);
-            int w = Math.Max(1, (int)Math.Ceiling(rootEl.ActualWidth * dpi.DpiScaleX));
-            int h = Math.Max(1, (int)Math.Ceiling(rootEl.ActualHeight * dpi.DpiScaleY));
-            var bmp = new RenderTargetBitmap(
-                w, h, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            double sx = dpi.DpiScaleX * scale;
+            double sy = dpi.DpiScaleY * scale;
+            int w = Math.Max(1, (int)Math.Ceiling(rootEl.ActualWidth * sx));
+            int h = Math.Max(1, (int)Math.Ceiling(rootEl.ActualHeight * sy));
+            var bmp = new RenderTargetBitmap(w, h, 96 * sx, 96 * sy, PixelFormats.Pbgra32);
             bmp.Render(rootEl);
             return bmp;
         }
@@ -6572,18 +6561,11 @@ namespace GeZi
         /// </summary>
         private void PlayThemeReveal(FrameworkElement origin, AppTheme want, Action afterApply)
         {
-            var rootEl = Content as FrameworkElement;
-            var host = rootEl == null ? null : GetRootPanel(rootEl);
-            double w = rootEl == null ? 0 : rootEl.ActualWidth;
-            double h = rootEl == null ? 0 : rootEl.ActualHeight;
+            var rootEl = RootBorder as FrameworkElement;
+            if (rootEl == null || origin == null) { ThemeManager.SetTheme(want); afterApply(); return; }
 
-            // 尺寸/宿主不满足 → 退化成"直接切换"（不能因为动画把主题切换搞失败）
-            if (host == null || origin == null || w < 1 || h < 1)
-            {
-                ThemeManager.SetTheme(want);
-                afterApply();
-                return;
-            }
+            double w = rootEl.ActualWidth, h = rootEl.ActualHeight;
+            if (w < 1 || h < 1) { ThemeManager.SetTheme(want); afterApply(); return; }
 
             Point center;
             try
@@ -6600,49 +6582,20 @@ namespace GeZi
                 Math.Pow(Math.Max(center.X, w - center.X), 2) +
                 Math.Pow(Math.Max(center.Y, h - center.Y), 2));
 
-            // ① 旧快照
-            var oldBmp = CaptureRoot(rootEl);
+            // ① 旧快照垫底（圆外露出来的就是它）
+            ThemeOldSnapshot.Source = CaptureRoot(rootEl, 0.6);
+            ThemeOldSnapshot.Visibility = Visibility.Visible;
 
-            // ② 换肤 + 强制布局，让新资源真正落到视觉树上，再抓新快照
-            // ⚠️ UpdateThemeHint 也要在抓图之前：否则新快照里还留着旧主题的提示文案
-            //    （比如已经切到深色，图上却写着「始终使用浅色界面」）。
+            // ② 换肤 + 提示文案 + 强制布局
             ThemeManager.SetTheme(want);
             UpdateThemeHint();
             rootEl.UpdateLayout();
-            var newBmp = CaptureRoot(rootEl);
 
-            // ③ 覆盖层
-            if (_themeRevealLayer == null)
-            {
-                _themeRevealLayer = new Grid { IsHitTestVisible = false };
-                Panel.SetZIndex(_themeRevealLayer, 99999);
-                var g = host as Grid;
-                if (g != null)
-                {
-                    Grid.SetRow(_themeRevealLayer, 0);
-                    Grid.SetRowSpan(_themeRevealLayer, Math.Max(1, g.RowDefinitions.Count));
-                }
-                host.Children.Add(_themeRevealLayer);
-            }
-            _themeRevealLayer.Children.Clear();
-
-            var oldImg = new Image
-            {
-                Source = oldBmp,
-                Stretch = Stretch.Fill,
-                IsHitTestVisible = false,
-            };
-            var newImg = new Image
-            {
-                Source = newBmp,
-                Stretch = Stretch.Fill,
-                IsHitTestVisible = false,
-            };
-            // 裁剪圆：坐标系与 Image 一致（DIP）
+            // ③ 真实界面加圆形 Clip（半径 0 → 圆外立刻露出旧图）
+            // ⚠️ 用 Clip 而不是"覆盖层 + 双图"：真实 UI 一直在渲染，
+            //    分段控件的滑块动画可以继续滑，不会被快照冻在旧位置。
             var clip = new EllipseGeometry(center, 0, 0);
-            newImg.Clip = clip;
-            _themeRevealLayer.Children.Add(oldImg);
-            _themeRevealLayer.Children.Add(newImg);
+            rootEl.Clip = clip;
 
             // ④ 动画：只放大裁剪圆
             int my = ++_themeRevealSeq;
@@ -6652,9 +6605,11 @@ namespace GeZi
             var ry = new DoubleAnimation(0, maxR, dur) { EasingFunction = ease };
             rx.Completed += (s, e) =>
             {
-                if (my != _themeRevealSeq) return;   // 期间又切过 → 让最后一次收尾
+                if (my != _themeRevealSeq) return;
                 try { afterApply(); } catch { }
-                if (_themeRevealLayer != null) _themeRevealLayer.Children.Clear();
+                rootEl.Clip = null;
+                ThemeOldSnapshot.Visibility = Visibility.Collapsed;
+                ThemeOldSnapshot.Source = null;
             };
             clip.BeginAnimation(EllipseGeometry.RadiusXProperty, rx);
             clip.BeginAnimation(EllipseGeometry.RadiusYProperty, ry);
@@ -6698,21 +6653,11 @@ namespace GeZi
                     return;
                 }
 
-                // 双快照 + 圆形揭示：SetTheme 在 PlayThemeReveal 内部、抓完旧图之后才执行
-                // 【2026-10-17 用户要求】先让分段控件的滑块滑完（SegmentedSlider = 200ms），
-                // 再启动波纹。否则覆盖层一盖，滑块就被冻在旧位置 ——
-                // 看起来像"卡住不动，等波纹扩散完才瞬间跳过去"。
-                // 延迟 215ms（略大于 200ms 的滑动时长），期间界面完全不动、只有滑块在滑。
-                var origin = sender as FrameworkElement;
-                int my = ++_themeSwitchSeq;
-                var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(215) };
-                timer.Tick += (s2, e2) =>
-                {
-                    timer.Stop();
-                    if (my != _themeSwitchSeq) return;   // 期间又点过 → 让最后一次来播
-                    PlayThemeReveal(origin, want, persist);
-                };
-                timer.Start();
+                // 【2026-10-17 用户反馈「开始扩散还是太晚」→ **不再等滑块**，点击就扩散。
+                // 现在唯一的前置耗时是抓旧图（0.6 倍 ≈ 30ms，基本感知不到）；
+                // 抓完立刻换肤 + 上圆形 Clip，滑块与扩散**同时进行** ——
+                // Clip 方案下真实 UI 一直在渲染，滑块不会被冻住。
+                PlayThemeReveal(sender as FrameworkElement, want, persist);
             }
             catch (Exception ex)
             {

@@ -21,7 +21,12 @@
                             UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <Border BorderBrush="{DynamicResource BorderBrushStrong}" BorderThickness="1">
+    <!-- 【2026-10-17】主题切换「圆形揭示」：旧画面垫底，真实界面加圆形 Clip 盖在上面。
+         这样圆外露旧图、圆内是**实时的新 UI** —— 分段控件的滑块能继续滑，不被快照冻住。 -->
+    <Grid>
+        <Image x:Name="ThemeOldSnapshot" Stretch="Fill" IsHitTestVisible="False"
+               Visibility="Collapsed"/>
+        <Border x:Name="RootBorder" BorderBrush="{DynamicResource BorderBrushStrong}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36"/>
@@ -2239,4 +2244,5 @@
             </Grid>
         </Grid>
     </Border>
+    </Grid>
 </Window>
