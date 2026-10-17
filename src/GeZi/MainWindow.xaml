@@ -976,16 +976,8 @@
                                     <TextBlock Text="获取直链" Margin="7,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <!-- 【用户要求】「标红的是后方括号内的字」——
-                                 curl / aria2c / Motrix 界面 三种格式会把**登录凭证（UA + Cookie）**一起写进
-                                 导出文件，属于敏感内容 → 红色标在**括号里的说明文字**上
-                                 （「（后三者自带 UA 与 Cookie）」），而不是命令名本身。 -->
-                            <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Style="{StaticResource TertiaryText}">
-                                <Run Text="获取直链后可导出为 纯直链 / curl 命令 / aria2c 命令 / Motrix 界面 "/><Run
-                                    Text="（后三者自带 UA 与 Cookie）"
-                                    Foreground="{DynamicResource DangerBrush}"/>
-                            </TextBlock>
+                            <!-- 【2026-10-17 用户要求】按钮右边那串「获取直链后可导出为 …」删掉。
+                                 这句已经移到「获取直链」对话框标题下方，主界面不再重复。 -->
                         </StackPanel>
                     </Grid>
                 </TabItem>
@@ -1758,6 +1750,25 @@
                                                     <Button x:Name="RecheckPlayerBtn" Content="重新检测"
                                                             Click="OnRecheckPlayer" Style="{StaticResource SecondaryButton}"/>
                                                 </StackPanel>
+
+                                                <!-- 【2026-10-17 用户要求】删掉长说明后卡片下方空了一大块，
+                                                     补一段软件介绍（开源 / 免费 / 无广告），顺带交代项目地址。 -->
+                                                <Border Margin="0,14,0,0" Padding="0,12,0,0"
+                                                        BorderBrush="{DynamicResource BorderBrushSoft}"
+                                                        BorderThickness="0,1,0,0">
+                                                    <StackPanel>
+                                                        <TextBlock Text="鸽子下载 · 开源夸克网盘直链下载器"
+                                                                   FontSize="12" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="免费、开源（GPL-3.0）、无广告、不上传任何数据。支持多连接分片下载、断点续传与边下边播。"
+                                                                   FontSize="11" Margin="0,5,0,0"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                                        <TextBlock Text="github.com/huaotem-bot/gezi-quark-downloader"
+                                                                   FontSize="11" Margin="0,4,0,0"
+                                                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                                    </StackPanel>
+                                                </Border>
                                             </StackPanel>
                                         </Border>
 

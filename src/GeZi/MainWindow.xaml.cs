@@ -4843,9 +4843,15 @@ namespace GeZi
                 Orientation = System.Windows.Controls.Orientation.Horizontal,
                 Margin = new Thickness(0, 8, 0, 12),
             };
-            var openBtn = DialogChrome.SecondaryButton("打开");
-            var locateBtn = DialogChrome.SecondaryButton("定位");
-            var clearBtn = DialogChrome.DangerButton("清空记录");
+            // 【2026-10-17 用户要求】三个按钮「AI 味太浓」→ 改成透明背景的幽灵按钮。
+            // 只保留文字 + 悬停反馈；「清空记录」是破坏性操作，用**红字**而不是红底
+            // （红底实心块在这一排里视觉重量过重，且和旁边的白底描边不在一个体系）。
+            var ghostStyle = TryFindResource("GhostButton") as Style;
+            var openBtn = new Button { Content = "打开", Style = ghostStyle };
+            var locateBtn = new Button { Content = "定位", Style = ghostStyle };
+            var clearBtn = new Button { Content = "清空记录", Style = ghostStyle };
+            var clearDanger = TryFindResource("DangerBrush") as Brush;
+            if (clearDanger != null) clearBtn.Foreground = clearDanger;
             bar.Children.Add(openBtn);
             locateBtn.Margin = new Thickness(8, 0, 0, 0);
             bar.Children.Add(locateBtn);
@@ -6510,6 +6516,109 @@ namespace GeZi
 
         // ================= 外观主题（2026-10-04 新增） =================
 
+        /// <summary>主题切换水波纹的覆盖层（懒建，整窗最顶层）。</summary>
+        private Canvas _themeRippleLayer;
+        /// <summary>连续点击时只让最后一次的换肤生效。</summary>
+        private int _themeRippleSeq;
+
+        /// <summary>取指定主题的「页面底色」—— 波纹用它，扩散完与背景无缝。</summary>
+        private static Color ThemeBgColor(bool dark)
+        {
+            try
+            {
+                var d = new ResourceDictionary
+                {
+                    Source = new Uri(
+                        dark ? "Resources/Colors.Dark.xaml" : "Resources/Colors.Light.xaml",
+                        UriKind.Relative)
+                };
+                if (d.Contains("AppBgColor")) return (Color)d["AppBgColor"];
+            }
+            catch { }
+            return dark ? Color.FromRgb(0x1A, 0x1D, 0x23) : Color.FromRgb(0xEB, 0xEE, 0xF5);
+        }
+
+        /// <summary>
+        /// 【2026-10-17 用户要求】切换主题时，从**被点的那个按钮**中心扩散一圈
+        /// 「新主题背景色」的水波纹，铺满整个窗口后再真正换肤 ——
+        /// 视觉上像水滴落入水面（Material You 主题切换的做法）。
+        /// ⚠️ 换肤必须放在动画完成后：波纹期间窗口还是旧色，圆是新色才看得见；
+        ///    换肤后圆与新背景同色，直接清掉不会闪。
+        /// </summary>
+        private void PlayThemeRipple(FrameworkElement origin, bool targetDark, Action apply)
+        {
+            Panel host = null;
+            if (Content is Panel p0) host = p0;
+            else
+            {
+                var b = Content as Border;
+                if (b != null) host = b.Child as Panel;
+            }
+            if (host == null || origin == null) { apply(); return; }
+
+            if (_themeRippleLayer == null)
+            {
+                _themeRippleLayer = new Canvas { IsHitTestVisible = false };
+                Panel.SetZIndex(_themeRippleLayer, 99999);
+                var g = host as Grid;
+                if (g != null)
+                {
+                    Grid.SetRow(_themeRippleLayer, 0);
+                    Grid.SetRowSpan(_themeRippleLayer, Math.Max(1, g.RowDefinitions.Count));
+                }
+                host.Children.Add(_themeRippleLayer);
+            }
+            _themeRippleLayer.Children.Clear();
+
+            Point center;
+            try
+            {
+                center = origin.TranslatePoint(
+                    new Point(origin.ActualWidth / 2, origin.ActualHeight / 2), host);
+            }
+            catch
+            {
+                center = new Point(host.ActualWidth / 2, host.ActualHeight / 2);
+            }
+
+            double w = host.ActualWidth, h = host.ActualHeight;
+            if (w < 1 || h < 1) { apply(); return; }
+
+            // 半径 = 从圆心到最远那个角的距离（保证铺满）
+            double maxR = Math.Sqrt(
+                Math.Pow(Math.Max(center.X, w - center.X), 2) +
+                Math.Pow(Math.Max(center.Y, h - center.Y), 2));
+
+            // ⚠️ 不能加 using System.Windows.Shapes —— 会和 System.IO.Path 撞名
+            var ellipse = new System.Windows.Shapes.Ellipse
+            {
+                Width = maxR * 2,
+                Height = maxR * 2,
+                Fill = new SolidColorBrush(ThemeBgColor(targetDark)),
+                IsHitTestVisible = false,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(0, 0),
+            };
+            Canvas.SetLeft(ellipse, center.X - maxR);
+            Canvas.SetTop(ellipse, center.Y - maxR);
+            _themeRippleLayer.Children.Add(ellipse);
+
+            int my = ++_themeRippleSeq;
+            var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+            var dur = TimeSpan.FromMilliseconds(420);
+            var sx = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
+            var sy = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
+            sx.Completed += (s, e) =>
+            {
+                if (my != _themeRippleSeq) return;   // 期间又切过 → 让最后一次收尾
+                try { apply(); } catch { }
+                if (_themeRippleLayer != null) _themeRippleLayer.Children.Clear();
+            };
+            var st = (ScaleTransform)ellipse.RenderTransform;
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
+        }
+
         /// <summary>
         /// 设置页「个性化」三选一切换。走独立处理器而不是 <see cref="OnSettingChanged"/>，
         /// 因为换主题**不需要**重建调度器 / 重读所有设置项 —— 那会顺带触发一串
@@ -6527,11 +6636,28 @@ namespace GeZi
 
             try
             {
-                ThemeManager.SetTheme(want);
-                _settings.Theme = want;
-                SettingsStore.Save(_settings);
-                UpdateThemeHint();
-                Log(ThemeLogText(want));
+                Action commit = () =>
+                {
+                    ThemeManager.SetTheme(want);
+                    _settings.Theme = want;
+                    SettingsStore.Save(_settings);
+                    UpdateThemeHint();
+                    Log(ThemeLogText(want));
+                };
+
+                // 目标明暗（选「跟随系统」时按当前系统判断）
+                bool targetDark = want == AppTheme.Dark
+                    || (want == AppTheme.System && ThemeManager.IsSystemDark());
+
+                // 明暗实际没变（例如 浅色 ↔ 跟随系统，而系统本来就是浅色）→ 不用播波纹
+                if (targetDark == ThemeManager.IsDarkEffective)
+                {
+                    commit();
+                    return;
+                }
+
+                // 从被点的选项中心扩散水波纹，铺满整个窗口后再换肤
+                PlayThemeRipple(sender as FrameworkElement, targetDark, commit);
             }
             catch (Exception ex)
             {
@@ -6568,9 +6694,9 @@ namespace GeZi
 
                 if (ThemeSystemRadio.IsChecked == true)
                 {
-                    bool sysDark = ThemeManager.IsSystemDark();
-                    ThemeHintText.Text = "跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。"
-                        + "（当前系统为" + (sysDark ? "深色" : "浅色") + "）";
+                    // 【2026-10-17 用户要求】去掉括号里的「（当前系统为浅色）」——
+                    // 选了「跟随系统」后当前是什么色，界面本身就是答案，这句是噪音。
+                    ThemeHintText.Text = "跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。";
                 }
                 else if (ThemeDarkRadio.IsChecked == true)
                 {
