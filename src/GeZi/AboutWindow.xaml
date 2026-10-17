@@ -92,15 +92,15 @@
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <!-- 版本号做成小徽章，比混在标语里清楚 -->
-                                    <Border Background="{DynamicResource PrimarySoftBrush}"
+                                    <Border Background="{DynamicResource SurfaceSunkenBrush}"
                                             CornerRadius="6" Padding="6,1,6,2" Margin="8,2,0,0"
                                             VerticalAlignment="Center">
                                         <TextBlock x:Name="VersionPillText" Text="v?"
                                                    FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource PrimaryBrush}"/>
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     </Border>
                                 </StackPanel>
-                                <TextBlock x:Name="VersionText" Text="夸克网盘 · 直链助手"
+                                <TextBlock Text="夸克网盘 · 直链助手"
                                            FontSize="11" Margin="0,5,0,0"
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                             </StackPanel>
@@ -166,19 +166,19 @@
 
                     <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字） -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button x:Name="RepoBtn" Click="OnRepoClick"
+                        <Button Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="12,6" FontSize="11"
                                 ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
-                            <TextBlock x:Name="RepoText" Text="开源地址"/>
+                            <TextBlock Text="开源地址"/>
                         </Button>
-                        <Button x:Name="BiliBtn" Click="OnBiliClick"
+                        <Button Click="OnBiliClick"
                                 AutomationProperties.Name="打开作者B站主页"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="12,6" FontSize="11" Margin="8,0,0,0"
                                 ToolTip="在浏览器中打开作者 B 站主页">
-                            <TextBlock x:Name="BiliText" Text="作者 B 站"/>
+                            <TextBlock Text="作者 B 站"/>
                         </Button>
                     </StackPanel>
 
@@ -208,7 +208,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <!-- ⚠️ 用真 Button 而不是 Border+MouseLeftButtonUp：
                                      Border 没有 automation peer，UIA 树里找不到（点不到也测不了）。 -->
-                                <Button x:Name="QrBtn" Click="OnQrClick"
+                                <Button Click="OnQrClick"
                                         Style="{StaticResource IconGhostButton}"
                                         Width="Auto" Height="Auto" Padding="0"
                                         VerticalAlignment="Center"
@@ -241,7 +241,7 @@
             <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
                     Padding="18,12">
-                <Button x:Name="OkBtn" Content="关闭" Click="OnCloseClick"
+                <Button Content="关闭" Click="OnCloseClick"
                         AutomationProperties.Name="关闭"
                         Style="{StaticResource PrimaryButton}"
                         HorizontalAlignment="Right" MinWidth="96"/>

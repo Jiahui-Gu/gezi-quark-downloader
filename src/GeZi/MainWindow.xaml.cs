@@ -3923,7 +3923,11 @@ namespace GeZi
             if (u.Progress != null)
             {
                 item.Percent = u.Progress.Percent;
-                item.Speed = u.Progress.Speed;
+                // 【2026-10-15 晚】暂停期间**冻结速度**：核心层仍会上报在途请求的残余速度
+                // （闸门式暂停，见 TaskItem.PauseRequested 注释），照收就会把刚置的 0
+                // 又拉回一个非零值 → 界面又变成"速度慢慢降"。用户要求暂停即时生效 → 不收。
+                // 进度（Percent/Done）照常更新：那是真实已下载字节，且暂停后本来就不再增长。
+                if (!keepPaused) item.Speed = u.Progress.Speed;
                 item.Done = u.Progress.Done;
                 item.Total = u.Progress.Total;
                 // 阶段说明（如「正在合并分片」）。非下载态一律清空，
@@ -4257,6 +4261,12 @@ namespace GeZi
                 //    没有这个标志的话下一帧就会把 Paused 覆盖掉（图标会来回跳）。
                 t.PauseRequested = true;
                 t.State = JobState.Paused;
+                // 【2026-10-15 晚 用户要求「暂停要立刻生效」】立刻把速度归零。
+                // 闸门式暂停的语义是"worker 跑完手上那一次读才阻塞"，所以在途请求还会回来
+                // 一点数据、核心层会继续上报 EWMA 渐降的速度；UI 若照单全收，用户看到的就是
+                // 「按了暂停、速度从 20MB/s 慢慢滑到 0」，以为没生效。
+                // 置 0 后配合 OnJobUpdate 里的冻结，界面**一按就**是「已暂停 / 0 B/s」。
+                t.Speed = 0;
                 Log("已暂停: " + t.Name);
             }
             else
@@ -4530,8 +4540,45 @@ namespace GeZi
 
         private void DeleteLocalFiles(string dest, string name)
         {
+            // 【2026-10-17】单轮删除存在竞态：CancelJob() 只是发信号，
+            // worker 可能还在退避重试/ReadAsync 中没退出 —— 删完文件它又把
+            // 分片文件、目标文件"复活"了（任务已从列表移除，下载器 finally
+            // 的清理也已跑完或不会跑）→ 残留永久留下，重开显示"可续传"。
+            // 改为与「取消」同款的多轮重试（每轮先删再查，最多 12 轮 ≈ 3 秒），
+            // 给 worker 留出退出时间后再确认删净。
             int deleted = 0, delayed = 0;
             var failed = new List<string>();
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                if (attempt > 0) Thread.Sleep(250);
+                deleted = 0;
+                delayed = 0;
+                failed = new List<string>();
+                DeleteRound(dest, out deleted, out delayed, failed);
+                if (failed.Count == 0 && delayed == 0)
+                    break;
+            }
+
+            // 日志尽量只有一行（用户要求：「日志上只会显示已成功删除本地文件XXX」）。
+            // 出问题时才追加说明 —— 那种情况必须让用户看到。
+            if (failed.Count == 0 && delayed == 0)
+            {
+                LogFromWorker("已成功删除本地文件「" + name + "」");
+            }
+            else
+            {
+                LogFromWorker(string.Format("已删除本地文件「{0}」{1}{2}",
+                    name,
+                    delayed > 0 ? "（" + delayed + " 项正被占用，已登记为重启后删除）" : "",
+                    failed.Count > 0 ? "，" + failed.Count + " 项失败：" + string.Join("；", failed) : ""));
+            }
+        }
+
+        /// <summary>删除本地文件的一轮尝试（删分片路径 + 目标文件 + 占用兜底）。</summary>
+        private void DeleteRound(string dest, out int deleted, out int delayed, List<string> failed)
+        {
+            deleted = 0;
+            delayed = 0;
 
             // 分片目录 + 续传元数据的清理。
             //
@@ -4579,20 +4626,6 @@ namespace GeZi
                     failed.Add(dest + " — 被其他程序占用，且登记重启删除失败（可能需要管理员权限）");
             }
             catch (Exception ex) { failed.Add(dest + " — " + ex.Message); }
-
-            // 日志尽量只有一行（用户要求：「日志上只会显示已成功删除本地文件XXX」）。
-            // 出问题时才追加说明 —— 那种情况必须让用户看到。
-            if (failed.Count == 0 && delayed == 0)
-            {
-                LogFromWorker("已成功删除本地文件「" + name + "」");
-            }
-            else
-            {
-                LogFromWorker(string.Format("已删除本地文件「{0}」{1}{2}",
-                    name,
-                    delayed > 0 ? "（" + delayed + " 项正被占用，已登记为重启后删除）" : "",
-                    failed.Count > 0 ? "，" + failed.Count + " 项失败：" + string.Join("；", failed) : ""));
-            }
         }
 
         /// <summary>
@@ -4836,10 +4869,8 @@ namespace GeZi
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DiagnosticsSnapshot>
             _diagLatest = new System.Collections.Concurrent.ConcurrentDictionary<string, DiagnosticsSnapshot>(
                 StringComparer.OrdinalIgnoreCase);
-        private DiagnosticsSnapshot _diagLast;
         private Window _diagWindow;
 
-        /// <summary>下载器诊断回调（在下载线程上执行，只做存储）。</summary>
         /// <summary>分类过滤谓词（供 ICollectionView 调用）。</summary>
         private bool TaskFilterPredicate(object o)
         {
@@ -4911,25 +4942,65 @@ namespace GeZi
         private void OnDiagnostics(DiagnosticsSnapshot snap)
         {
             if (snap == null) return;
+            // 【2026-10-15】必须先封送到 UI 线程，否则后面整段都是白干。
+            //
+            // `Diagnostics` 是裸 `Action<T>`：SegmentedDownloader 在**自己的主循环线程**里
+            // 直接调用它（每 5 秒一次）。这和进度回调不一样 —— 那个走 `IProgress<T>`，
+            // WPF 的 `Progress<T>` 会自动捕获 SynchronizationContext 并封送回 UI 线程。
+            //
+            // 而下面要写 TaskItem 的属性（ActiveConnections / WorkerCount），setter 会触发
+            // PropertyChanged → WPF 绑定引擎 → **只有创建绑定目标的那个线程（UI 线程）能碰它**。
+            // 在下载线程里调就抛「调用线程无法访问此对象」，然后被本方法外层 try 的
+            // `catch { }` 静默吞掉 ⇒ 任务行的「连接车道」永远不更新。
+            //
+            // 用户实测症状（2026-10-15）：内核日志和**诊断面板**都有「活跃/总连接」数字，
+            // 唯独任务行那条空着 —— 因为 `_diagLatest` 是 ConcurrentDictionary、写在异常之前，
+            // 只有"写 TaskItem"这一跳断掉。速度/进度一直正常，正因为它们走 IProgress。
+            //
+            // ⚠️ 这是 `3cfd4ae`（Ketch 式「连接车道」）引入时就带着的缺陷：在它之前
+            //    OnDiagnostics 只写线程安全的字典，从不碰任何 UI 对象。
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action<DiagnosticsSnapshot>(OnDiagnostics), snap);
+                return;
+            }
             try
             {
-                _diagLast = snap;
                 string key = string.IsNullOrEmpty(snap.Name) ? "(未命名)" : snap.Name;
                 _diagLatest[key] = snap;
                 
                 // 【2026-10-14】把连接数喂给任务行，驱动 Ketch 式「连接车道」。
-                // 按文件名匹配任务（快照里的 Name 就是文件名）。
-                if (!string.IsNullOrEmpty(snap.Name))
+                //
+                // 【2026-10-15 修复】匹配键必须用**目标文件完整路径**，不能用文件名。
+                //   旧写法 `t.Name == snap.Name` 拿的是"网盘原始文件名"对"落盘文件名"，
+                //   而落盘名经过 SanitizeFileName + UniquePath 加工，经常不等：
+                //     · 同名文件已存在 → 加 ` (1)` 后缀（实测用户 32 条历史里有 2 条如此）
+                //     · 含 \ / : * ? " < > | → 被替换成 `_`
+                //   对不上 ⇒ 车道永远不亮（20 格全灰、没有 "12/16 连接" 文字）。
+                //   完整路径在并发任务之间天然唯一（DownloadScheduler 的同路径互斥也用它当 key）。
+                //   名字匹配保留为兜底，不破坏任何原本能工作的场景。
+                TaskItem hit = null;
+                foreach (var t in _tasks)
+                {
+                    if (t == null || t.Job == null) continue;
+                    if (!string.IsNullOrEmpty(snap.Dest)
+                        && string.Equals(t.Job.Dest, snap.Dest, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hit = t;
+                        break;
+                    }
+                }
+                if (hit == null && !string.IsNullOrEmpty(snap.Name))
                 {
                     foreach (var t in _tasks)
                     {
-                        if (t != null && t.Name == snap.Name)
-                        {
-                            t.ActiveConnections = snap.ActiveConnections;
-                            t.WorkerCount = snap.WorkerCount;
-                            break;
-                        }
+                        if (t != null && t.Name == snap.Name) { hit = t; break; }
                     }
+                }
+                if (hit != null)
+                {
+                    hit.ActiveConnections = snap.ActiveConnections;
+                    hit.WorkerCount = snap.WorkerCount;
                 }
             }
             catch { }
@@ -6701,7 +6772,8 @@ namespace GeZi
 
         // ---------------- 登录 ----------------
 
-        private void OnLoginClick(object sender, RoutedEventArgs e) => Tabs.SelectedIndex = 3;
+        // 【2026-10-17】原来的 OnLoginClick（只是 Tabs.SelectedIndex = 3）已随「登录」按钮一起删除：
+        // 那个按钮和左侧「获取二维码」、下方「导入 Cookie」重复，用户反馈「没有任何作用」。
 
         /// <summary>
         /// 打开账号管理弹窗：列出本机保存的账号，可一键切换 / 删除，或去扫码登录新账号。
@@ -6927,13 +6999,31 @@ namespace GeZi
             };
         }
 
+        /// <summary>
+        /// 当前扫码流程的取消源。点「获取二维码」或「刷新」都会新建一个并取消上一个 ——
+        /// 否则旧轮询还在跑：它一旦过期就会调 HideQrImage() 把**新**二维码收起来。
+        /// </summary>
+        private CancellationTokenSource _qrFlowCts;
+
         private async void OnQrLogin(object sender, RoutedEventArgs e)
         {
-            // 【2026-10-03】原来的「刷新二维码」按钮已删（用户反馈"多余"）——
-            // 它和「获取二维码」本来就是同一个处理函数，点哪个都是重新取一张。
-            // 现在只留「获取二维码」：过期时提示用户再点一次即可。
+            // 【2026-10-17】「刷新」按钮又加回来了（用户要求）：它和「获取二维码」共用本方法，
+            // 点哪个都是重新取一张。区别只是语义 —— 获取=第一次，刷新=重取。
             var src = sender as Button;
+
+            // 🚨 先取消上一次还没结束的流程（可能是正在等扫码的轮询）。
+            //    取消后旧流程会在 OperationCanceledException 处静默退出，
+            //    不会再改状态文字、也不会把新二维码收起来。
+            var cts = new CancellationTokenSource();
+            var prevFlow = _qrFlowCts;
+            _qrFlowCts = cts;
+            if (prevFlow != null)
+            {
+                try { prevFlow.Cancel(); } catch { /* 已释放/已取消，忽略 */ }
+            }
+
             QrLoginBtn.IsEnabled = false;
+            QrRefreshBtn.IsEnabled = false;
             SetQrStatus("正在获取二维码…", "#333");
 
             // ⚠️ 只给「取二维码」这一段加按钮加载态。
@@ -6943,6 +7033,7 @@ namespace GeZi
             if (!BeginBusy(src, "获取中"))
             {
                 QrLoginBtn.IsEnabled = true;
+                QrRefreshBtn.IsEnabled = true;
                 return;
             }
             try
@@ -6962,6 +7053,11 @@ namespace GeZi
                     // 不必再跳到浏览器（浏览器只是备用路径）。
                     ShowQrImage(qrUrl);
 
+                    // ✅ 二维码画出来之后就把两个按钮**放开**：等待扫码期间用户随时可以点
+                    //    「刷新」换一张（会取消本次轮询、重新取码），不必干等它超时。
+                    QrLoginBtn.IsEnabled = true;
+                    QrRefreshBtn.IsEnabled = true;
+
                     // 状态随轮询实时上报：等待扫码 → 已扫码待确认 → 成功/过期。
                     // 用 Progress<T> 自动切回 UI 线程（本方法运行在 UI 线程上）。
                     var status = new Progress<QrPollResult>(r =>
@@ -6976,7 +7072,7 @@ namespace GeZi
                                 break;
                             case QrLoginStage.Expired:
                                 SetQrStatus(DescribeExpired(r), "#C0392B");
-                                QrLoginBtn.Focus();   // 按钮只剩这一个，把焦点给它方便回车重试
+                                QrRefreshBtn.Focus();   // 过期了最顺手的动作是点「刷新」，把焦点给它方便回车重试
                                 break;
                             case QrLoginStage.GotTicket:
                                 SetQrStatus("已确认，正在换取登录态…", "#1B6FB8");
@@ -6984,12 +7080,12 @@ namespace GeZi
                         }
                     });
 
-                    var poll = await svc.PollForTicketWithStatusAsync(token, 300, status);
+                    var poll = await svc.PollForTicketWithStatusAsync(token, 300, status, cts.Token);
                     if (poll.Stage == QrLoginStage.Expired)
                     {
-                        // 过期/无效：收起图片，提示用户再点一次「获取二维码」重新取一张。
+                        // 过期/无效：收起图片，提示用户点「刷新」重新取一张。
                         HideQrImage();
-                        SetQrStatus(DescribeExpired(poll) + " 请再点一次「获取二维码」重试。", "#C0392B");
+                        SetQrStatus(DescribeExpired(poll) + " 点「刷新」可重新获取。", "#C0392B");
                         return;
                     }
 
@@ -7004,13 +7100,25 @@ namespace GeZi
                     HideQrImage();
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // 被「刷新」/「获取二维码」顶掉了：静默退出。
+                // 界面状态归新的那一次流程管，这里**绝不能**去改状态文字或收二维码，
+                // 否则会把用户刚拿到的新码盖掉。
+            }
             catch (Exception ex)
             {
                 SetQrStatus("登录失败: " + ex.Message, "#C0392B");
             }
             finally
             {
-                QrLoginBtn.IsEnabled = true;
+                // 只有「自己还是当前流程」时才恢复按钮 —— 否则旧的流程退出时
+                // 会把新流程刚禁用的按钮又打开，造成并发取码。
+                if (ReferenceEquals(_qrFlowCts, cts))
+                {
+                    QrLoginBtn.IsEnabled = true;
+                    QrRefreshBtn.IsEnabled = true;
+                }
                 if (t0 != 0) await EndBusyAsync(src, t0);
             }
         }
@@ -7124,7 +7232,11 @@ namespace GeZi
         {
             try
             {
-                int side = 264;                 // 目标显示边长（与 XAML 里 QrImageBox/QrPlaceholderBox 的 264 对齐）
+                // 位图分辨率参考值。⚠️ 不要求与屏幕上的实际显示尺寸完全相等 ——
+                // XAML 里是 Stretch=Uniform，会自动缩放；这里只要给一个「够清晰、
+                // 又不会被 NearestNeighbor 放大成糊块」的整数模块尺寸就行。
+                // （2026-10-17：二维码框已改成自适应宽度，实测显示区约 262×264。）
+                int side = 264;
                 var probe = QrEncoder.Encode(content);
                 int modules = probe.GetLength(0) + 8;   // 含静默区
                 int scale = Math.Max(1, side / modules);
@@ -7317,7 +7429,8 @@ namespace GeZi
             _settings.CurrentAccountKey = "";
             SettingsStore.Save(_settings);
             UpdateAccountCard(null, 0, 0);
-            LoginBtn.Visibility = Visibility.Visible;
+            // 【2026-10-17】「登录」按钮已删除（和左侧扫码 / 下方导入 Cookie 重复）；
+            // 未登录时没有账号可切，所以「切换账号」保持隐藏。
             AccountsBtn.Visibility = Visibility.Collapsed;
             // 若正停在「我的网盘」模式，把文件列表清空 —— 已登出，那些内容不再属于任何人。
             if (!ShareMode)
@@ -7383,7 +7496,8 @@ namespace GeZi
                     _settings.CurrentAccountKey = acctKey ?? "";
 
                     UpdateAccountCard(nick, 0, 0);
-                    LoginBtn.Visibility = Visibility.Collapsed;
+                    // 【2026-10-17】「登录」按钮已删除；登录成功后把「切换账号」亮出来
+                    // （它在「当前状态」卡片里账号信息那一行的最右侧）。
                     AccountsBtn.Visibility = Visibility.Visible;
                     Log("登录成功: " + nick);
 

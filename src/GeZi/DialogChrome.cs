@@ -243,6 +243,13 @@ namespace GeZi
             var s = Res<Style>("PlainListBox", null);
             if (s != null) lb.Style = s;
             lb.BorderThickness = new Thickness(0);
+            // 【2026-10-17】去掉 WPF 默认 ListBoxItem 的「系统蓝」：
+            //   选中 = 蓝底白字、键盘焦点 = 1px 浅蓝矩形描边（会套在圆角行卡片外面，很难看）。
+            //   行内容自己就是完整卡片，容器只需原样呈现内容。见 Styles.xaml 的 PlainListRow。
+            //   ⚠️ 个别列表若需要「悬停/选中」反馈，调用方在 StyledList() 之后
+            //      再显式覆盖 ItemContainerStyle 即可（例如文件选择列表用的是 DialogListItem）。
+            var item = Res<Style>("PlainListRow", null);
+            if (item != null) lb.ItemContainerStyle = item;
             return lb;
         }
 

@@ -1,6 +1,7 @@
 <Window x:Class="GeZi.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:GeZi"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="鸽子下载 · 夸克网盘直链助手"
         Icon="/Resources/app.ico"
@@ -54,14 +55,14 @@
                     <!-- 窗口按钮（WindowChrome.IsHitTestVisibleInChrome 让它们在可拖拽区仍可点击） -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button x:Name="MinBtn" Style="{StaticResource CaptionButton}"
+                        <Button Style="{StaticResource CaptionButton}"
                                 AutomationProperties.Name="最小化"
                                 Click="OnMinimizeClick" ToolTip="最小化">
                             <Path Data="{StaticResource IconMinimize}" Stretch="Uniform" Width="12" Height="12"
                                   Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                         </Button>
-                        <Button x:Name="MaxBtn" Style="{StaticResource CaptionButton}"
+                        <Button Style="{StaticResource CaptionButton}"
                                 AutomationProperties.Name="最大化或还原"
                                 Click="OnMaximizeClick" ToolTip="最大化 / 还原">
                             <Path x:Name="MaxIcon" Data="{StaticResource IconMaximize}" Stretch="Uniform"
@@ -132,7 +133,7 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="鸽子下载" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        <Button x:Name="AboutBtn" Click="OnAboutClick"
+                                        <Button Click="OnAboutClick"
                                                 Style="{StaticResource IconGhostButton}"
                                                 Width="18" Height="18" Margin="3,0,0,0"
                                                 VerticalAlignment="Center"
@@ -171,6 +172,7 @@
                                  ItemContainerStyle="{StaticResource NavListItem}"
                                  SelectionChanged="OnNavSelectionChanged"
                                  IsTextSearchEnabled="False"
+                                 local:RippleEffect.IsEnabled="True"
                                  Margin="12,4,12,0"
                                  VerticalAlignment="Top">
                             <ListBoxItem>
@@ -324,13 +326,15 @@
                                             VerticalAlignment="Top" Margin="6,0,0,0"
                                             Click="OnRefreshAccountClick"
                                             AutomationProperties.Name="刷新账号状态"
-                                            ToolTip="刷新账号状态（昵称 / 容量）">
+                                            ToolTip="刷新">
+                                        <!-- 【2026-10-17】图标色与「刷新」（DriveRefreshBtn，TextSecondary）对齐。
+                                             原来这里是 TextTertiary（更浅一档），两个刷新图标本身就不同色；
+                                             再加上加载转圈绑的是按钮 Foreground，三者各说各话。
+                                             ⚠️ IconRefresh 是实心几何（环带+三角），只能上 Fill，
+                                                不要再写 Stroke / StrokeThickness（见 Icons.xaml 注释）。 -->
                                         <Path Data="{StaticResource IconRefresh}" Stretch="Uniform"
                                               Width="13" Height="13"
-                                              Stroke="{DynamicResource TextTertiaryBrush}"
-                                              StrokeThickness="1.8"
-                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                              StrokeLineJoin="Round"/>
+                                              Fill="{DynamicResource TextSecondaryBrush}"/>
                                     </Button>
                                 </Grid>
                         </Border>
@@ -363,17 +367,24 @@
                                        Style="{StaticResource TertiaryText}" Margin="0,3,0,0"/>
                         </StackPanel>
 
-                        <!-- 模式切换：分段控件 -->
+                        <!-- 模式切换：分段控件（2026-10-17 滑块指示器：
+                             thumb 是整段面板共用的白底滑块，切选项时滑过去） -->
                         <Border Grid.Row="1" HorizontalAlignment="Left" CornerRadius="8"
                                 Background="{DynamicResource SurfaceSunkenBrush}" Padding="3" Margin="0,0,0,12">
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="ShareModeRadio" Content="分享链接"
-                                             Checked="OnModeChanged" Style="{StaticResource SegmentedRadio}"
-                                             Margin="0"/>
-                                <RadioButton x:Name="DriveModeRadio" Content="我的网盘"
-                                             Checked="OnModeChanged" Style="{StaticResource SegmentedRadio}"
-                                             Margin="2,0,0,0"/>
-                            </StackPanel>
+                            <Grid local:SegmentedSlider.IsEnabled="True"
+                                  local:SegmentedSlider.Thumb="{x:Reference ModeThumb}">
+                                <Border x:Name="ModeThumb" CornerRadius="6" HorizontalAlignment="Left"
+                                        VerticalAlignment="Stretch" IsHitTestVisible="False"
+                                        Background="{DynamicResource SurfaceBrush}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ShareModeRadio" Content="分享链接"
+                                                 Checked="OnModeChanged" Style="{StaticResource SegmentedRadio}"
+                                                 Margin="0"/>
+                                    <RadioButton Content="我的网盘"
+                                                 Checked="OnModeChanged" Style="{StaticResource SegmentedRadio}"
+                                                 Margin="2,0,0,0"/>
+                                </StackPanel>
+                            </Grid>
                         </Border>
 
                         <!-- 分享面板（卡片）
@@ -401,7 +412,7 @@
                                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                             <!-- 【2026-10-14 去蓝】聚焦反馈从"边框变蓝 + 蓝色发光"改成
                                                  "边框加深"—— 克制、不引入彩色。发光也去掉（那是 AI 味来源）。 -->
-                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushStrong}"/>
                                         </Trigger>
                                     </Style.Triggers>
                                 </Style>
@@ -435,13 +446,25 @@
                                      用户原话：「扫描二维码的图标拿出到输入框外」。
                                      原来是绝对定位贴在输入框内部右缘，与清空按钮挤在一起、
                                      还逼得输入框右内边距要留 58px —— 现在独立成列，输入框干净了。 -->
+                                <!-- 【2026-10-17 对齐修正 · 第二轮】用户要求「图标在输入框与提取码之间居中」。
+                                     🔎 真正的病根：**提取码那一列自带 `Margin="14,0,0,0"`**（见下方 Grid.Column=2），
+                                        而扫码按钮原来是 `7,0,7,0` ⇒ 两侧间距根本不相等：
+                                          左 = 7 + (36-16)/2 = 17px
+                                          右 = (36-16)/2 + 7 + **14** = 31px   ← 多出 14
+                                        ⇒ 图标整体偏左。
+                                     ✅ 修法：把左边补成 14、右边归零 ⇒ 左 = 14+10 = 24，右 = 10+0+14 = 24，**严格居中**。
+                                     ✅ 总占宽仍是 50（36+14+0 = 36+7+7），输入框宽度一点不受影响。
+
+                                     【2026-10-17】用户要求**删掉扫码按钮的悬停提示**（原来那串
+                                     「识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）」
+                                     太长、挡视线）⇒ 直接不设 ToolTip，悬停不再弹任何文字。
+                                     ⚠️ 别再加回来；`AutomationProperties.Name` 保留（UIA 定位 + 无障碍要用）。 -->
                                 <Button x:Name="ScanQrBtn" Click="OnScanQrClick"
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
-                                        Margin="8,0,8,0" Width="32" Height="32"
+                                        Margin="14,0,0,0" Width="36" Height="36"
                                         Cursor="Hand" Focusable="False"
-                                        AutomationProperties.Name="识别二维码"
-                                        ToolTip="识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）">
+                                        AutomationProperties.Name="识别二维码">
                                     <Button.Style>
                                         <Style TargetType="Button">
                                             <Setter Property="Template">
@@ -450,7 +473,7 @@
                                                         <Border x:Name="Bd" Background="Transparent"
                                                                 CornerRadius="6">
                                                             <Path Data="{StaticResource IconScan}"
-                                                                  Stretch="Uniform" Width="13" Height="13"
+                                                                  Stretch="Uniform" Width="16" Height="16"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"
                                                                   Stroke="{DynamicResource TextTertiaryBrush}"
@@ -597,7 +620,7 @@
                         </Border>
 
                         <!-- 目录导航（分享/网盘通用） -->
-                        <Grid x:Name="DrivePanel" Grid.Row="3" Margin="0,0,0,10">
+                        <Grid Grid.Row="3" Margin="0,0,0,10">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <!--
@@ -684,21 +707,22 @@
                                     <Button x:Name="DriveRefreshBtn" Click="OnRefresh"
                                             Style="{StaticResource ToolButton}">
                                         <StackPanel Orientation="Horizontal">
+                                            <!-- ⚠️ IconRefresh 是实心几何，只能上 Fill（见 Icons.xaml 注释）。 -->
                                             <Path Data="{StaticResource IconRefresh}" Stretch="Uniform"
                                                   Width="13" Height="13" VerticalAlignment="Center"
-                                                  Stroke="{DynamicResource TextSecondaryBrush}"
-                                                  StrokeThickness="2"
-                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                  Fill="{DynamicResource TextSecondaryBrush}"/>
                                             <TextBlock Text="刷新" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
                                     <!-- 【2026-10-09】解析历史的**看得见**的入口：用户要求
                                          「在我的网盘右侧也加一个，更直观」——
                                          单靠 h 键没人猜得到。⚠️ 这条工具栏是两个模式共用的，
-                                         所以「分享链接」模式下也一并显示（两边都能用，不冲突）。 -->
-                                    <Button x:Name="ShareHistoryBtn" Click="OnShareHistoryButtonClick"
-                                            Style="{StaticResource ToolButton}" Margin="0"
-                                            ToolTip="解析历史：最近解析过的分享，点一条即可重新打开">
+                                         所以「分享链接」模式下也一并显示（两边都能用，不冲突）。
+                                         【2026-10-17】按用户要求**删掉悬停提示**
+                                         （原来那串「解析历史：最近解析过的分享，点一条即可重新打开」）。
+                                         别再加回来；按钮自身带「解析历史」文字，信息已足够。 -->
+                                    <Button Click="OnShareHistoryButtonClick"
+                                            Style="{StaticResource ToolButton}" Margin="0">
                                         <StackPanel Orientation="Horizontal">
                                             <Path Data="{StaticResource IconHistory}" Stretch="Uniform"
                                                   Width="13" Height="13" VerticalAlignment="Center"
@@ -919,9 +943,12 @@
                             <Button x:Name="DownloadSelBtn" Click="OnDownloadSelected"
                                     Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
+                                    <!-- 【2026-10-17】图标颜色必须跟按钮前景色走 → SolidBtnFgBrush。
+                                         别写 TextOnPrimaryBrush：那个两个主题都是纯白，而暗色主题的实心按钮
+                                         是「浅灰底 #E8EAF0」，白图标画上去就消失了（用户反馈看不见）。 -->
                                     <Path Data="{StaticResource IconDownload}" Stretch="Uniform" Width="14"
                                           Height="14" VerticalAlignment="Center"
-                                          Stroke="{DynamicResource TextOnPrimaryBrush}" StrokeThickness="2"
+                                          Stroke="{DynamicResource SolidBtnFgBrush}" StrokeThickness="2"
                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                           StrokeLineJoin="Round"/>
                                     <TextBlock Text="下载选中" Margin="7,0,0,0" VerticalAlignment="Center"/>
@@ -1000,32 +1027,41 @@
                                  原来所有任务混在一个列表里，"哪个失败了"得自己一行行扫。
                                  4 个分类**共用同一个 TaskList**，只切换 ICollectionView 的过滤器
                                  （用 TabItem 会需要 4 份列表副本 → 状态不同步）。 -->
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                <RadioButton x:Name="TaskFilterAll" Content="全部"
-                                             GroupName="TaskFilter" IsChecked="True"
-                                             Style="{StaticResource FilterTabRadio}"
-                                             Checked="OnTaskFilterChanged"
-                                             AutomationProperties.Name="全部任务"/>
-                                <RadioButton x:Name="TaskFilterActive" Content="进行中"
-                                             GroupName="TaskFilter"
-                                             Style="{StaticResource FilterTabRadio}"
-                                             Checked="OnTaskFilterChanged"
-                                             AutomationProperties.Name="进行中的任务"/>
-                                <RadioButton x:Name="TaskFilterFailed" Content="失败"
-                                             GroupName="TaskFilter"
-                                             Style="{StaticResource FilterTabRadio}"
-                                             Checked="OnTaskFilterChanged"
-                                             AutomationProperties.Name="失败的任务"/>
-                                <RadioButton x:Name="TaskFilterDone" Content="已完成"
-                                             GroupName="TaskFilter"
-                                             Style="{StaticResource FilterTabRadio}"
-                                             Checked="OnTaskFilterChanged"
-                                             AutomationProperties.Name="已完成的任务"/>
-                                <!-- 计数：让用户一眼看到每类有几条（不用切过去看） -->
-                                <TextBlock x:Name="TaskFilterCountText" FontSize="11"
-                                           VerticalAlignment="Center" Margin="2,0,0,0"
-                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                            </StackPanel>
+                            <!-- 2026-10-17：滑块下划线指示器（FilterTabRadio 样式不再自绘下划线，
+                                 指示条长这样 Height=2 的滑块在四个筛选项间滑动） -->
+                            <Grid Margin="0,16,0,0"
+                                  local:SegmentedSlider.IsEnabled="True"
+                                  local:SegmentedSlider.Thumb="{x:Reference FilterThumb}">
+                                <Border x:Name="FilterThumb" Height="2" VerticalAlignment="Bottom"
+                                        HorizontalAlignment="Left" IsHitTestVisible="False"
+                                        Background="{DynamicResource TextPrimaryBrush}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="TaskFilterAll" Content="全部"
+                                                 GroupName="TaskFilter" IsChecked="True"
+                                                 Style="{StaticResource FilterTabRadio}"
+                                                 Checked="OnTaskFilterChanged"
+                                                 AutomationProperties.Name="全部任务"/>
+                                    <RadioButton x:Name="TaskFilterActive" Content="进行中"
+                                                 GroupName="TaskFilter"
+                                                 Style="{StaticResource FilterTabRadio}"
+                                                 Checked="OnTaskFilterChanged"
+                                                 AutomationProperties.Name="进行中的任务"/>
+                                    <RadioButton x:Name="TaskFilterFailed" Content="失败"
+                                                 GroupName="TaskFilter"
+                                                 Style="{StaticResource FilterTabRadio}"
+                                                 Checked="OnTaskFilterChanged"
+                                                 AutomationProperties.Name="失败的任务"/>
+                                    <RadioButton Content="已完成"
+                                                 GroupName="TaskFilter"
+                                                 Style="{StaticResource FilterTabRadio}"
+                                                 Checked="OnTaskFilterChanged"
+                                                 AutomationProperties.Name="已完成的任务"/>
+                                    <!-- 计数：让用户一眼看到每类有几条（不用切过去看） -->
+                                    <TextBlock x:Name="TaskFilterCountText" FontSize="11"
+                                               VerticalAlignment="Center" Margin="2,0,0,0"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
@@ -1035,7 +1071,7 @@
                                  「取消全部」按钮按用户要求移除 —— 单个任务的「取消」仍在右键菜单里。 -->
                             <Button x:Name="PauseAllBtn" Click="OnPauseAllOrResume"
                                     Style="{StaticResource ToolButton}"/>
-                            <Button x:Name="ClearDoneBtn" Content="清空已完成" Click="OnClearDone"
+                            <Button Content="清空已完成" Click="OnClearDone"
                                     Style="{StaticResource ToolButton}"/>
                             <Button x:Name="HistoryBtn" Click="OnOpenHistory" Style="{StaticResource ToolButton}">
                                 <StackPanel Orientation="Horizontal">
@@ -1046,7 +1082,7 @@
                                     <TextBlock Text="下载历史" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="DiagBtn" Click="OnOpenDiagnostics" Style="{StaticResource ToolButton}">
+                            <Button Click="OnOpenDiagnostics" Style="{StaticResource ToolButton}">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource IconDiagnostics}" Stretch="Uniform" Width="12"
                                           Height="12" VerticalAlignment="Center"
@@ -1056,7 +1092,7 @@
                                 </StackPanel>
                             </Button>
                             <!-- 【2026-10-03 新增】用户要求任务页也能直接打开下载目录（原来只有设置页有） -->
-                            <Button x:Name="OpenTaskDirBtn" Click="OnOpenOutDir" Style="{StaticResource ToolButton}"
+                            <Button Click="OnOpenOutDir" Style="{StaticResource ToolButton}"
                                     Margin="0" ToolTip="在资源管理器中打开下载目录">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource IconFolder}" Stretch="Uniform" Width="12"
@@ -1340,349 +1376,363 @@
 
 
                                 <!-- ════════════════════════════════════════════════════════════
-                                     【2026-10-14 UI 重构】设置页改为「顶部分类 Tab」
-                                     改前：一长串卡片纵向堆叠（个性化 → 下载与网络 → 分片与缓存），
-                                           6 个设置项挤在同一张卡里，要滚很久才找得到 —— 这是"没做信息架构"。
-                                     改后：5 个分类 Tab（外观 / 下载 / 窗口 / 存储 / 高级），一次只看一类。
-                                           分类依据 = 原卡片内已有的 SectionLabel（并发与任务 / 网络 /
-                                           窗口与后台 / 存储与写入），把它们从"卡内小标题"提升为"页面级 Tab"。
+                                    【2026-10-17 UI 重构】设置页改为「一页平铺，不滚动」
+                                    改前：5 个分类 Tab（外观 / 下载 / 窗口 / 存储 / 高级），
+                                           一次只看一类，找设置要切来切去。
+                                    改后：去掉分类 Tab，所有设置项**一页两列排平**，
+                                           默认窗口尺寸（1240×780）下一屏看完、不需要滚动。
+                                           共 6 张卡：个性化 / 下载与网络 / 窗口与后台 /
+                                           存储 / 分片与缓存 / 播放器（原「高级」Tab 拆为后两张）。
+                                    布局 = 两列各自堆叠（不是 Grid 行对齐）：
+                                    行对齐会让「矮卡」浪费整行高度（存储卡 100 vs 窗口卡 210），
+                                    列堆叠把高度差留在列内消化，两列总高 592 / 575，取大 592。
                                      ════════════════════════════════════════════════════════════ -->
-                                <TabControl Style="{StaticResource SettingsTabControl}">
+                                <Grid MaxWidth="980" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
 
-                                <TabItem Header="外观" Style="{StaticResource SettingsTabItem}">
-                                    <Border Style="{StaticResource Card}">
-                                        <StackPanel>
+                                    <!-- 左列：下载与网络 → 窗口与后台 → 存储
+                                         列堆叠（非行对齐）：行对齐时「矮卡」会浪费整行高度
+                                         （存储卡 ~100 vs 窗口卡 ~210），列堆叠把高度差留在
+                                         列内消化，两列总高 592 / 575，一屏放平不滚动。 -->
+                                    <StackPanel Grid.Column="0" Margin="0,0,7,0">
+
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                                             <StackPanel>
-                                            <TextBlock Text="个性化" Style="{StaticResource CardTitleText}"
-                                            FontSize="14" Margin="0,0,0,4"/>
-                                            <TextBlock Text="界面外观。切换后立即生效"
-                                            Style="{StaticResource TertiaryText}" Margin="0,0,0,14"/>
+                                                <TextBlock Text="下载与网络" Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
 
-                                            <Border HorizontalAlignment="Left" CornerRadius="8"
-                                            Background="{DynamicResource SurfaceSunkenBrush}"
-                                            Padding="3">
-                                            <StackPanel Orientation="Horizontal">
-                                            <RadioButton x:Name="ThemeLightRadio" Content="浅色"
-                                            GroupName="AppTheme"
-                                            Checked="OnThemeChanged"
-                                            Style="{StaticResource SegmentedRadio}"
-                                            AutomationProperties.Name="浅色主题"
-                                            Margin="0"/>
-                                            <RadioButton x:Name="ThemeDarkRadio" Content="深色"
-                                            GroupName="AppTheme"
-                                            Checked="OnThemeChanged"
-                                            Style="{StaticResource SegmentedRadio}"
-                                            AutomationProperties.Name="深色主题"
-                                            Margin="2,0,0,0"/>
-                                            <RadioButton x:Name="ThemeSystemRadio" Content="跟随系统"
-                                            GroupName="AppTheme"
-                                            Checked="OnThemeChanged"
-                                            Style="{StaticResource SegmentedRadio}"
-                                            AutomationProperties.Name="跟随系统主题"
-                                            Margin="2,0,0,0"/>
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="单文件并发连接数" Style="{StaticResource FieldLabel}"/>
+                                                    <ComboBox x:Name="ThreadsBox" Grid.Column="1" MaxWidth="340"
+                                                              HorizontalAlignment="Left"
+                                                              Style="{StaticResource AppComboBox}"
+                                                              ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                                              SelectionChanged="OnSettingChanged">
+                                                        <ComboBoxItem Content="16  — 省网保守"/>
+                                                        <ComboBoxItem Content="32  — 保守，够用"/>
+                                                        <!-- 【2026-10-11 更正文案】标注必须与 Settings.Threads 的默认值一致。
+                                                        默认值已按**实测拐点**从 64 改成 256
+                                                        （docs/CDN并发阈值-实测.md：64 路 4.00 MB/s、128 路 7.98、
+                                                        **256 路 13.94 ← 拐点**、512 路 13.31）。
+                                                        ⚠️ 之前这里一直写着"64 — 默认"，与代码默认值不符，会直接误导用户。
+                                                        ⚠️ 512 档：实测略慢于 256（13.31 vs 13.94），但那只是**当时那个时段**的
+                                                        数据（CDN 配额会浮动），所以文案写"可能会更快"而不写死结论。 -->
+                                                        <ComboBoxItem Content="64  — 省网，速度一般"/>
+                                                        <ComboBoxItem Content="128 — 较快"/>
+                                                        <ComboBoxItem Content="256 — 默认，实测最快"/>
+                                                        <ComboBoxItem Content="512 — 上限，可能会更快"/>
+                                                    </ComboBox>
+                                                </Grid>
+
+                                                <Grid Margin="0,0,0,16">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="同时下载任务数" Style="{StaticResource FieldLabel}"/>
+                                                    <TextBox x:Name="ConcurrentBox" Grid.Column="1" MaxWidth="120"
+                                                             HorizontalAlignment="Left"
+                                                             Style="{StaticResource AppTextBox}"
+                                                             LostFocus="OnSettingChanged"
+                                                             KeyDown="OnSettingKeyDown"/>
+                                                </Grid>
+
+                                                <!-- 【2026-10-11 新增】跟随系统代理。
+                                                背景：程序历来**强制直连**（显式关闭代理，理由是
+                                                本机代理软件会劫持夸克接口、代理会改变 TLS 指纹被 WAF 拒）。
+                                                但"必须经代理才能上网"的环境（公司网络）里直连 = 程序
+                                                完全不可用；而 QuarkSession 里那句 "可设 UseSystemProxy = true"
+                                                此前**没有任何实现**（幽灵开关）。这里把它做成真设置项。
+                                                ⚠️ 默认关闭 = 与旧版行为完全一致（零回归）。
+                                                走独立 Click 处理器：不重建调度器（见 OnUseSystemProxyChanged）。 -->
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="代理" Style="{StaticResource FieldLabel}"/>
+                                                    <CheckBox x:Name="UseSystemProxyCheck" Grid.Column="1"
+                                                              Content="跟随 Windows 系统代理"
+                                                              Style="{StaticResource AppCheckBox}"
+                                                              Click="OnUseSystemProxyChanged"
+                                                              AutomationProperties.Name="跟随系统代理"
+                                                              ToolTip="默认关闭（直连）。公司网络 / 必须经代理才能上网时打开。本机装有代理软件（VPN、抓包、加速器）时建议保持关闭。"/>
+                                                </Grid>
+                                                <TextBlock Style="{StaticResource TertiaryText}" FontSize="11"
+                                                           Margin="120,0,0,0" TextWrapping="Wrap"
+                                                           Text="默认关闭（直连）。仅在必须经代理才能上网时打开；打开后重新开始下载或重新登录才会生效。"/>
                                             </StackPanel>
-                                            </Border>
-
-                                            <!-- 说明行：跟随系统时要让用户看懂"为什么我没选它却变了" -->
-                                            <TextBlock x:Name="ThemeHintText"
-                                            Style="{StaticResource TertiaryText}"
-                                            TextWrapping="Wrap"
-                                            Margin="0,10,0,0"
-                                            Text="跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。"/>
-
-                                            <!-- 主题版预览：让用户不用切来切去也能看到效果
-                                            【2026-10-14 UI 改造】色块 34×22 → 40×40、圆角 5 → 8，
-                                            并且**每个色块下方带自己的标签**（页面底 / 卡片 / 主色 / 正文）。
-                                            改前只有末尾一行笼统的「当前配色的底色、卡片色、主色」——
-                                            用户得数着猜哪个是哪个（"AI味"诊断里准确的一条：色块展示原始）。
-                                            每个色块包成「色块 + 标签」的竖排小单元，间距 12px。 -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                                            <StackPanel Margin="0,0,12,0">
-                                            <Border x:Name="ThemeSwatchBg" Width="40" Height="40" CornerRadius="8"
-                                            Background="{DynamicResource AppBgBrush}"
-                                            BorderBrush="{DynamicResource BorderBrushSoft}"
-                                            BorderThickness="1"/>
-                                            <TextBlock Text="页面底" Style="{StaticResource TertiaryText}"
-                                            FontSize="11" HorizontalAlignment="Center"
-                                            Margin="0,6,0,0"/>
-                                            </StackPanel>
-                                            <StackPanel Margin="0,0,12,0">
-                                            <Border x:Name="ThemeSwatchSurface" Width="40" Height="40" CornerRadius="8"
-                                            Background="{DynamicResource SurfaceBrush}"
-                                            BorderBrush="{DynamicResource BorderBrushSoft}"
-                                            BorderThickness="1"/>
-                                            <TextBlock Text="卡片" Style="{StaticResource TertiaryText}"
-                                            FontSize="11" HorizontalAlignment="Center"
-                                            Margin="0,6,0,0"/>
-                                            </StackPanel>
-                                            <StackPanel Margin="0,0,12,0">
-                                            <Border x:Name="ThemeSwatchPrimary" Width="40" Height="40" CornerRadius="8"
-                                            Background="{DynamicResource TextPrimaryBrush}"/>
-                                            <TextBlock Text="主色" Style="{StaticResource TertiaryText}"
-                                            FontSize="11" HorizontalAlignment="Center"
-                                            Margin="0,6,0,0"/>
-                                            </StackPanel>
-                                            <StackPanel>
-                                            <Border Width="40" Height="40" CornerRadius="8"
-                                            Background="{DynamicResource TextPrimaryBrush}"/>
-                                            <TextBlock Text="正文" Style="{StaticResource TertiaryText}"
-                                            FontSize="11" HorizontalAlignment="Center"
-                                            Margin="0,6,0,0"/>
-                                            </StackPanel>
-                                            </StackPanel>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </TabItem>
-
-                                <TabItem Header="下载" Style="{StaticResource SettingsTabItem}">
-                                    <Border Style="{StaticResource Card}">
-                                        <StackPanel>
-                                            <Grid Margin="0,0,0,6">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="单文件并发连接数" Style="{StaticResource FieldLabel}"/>
-                                            <ComboBox x:Name="ThreadsBox" Grid.Column="1" MaxWidth="340"
-                                            HorizontalAlignment="Left"
-                                            Style="{StaticResource AppComboBox}"
-                                            ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                            SelectionChanged="OnSettingChanged">
-                                            <ComboBoxItem Content="16  — 省网保守"/>
-                                            <ComboBoxItem Content="32  — 保守，够用"/>
-                                            <!-- 【2026-10-11 更正文案】标注必须与 Settings.Threads 的默认值一致。
-                                            默认值已按**实测拐点**从 64 改成 256
-                                            （docs/CDN并发阈值-实测.md：64 路 4.00 MB/s、128 路 7.98、
-                                            **256 路 13.94 ← 拐点**、512 路 13.31）。
-                                            ⚠️ 之前这里一直写着"64 — 默认"，与代码默认值不符，会直接误导用户。
-                                            ⚠️ 512 档：实测略慢于 256（13.31 vs 13.94），但那只是**当时那个时段**的
-                                            数据（CDN 配额会浮动），所以文案写"可能会更快"而不写死结论。 -->
-                                            <ComboBoxItem Content="64  — 省网，速度一般"/>
-                                            <ComboBoxItem Content="128 — 较快"/>
-                                            <ComboBoxItem Content="256 — 默认，实测最快"/>
-                                            <ComboBoxItem Content="512 — 上限，可能会更快"/>
-                                            </ComboBox>
-                                            </Grid>
-
-                                            <Grid Margin="0,0,0,16">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="同时下载任务数" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox x:Name="ConcurrentBox" Grid.Column="1" MaxWidth="120"
-                                            HorizontalAlignment="Left"
-                                            Style="{StaticResource AppTextBox}"
-                                            LostFocus="OnSettingChanged"
-                                            KeyDown="OnSettingKeyDown"/>
-                                            </Grid>
-
-                                            <!-- 【2026-10-11 新增】跟随系统代理。
-                                            背景：程序历来**强制直连**（显式关闭代理，理由是
-                                            本机代理软件会劫持夸克接口、代理会改变 TLS 指纹被 WAF 拒）。
-                                            但"必须经代理才能上网"的环境（公司网络）里直连 = 程序
-                                            完全不可用；而 QuarkSession 里那句 "可设 UseSystemProxy = true"
-                                            此前**没有任何实现**（幽灵开关）。这里把它做成真设置项。
-                                            ⚠️ 默认关闭 = 与旧版行为完全一致（零回归）。
-                                            走独立 Click 处理器：不重建调度器（见 OnUseSystemProxyChanged）。 -->
-                                            <Grid Margin="0,0,0,6">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="代理" Style="{StaticResource FieldLabel}"/>
-                                            <CheckBox x:Name="UseSystemProxyCheck" Grid.Column="1"
-                                            Content="跟随 Windows 系统代理"
-                                            Style="{StaticResource AppCheckBox}"
-                                            Click="OnUseSystemProxyChanged"
-                                            AutomationProperties.Name="跟随系统代理"
-                                            ToolTip="默认关闭（直连）。公司网络 / 必须经代理才能上网时打开。本机装有代理软件（VPN、抓包、加速器）时建议保持关闭。"/>
-                                            </Grid>
-                                            <TextBlock Style="{StaticResource TertiaryText}" FontSize="11"
-                                            Margin="150,0,0,18" TextWrapping="Wrap"
-                                            Text="默认关闭（直连）。仅在必须经代理才能上网时打开；打开后重新开始下载或重新登录才会生效。"/>
-                                        </StackPanel>
-                                    </Border>
-                                </TabItem>
-
-                                <TabItem Header="窗口" Style="{StaticResource SettingsTabItem}">
-                                    <Border Style="{StaticResource Card}">
-                                        <StackPanel>
-                                            <!-- 【2026-10-03 新增】关闭按钮行为 + 悬浮小窗入口。
-                                            用户要求：第一次点 × 时询问「最小化到托盘 / 直接退出」，
-                                            弹窗里可勾「此后不再提示」，之后在**这里**还能改。 -->
-                                            <Grid Margin="0,0,0,6">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="关闭按钮行为" Style="{StaticResource FieldLabel}"/>
-                                            <ComboBox x:Name="CloseActionBox" Grid.Column="1" MaxWidth="340"
-                                            HorizontalAlignment="Left"
-                                            Style="{StaticResource AppComboBox}"
-                                            ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                            SelectionChanged="OnSettingChanged">
-                                            <ComboBoxItem Content="每次询问"/>
-                                            <ComboBoxItem Content="最小化到托盘（后台继续下载）"/>
-                                            <ComboBoxItem Content="直接退出程序"/>
-                                            </ComboBox>
-                                            </Grid>
-
-                                            <!-- 【2026-10-08 新增】剪贴板监听：复制夸克分享链接即自动解析。
-                                            默认开；不想被打扰的用户在这里关掉。
-                                            走独立的 Click 处理器（不是 OnSettingChanged）——
-                                            这个开关不需要重建下载调度器，见 OnClipboardAutoParseChanged。 -->
-                                            <Grid Margin="0,0,0,6">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="剪贴板" Style="{StaticResource FieldLabel}"/>
-                                            <CheckBox x:Name="ClipboardAutoParseCheck" Grid.Column="1"
-                                            Content="复制夸克分享链接时自动解析"
-                                            Style="{StaticResource AppCheckBox}"
-                                            Click="OnClipboardAutoParseChanged"
-                                            ToolTip="开启后：在任何程序里复制到夸克分享链接（https://pan.quark.cn/s/…），本程序自动填入并解析。默认开启。"/>
-                                            </Grid>
-                                            <TextBlock Style="{StaticResource TertiaryText}" FontSize="11"
-                                            Margin="150,0,0,18" TextWrapping="Wrap"
-                                            Text="窗口在托盘时静默解析，不抢焦点，解析完用托盘气泡提示结果。"/>
-                                        </StackPanel>
-                                    </Border>
-                                </TabItem>
-
-                                <TabItem Header="存储" Style="{StaticResource SettingsTabItem}">
-                                    <Border Style="{StaticResource Card}">
-                                        <StackPanel>
-                                            <!-- 下载目录：标签 / 输入框 / 「浏览…」/「打开下载目录」
-                                            四个元素全部排在同一行。
-                                            【2026-10-02 改】原先是 [150][*][Auto] 两行布局，
-                                            「浏览…」在上、「打开下载目录」在下叠放 —— 用户反馈
-                                            「把这三个框弄在同一行不要这样分开」。现在改成
-                                            [150][*][Auto][Auto] 单行，两个按钮并排在输入框右侧。 -->
-                                            <Grid Margin="0,0,0,16">
-                                            <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="150"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-
-                                            <TextBlock Text="下载目录" Style="{StaticResource FieldLabel}"
-                                            Grid.Column="0"/>
-                                            <TextBox x:Name="OutDirBox" Grid.Column="1"
-                                            Style="{StaticResource AppTextBox}"
-                                            LostFocus="OnSettingChanged"
-                                            KeyDown="OnSettingKeyDown"/>
-                                            <Button Grid.Column="2" Content="浏览…"
-                                            Click="OnBrowseOutDir"
-                                            Style="{StaticResource SecondaryButton}"
-                                            Margin="8,0,0,0"/>
-                                            <Button x:Name="OpenOutDirBtn" Click="OnOpenOutDir"
-                                            Grid.Column="3"
-                                            Style="{StaticResource SecondaryButton}"
-                                            Margin="8,0,0,0">
-                                            <StackPanel Orientation="Horizontal">
-                                            <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
-                                            Width="14" Height="14" VerticalAlignment="Center"
-                                            Stroke="{DynamicResource TextSecondaryBrush}"
-                                            StrokeThickness="1.8"
-                                            StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                            StrokeLineJoin="Round"/>
-                                            <TextBlock Text="打开下载目录" Margin="7,0,0,0"
-                                            VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                            </Button>
-                                            </Grid>
-                                            <CheckBox x:Name="AutoCleanCheck"
-                                            Content="下载完成后自动清理云盘转存文件"
-                                            Style="{StaticResource AppCheckBox}"
-                                            Click="OnSettingChanged"/>
-                                        </StackPanel>
-                                    </Border>
-                                </TabItem>
-
-                                <TabItem Header="高级" Style="{StaticResource SettingsTabItem}">
-                                    <Border Style="{StaticResource Card}">
-                                        <Grid Margin="0,0,0,14">
-                                        <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <Border Grid.Column="0" Style="{StaticResource MutedCard}" Margin="0,0,7,0">
-                                        <StackPanel>
-                                        <TextBlock Text="分片与缓存" Style="{StaticResource CardTitleText}"
-                                        Margin="0,0,0,12"/>
-
-                                        <TextBlock Text="分片/缓存根目录" Style="{StaticResource BodyText}"
-                                        Margin="0,0,0,6"/>
-                                        <!-- 【2026-10-04 用户要求】除「浏览…」外，再加一个「打开目录」按钮，
-                                        与上方「下载目录」行保持一致的操作入口。 -->
-                                        <Grid>
-                                        <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox x:Name="PartsRootBox" Grid.Column="0"
-                                        Style="{StaticResource AppTextBox}"
-                                        LostFocus="OnSettingChanged"
-                                        KeyDown="OnSettingKeyDown"
-                                        ToolTip="留空 = 分片与目标文件同目录（默认）。指定后可把分片集中到另一块盘（如 SSD）。"/>
-                                        <Button Grid.Column="1" Content="浏览…" Click="OnBrowsePartsRoot"
-                                        Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"/>
-                                        <Button x:Name="OpenPartsRootBtn" Click="OnOpenPartsRoot"
-                                        Grid.Column="2"
-                                        Style="{StaticResource SecondaryButton}"
-                                        Margin="8,0,0,0"
-                                        ToolTip="在资源管理器中打开分片/缓存根目录。">
-                                        <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
-                                        Width="14" Height="14" VerticalAlignment="Center"
-                                        Stroke="{DynamicResource TextSecondaryBrush}"
-                                        StrokeThickness="1.8"
-                                        StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                        StrokeLineJoin="Round"/>
-                                        <TextBlock Text="打开" Margin="7,0,0,0"
-                                        VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        </Button>
-                                        </Grid>
-                                        <TextBlock Style="{StaticResource ProseText}" Margin="0,8,0,12"
-                                        Text="留空 = 分片与目标文件同目录（默认）。指定后可把分片集中到另一块盘。"/>
-
-                                        <CheckBox x:Name="HidePartsCheck"
-                                        Content="隐藏分片目录"
-                                        Style="{StaticResource AppCheckBox}"
-                                        Click="OnSettingChanged"
-                                        ToolTip="只影响新建的分片目录是否隐藏，不影响下载功能。默认勾选。"/>
-                                        </StackPanel>
                                         </Border>
 
-                                        <Border Grid.Column="1" Style="{StaticResource MutedCard}" Margin="7,0,0,0">
-                                        <StackPanel>
-                                        <TextBlock Text="播放器（边下边播用）"
-                                        Style="{StaticResource CardTitleText}"
-                                        Margin="0,0,0,10"/>
-                                        <TextBlock x:Name="PlayerStatusText" TextWrapping="Wrap"
-                                        Style="{StaticResource ProseText}" Margin="0,0,0,10"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <Button x:Name="GetVlcBtn" Content="打开 VLC 下载页" Click="OnGetVlc"
-                                        Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                                        <Button x:Name="RecheckPlayerBtn" Content="重新检测"
-                                        Click="OnRecheckPlayer" Style="{StaticResource SecondaryButton}"/>
-                                        </StackPanel>
-                                        <TextBlock Style="{StaticResource ProseText}"
-                                        Text="GeZi 不内置播放器（内置会让安装包大几十 MB）。推荐 VLC：免费、开源、格式全，而且它以共享模式打开文件，不会干扰我们继续写盘。没装 VLC 时，「打开」按钮会回退到系统默认程序。"/>
-                                        </StackPanel>
-                                        </Border>
-                                        </Grid>
-                                    </Border>
-                                </TabItem>
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="窗口与后台" Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
 
-                                </TabControl>
+                                                <!-- 【2026-10-03 新增】关闭按钮行为 + 悬浮小窗入口。
+                                                用户要求：第一次点 × 时询问「最小化到托盘 / 直接退出」，
+                                                弹窗里可勾「此后不再提示」，之后在**这里**还能改。 -->
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="关闭按钮行为" Style="{StaticResource FieldLabel}"/>
+                                                    <ComboBox x:Name="CloseActionBox" Grid.Column="1" MaxWidth="340"
+                                                              HorizontalAlignment="Left"
+                                                              Style="{StaticResource AppComboBox}"
+                                                              ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                                              SelectionChanged="OnSettingChanged">
+                                                        <ComboBoxItem Content="每次询问"/>
+                                                        <ComboBoxItem Content="最小化到托盘（后台继续下载）"/>
+                                                        <ComboBoxItem Content="直接退出程序"/>
+                                                    </ComboBox>
+                                                </Grid>
+
+                                                <!-- 【2026-10-08 新增】剪贴板监听：复制夸克分享链接即自动解析。
+                                                默认开；不想被打扰的用户在这里关掉。
+                                                走独立的 Click 处理器（不是 OnSettingChanged）——
+                                                这个开关不需要重建下载调度器，见 OnClipboardAutoParseChanged。 -->
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="剪贴板" Style="{StaticResource FieldLabel}"/>
+                                                    <CheckBox x:Name="ClipboardAutoParseCheck" Grid.Column="1"
+                                                              Content="复制夸克分享链接时自动解析"
+                                                              Style="{StaticResource AppCheckBox}"
+                                                              Click="OnClipboardAutoParseChanged"
+                                                              ToolTip="开启后：在任何程序里复制到夸克分享链接（https://pan.quark.cn/s/…），本程序自动填入并解析。默认开启。"/>
+                                                </Grid>
+                                                <TextBlock Style="{StaticResource TertiaryText}" FontSize="11"
+                                                           Margin="120,0,0,0" TextWrapping="Wrap"
+                                                           Text="窗口在托盘时静默解析，不抢焦点，解析完用托盘气泡提示结果。"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource Card}">
+                                            <StackPanel>
+                                                <TextBlock Text="存储" Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
+
+                                                <!-- 下载目录：标签 / 输入框 / 「浏览…」/「打开下载目录」
+                                                四个元素全部排在同一行。
+                                                【2026-10-02 改】原先是 [150][*][Auto] 两行布局，
+                                                「浏览…」在上、「打开下载目录」在下叠放 —— 用户反馈
+                                                「把这三个框弄在同一行不要这样分开」。现在改成
+                                                [120][*][Auto][Auto] 单行，两个按钮并排在输入框右侧。 -->
+                                                <Grid Margin="0,0,0,16">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Text="下载目录" Style="{StaticResource FieldLabel}"
+                                                               Grid.Column="0"/>
+                                                    <TextBox x:Name="OutDirBox" Grid.Column="1"
+                                                             Style="{StaticResource AppTextBox}"
+                                                             LostFocus="OnSettingChanged"
+                                                             KeyDown="OnSettingKeyDown"/>
+                                                    <Button Grid.Column="2" Content="浏览…"
+                                                            Click="OnBrowseOutDir"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Margin="8,0,0,0"/>
+                                                    <Button Click="OnOpenOutDir"
+                                                            Grid.Column="3"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Margin="8,0,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
+                                                                  Width="14" Height="14" VerticalAlignment="Center"
+                                                                  Stroke="{DynamicResource TextSecondaryBrush}"
+                                                                  StrokeThickness="1.8"
+                                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                                  StrokeLineJoin="Round"/>
+                                                            <TextBlock Text="打开下载目录" Margin="7,0,0,0"
+                                                                       VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                                <CheckBox x:Name="AutoCleanCheck"
+                                                          Content="下载完成后自动清理云盘转存文件"
+                                                          Style="{StaticResource AppCheckBox}"
+                                                          Click="OnSettingChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                    </StackPanel>
+
+                                    <!-- 右列：个性化 → 分片与缓存 → 播放器 -->
+                                    <StackPanel Grid.Column="1" Margin="7,0,0,0">
+
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="个性化" Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
+
+                                                <Border HorizontalAlignment="Left" CornerRadius="8"
+                                                        Background="{DynamicResource SurfaceSunkenBrush}"
+                                                        Padding="3">
+                                                    <Grid local:SegmentedSlider.IsEnabled="True"
+                                                          local:SegmentedSlider.Thumb="{x:Reference ThemeThumb}">
+                                                        <Border x:Name="ThemeThumb" CornerRadius="6"
+                                                                HorizontalAlignment="Left"
+                                                                VerticalAlignment="Stretch"
+                                                                IsHitTestVisible="False"
+                                                                Background="{DynamicResource SurfaceBrush}"/>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <RadioButton x:Name="ThemeLightRadio" Content="浅色"
+                                                                         GroupName="AppTheme"
+                                                                         Checked="OnThemeChanged"
+                                                                         Style="{StaticResource SegmentedRadio}"
+                                                                         AutomationProperties.Name="浅色主题"
+                                                                         Margin="0"/>
+                                                            <RadioButton x:Name="ThemeDarkRadio" Content="深色"
+                                                                         GroupName="AppTheme"
+                                                                         Checked="OnThemeChanged"
+                                                                         Style="{StaticResource SegmentedRadio}"
+                                                                         AutomationProperties.Name="深色主题"
+                                                                         Margin="2,0,0,0"/>
+                                                            <RadioButton x:Name="ThemeSystemRadio" Content="跟随系统"
+                                                                         GroupName="AppTheme"
+                                                                         Checked="OnThemeChanged"
+                                                                         Style="{StaticResource SegmentedRadio}"
+                                                                         AutomationProperties.Name="跟随系统主题"
+                                                                         Margin="2,0,0,0"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- 说明行：跟随系统时要让用户看懂"为什么我没选它却变了" -->
+                                                <TextBlock x:Name="ThemeHintText"
+                                                           Style="{StaticResource TertiaryText}"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,10,0,0"
+                                                           Text="跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。"/>
+
+                                                <!-- 主题版预览：让用户不用切来切去也能看到效果
+                                                【2026-10-14 UI 改造】色块 34×22 → 40×40、圆角 5 → 8，
+                                                并且**每个色块下方带自己的标签**（页面底 / 卡片 / 主色 / 正文）。
+                                                改前只有末尾一行笼统的「当前配色的底色、卡片色、主色」——
+                                                用户得数着猜哪个是哪个（"AI味"诊断里准确的一条：色块展示原始）。
+                                                每个色块包成「色块 + 标签」的竖排小单元，间距 12px。 -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                                    <StackPanel Margin="0,0,12,0">
+                                                        <Border Width="40" Height="40" CornerRadius="8"
+                                                                Background="{DynamicResource AppBgBrush}"
+                                                                BorderBrush="{DynamicResource BorderBrushSoft}"
+                                                                BorderThickness="1"/>
+                                                        <TextBlock Text="页面底" Style="{StaticResource TertiaryText}"
+                                                                   FontSize="11" HorizontalAlignment="Center"
+                                                                   Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                    <StackPanel Margin="0,0,12,0">
+                                                        <Border Width="40" Height="40" CornerRadius="8"
+                                                                Background="{DynamicResource SurfaceBrush}"
+                                                                BorderBrush="{DynamicResource BorderBrushSoft}"
+                                                                BorderThickness="1"/>
+                                                        <TextBlock Text="卡片" Style="{StaticResource TertiaryText}"
+                                                                   FontSize="11" HorizontalAlignment="Center"
+                                                                   Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                    <StackPanel Margin="0,0,12,0">
+                                                        <Border Width="40" Height="40" CornerRadius="8"
+                                                                Background="{DynamicResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="主色" Style="{StaticResource TertiaryText}"
+                                                                   FontSize="11" HorizontalAlignment="Center"
+                                                                   Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <Border Width="40" Height="40" CornerRadius="8"
+                                                                Background="{DynamicResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="正文" Style="{StaticResource TertiaryText}"
+                                                                   FontSize="11" HorizontalAlignment="Center"
+                                                                   Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="分片与缓存" Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
+
+                                                <TextBlock Text="分片/缓存根目录" Style="{StaticResource BodyText}"
+                                                           Margin="0,0,0,6"/>
+                                                <!-- 【2026-10-04 用户要求】除「浏览…」外，再加一个「打开目录」按钮，
+                                                与上方「下载目录」行保持一致的操作入口。 -->
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox x:Name="PartsRootBox" Grid.Column="0"
+                                                             Style="{StaticResource AppTextBox}"
+                                                             LostFocus="OnSettingChanged"
+                                                             KeyDown="OnSettingKeyDown"
+                                                             ToolTip="留空 = 分片与目标文件同目录（默认）。指定后可把分片集中到另一块盘（如 SSD）。"/>
+                                                    <Button Grid.Column="1" Content="浏览…" Click="OnBrowsePartsRoot"
+                                                            Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"/>
+                                                    <Button Click="OnOpenPartsRoot"
+                                                            Grid.Column="2"
+                                                            Style="{StaticResource SecondaryButton}"
+                                                            Margin="8,0,0,0"
+                                                            ToolTip="在资源管理器中打开分片/缓存根目录。">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
+                                                                  Width="14" Height="14" VerticalAlignment="Center"
+                                                                  Stroke="{DynamicResource TextSecondaryBrush}"
+                                                                  StrokeThickness="1.8"
+                                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                                  StrokeLineJoin="Round"/>
+                                                            <TextBlock Text="打开" Margin="7,0,0,0"
+                                                                       VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                                <TextBlock Style="{StaticResource ProseText}" Margin="0,8,0,12"
+                                                           Text="留空 = 分片与目标文件同目录（默认）。指定后可把分片集中到另一块盘。"/>
+
+                                                <CheckBox x:Name="HidePartsCheck"
+                                                          Content="隐藏分片目录"
+                                                          Style="{StaticResource AppCheckBox}"
+                                                          Click="OnSettingChanged"
+                                                          ToolTip="只影响新建的分片目录是否隐藏，不影响下载功能。默认勾选。"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource Card}">
+                                            <StackPanel>
+                                                <TextBlock Text="播放器（边下边播用）"
+                                                           Style="{StaticResource CardTitleText}"
+                                                           FontSize="14" Margin="0,0,0,10"/>
+                                                <TextBlock x:Name="PlayerStatusText" TextWrapping="Wrap"
+                                                           Style="{StaticResource ProseText}" Margin="0,0,0,10"/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                                    <Button x:Name="GetVlcBtn" Content="打开 VLC 下载页" Click="OnGetVlc"
+                                                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
+                                                    <Button x:Name="RecheckPlayerBtn" Content="重新检测"
+                                                            Click="OnRecheckPlayer" Style="{StaticResource SecondaryButton}"/>
+                                                </StackPanel>
+                                                <TextBlock Style="{StaticResource ProseText}"
+                                                           Text="GeZi 不内置播放器（内置会让安装包大几十 MB）。推荐 VLC：免费、开源、格式全，而且它以共享模式打开文件，不会干扰我们继续写盘。没装 VLC 时，「打开」按钮会回退到系统默认程序。"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                    </StackPanel>
+                                </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -1706,17 +1756,31 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- ============ 左列：扫码登录 ============
-                                     用 Grid 三行（标题 Auto / 二维码 * / 按钮+状态 Auto），
-                                     整卡 VerticalAlignment=Stretch 与右列等高；
-                                     二维码行用 * 吸收多余高度并垂直居中 —— 这样无论
-                                     登录前后、窗口多大，左右两列外轮廓都是同一个矩形。 -->
+                                     【2026-10-17 两轮调整，改之前先读完】
+                                     ① 用户第一次反馈「获取二维码按钮与上方框之间距离太大」。
+                                        根因：二维码那行原来是 `*` + 框 VerticalAlignment=Center，
+                                        左卡被右列撑高后多出来的 ~80px 被平均分到框的上下，
+                                        于是「框 → 按钮」变成 14 + 40 = 54px（框上方同样多出 40px）。
+                                        改法：二维码行改成 Auto，多余高度交给最后一行 `*`。
+                                     ② 用户紧接着反馈「按钮下方空白也太大」。
+                                        根因：卡片 `VerticalAlignment=Stretch` 与右列等高，
+                                        而那 ~100px 现在全沉在卡片底部，变成一块空白。
+                                        ✅ 改法：卡片改 `VerticalAlignment="Top"` —— **贴内容高度**，
+                                           按钮下面只剩卡片自身 padding，不再被右列拽高。
+                                           ⚠️ 代价（已与用户确认可接受）：左右两列轮廓不再等高。
+                                           ⚠️ 最后那行 `*` **故意保留**：Top 对齐时它自动收缩为 0，
+                                              万一以后卡片又被拉高，多余高度仍然沉底、不会重新撑开
+                                              「框 → 按钮」的间距。
+                                     ⚠️ 别把二维码行改回 `*`、也别给卡片加回 Stretch，否则两个老问题都会回来。 -->
                                 <Border Grid.Column="0" Style="{StaticResource PrimaryCard}"
-                                        Width="304" VerticalAlignment="Stretch">
+                                        Width="304" VerticalAlignment="Top">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="*"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <!-- 弹性空白：吃掉与右列等高的多余高度 -->
+                                            <RowDefinition Height="*"/>
                                         </Grid.RowDefinitions>
 
                                         <StackPanel Grid.Row="0">
@@ -1735,15 +1799,27 @@
                                                        TextWrapping="Wrap" Margin="0,0,0,14"/>
                                         </StackPanel>
 
-                                        <!-- 二维码：固定 264×264 占位框，未生成时显示提示，避免高度跳变 -->
-                                        <Grid Grid.Row="1" Height="264" Margin="0,0,0,14"
-                                              VerticalAlignment="Center">
+                                        <!-- 二维码：固定 264×264 占位框，未生成时显示提示，避免高度跳变。
+                                             【2026-10-17】本行已改为 Auto（不再 *），所以**不要**加
+                                             VerticalAlignment=Center —— Auto 行里它本来就贴顶，
+                                             加了反而会在高度富余时又被居中、把间距撑开。
+
+                                             🚨 【2026-10-17 修「边框显示不全」】两个 Border **都不能写死 Width**。
+                                                 左卡 Width=304，`PrimaryCard` 是 BorderThickness=1 + Padding=20
+                                                 ⇒ **内宽 = 304-2-40 = 262**，比 264 少 2px。
+                                                 原来 `QrImageBox` 写了 Width="264"，比可用宽度多 2px ⇒
+                                                 右边那条 1px 边框整个被挤到可视区外面 ⇒ 用户看到的
+                                                 「获取二维码后边框显示不全」（占位框没写死宽度所以它一直正常）。
+                                                 ✅ 现在两个 Border 都只靠 Grid 撑开（262×264，差 2px 肉眼不可见），
+                                                    边框必然完整；以后改卡片 Padding 也不会再坏。
+                                                 ⚠️ 不要再加 Width/Height 到这两个 Border 上。 -->
+                                        <Grid Grid.Row="1" Height="264" Margin="0,0,0,14">
                                             <!-- ⚠️ Background="White" 是**故意硬编码**的，不要改成 DynamicResource：
                                                  二维码必须是"深色模块 + 白色静默区"才能被手机扫出来。
                                                  深色主题下若跟着变深，扫码会直接失败（不是审美问题）。
                                                  容器保持纯白 + 一圈描边，在深色界面上反而更醒目、
                                                  等于给二维码加了个"白卡底座"。 -->
-                                            <Border x:Name="QrImageBox" Width="264" Height="264"
+                                            <Border x:Name="QrImageBox"
                                                     Background="White"
                                                     BorderBrush="{DynamicResource BorderBrushStrong}"
                                                     BorderThickness="1"
@@ -1790,11 +1866,13 @@
                                                 <Button x:Name="QrLoginBtn" Click="OnQrLogin"
                                                         Style="{StaticResource PrimaryButton}">
                                                     <StackPanel Orientation="Horizontal">
+                                                        <!-- 【2026-10-17】同 DownloadSelBtn：用 SolidBtnFgBrush 跟随按钮前景色。
+                                                             TextOnPrimaryBrush 恒为纯白，暗色主题浅灰底上会看不见。 -->
                                                         <Path Data="{StaticResource IconQr}"
                                                               Stretch="Uniform"
                                                               Width="14" Height="14"
                                                               VerticalAlignment="Center"
-                                                              Stroke="{DynamicResource TextOnPrimaryBrush}"
+                                                              Stroke="{DynamicResource SolidBtnFgBrush}"
                                                               StrokeThickness="1.8"
                                                               StrokeStartLineCap="Round"
                                                               StrokeEndLineCap="Round"/>
@@ -1802,11 +1880,29 @@
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                 </Button>
-                                                <!-- 【2026-10-03】原来这里还有一个「刷新二维码」按钮，
-                                                     用户反馈「这里刷新二维码的按键多余了」——
-                                                     确实多余：它和「获取二维码」绑的是**同一个处理函数**
-                                                     （都是 OnQrLogin），点哪个都是重新取一张。
-                                                     现在只留一个按钮，二维码过期时提示用户再点一次即可。 -->
+                                                <!-- 【2026-10-17 按用户要求把「刷新」加回来，放在「获取二维码」右边】
+                                                     历史：2026-10-03 曾删掉过一个「刷新二维码」按钮，理由是它和
+                                                     「获取二维码」绑同一个处理函数、看着重复。但实际用起来
+                                                     二维码过期后**必须滚回上面的按钮**才能重取，所以用户又要回来了。
+                                                     现在两个按钮仍共用 OnQrLogin（点哪个都是重新取一张），
+                                                     区别只是语义：获取=第一次，刷新=重取。
+                                                     ⚠️ IconRefresh 是**实心几何**（见 Icons.xaml），只能上 Fill，不能写 Stroke；
+                                                        这里用绑定跟随按钮自己的 Foreground，禁用/悬停时颜色自动跟着变。 -->
+                                                <Button x:Name="QrRefreshBtn" Click="OnQrLogin"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Margin="8,0,0,0"
+                                                        AutomationProperties.Name="刷新二维码">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Path Data="{StaticResource IconRefresh}"
+                                                              Stretch="Uniform"
+                                                              Width="14" Height="14"
+                                                              VerticalAlignment="Center"
+                                                              Fill="{Binding Foreground,
+                                                                     RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                        <TextBlock Text="刷新" Margin="7,0,0,0"
+                                                                   VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
                                             </StackPanel>
 
                                             <!-- 状态提示：随扫码进度实时变化（等待扫码 → 已扫码待确认 → 成功/过期）
@@ -1858,6 +1954,8 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
+                                                    <!-- 【2026-10-17】第三列：切换账号（挪到账号信息同一行右侧） -->
+                                                    <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <Border x:Name="LoginAvatarBox" Grid.Column="0"
                                                         Style="{StaticResource AvatarBorder}"
@@ -1888,21 +1986,27 @@
                                                                Foreground="{DynamicResource TextTertiaryBrush}"
                                                                TextWrapping="Wrap"/>
                                                 </StackPanel>
-                                            </Grid>
 
-                                            <StackPanel x:Name="LoginActionRow" Orientation="Horizontal"
-                                                        Margin="0,14,0,0">
-                                                <Button x:Name="LoginBtn" Content="登录" Click="OnLoginClick"
-                                                        Style="{StaticResource SecondaryButton}"
-                                                        Margin="0,0,8,0"/>
-                                                <Button x:Name="AccountsBtn" Content="切换账号"
-                                                        Click="OnOpenAccounts"
-                                                        Style="{StaticResource SecondaryButton}"
-                                                        Visibility="Collapsed"/>
-                                                <!-- 【2026-10-03】「登出」按钮按用户要求删除（觉得多余）。
+                                                <!-- 【2026-10-17 按用户要求重排这一块】
+                                                     ① **删掉「登录」按钮**：它只做了 `Tabs.SelectedIndex = 3`，
+                                                        和左侧「获取二维码」、下方「导入 Cookie」完全重复，
+                                                        用户反馈「这个登录按钮没有任何作用」。
+                                                     ② **「切换账号」从下方独立一行挪到账号信息同一行的最右侧**
+                                                        （Grid.Column=2，垂直居中），省掉一整行高度。
+                                                     ③ 未登录时**不显示**「切换账号」—— 没有账号可切，
+                                                        这时候左侧扫码 + 下方导入 Cookie 就是全部入口。
+                                                     ⚠️ 可见性由 MainWindow.xaml.cs 的「登出」与「登录完成」两处控制，
+                                                        改这里务必同步改那两处（搜 AccountsBtn）。
+                                                     【2026-10-03】「登出」按钮按用户要求删除（觉得多余），
                                                      退出登录的能力没丢：挪进了「切换账号」窗口里，
                                                      那里才是账号管理的地方。 -->
-                                            </StackPanel>
+                                                <Button x:Name="AccountsBtn" Grid.Column="2"
+                                                        Content="切换账号" Click="OnOpenAccounts"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        VerticalAlignment="Center"
+                                                        Margin="10,0,0,0"
+                                                        Visibility="Collapsed"/>
+                                            </Grid>
                                         </StackPanel>
                                     </Border>
 
@@ -1944,7 +2048,7 @@
                                                 <!-- 【2026-10-03 改】原来是「复制当前 Cookie」→ 只往剪贴板塞。
                                                      用户要求「无论是导出直链还是导出 cookie 都不要复制到
                                                      粘贴板上」，所以改成**写文件**，按钮文案与图标同步改。 -->
-                                                <Button x:Name="ExportCookieBtn" Click="OnExportCookie"
+                                                <Button Click="OnExportCookie"
                                                         Style="{StaticResource SecondaryButton}"
                                                         ToolTip="把当前登录 Cookie 导出成桌面上的 txt 文件（不占用剪贴板）。">
                                                     <StackPanel Orientation="Horizontal">
@@ -2014,7 +2118,7 @@
                 <Border Background="{DynamicResource OverlayBrush}"
                         MouseLeftButtonDown="OnHistoryOverlayClick"/>
 
-                <Border x:Name="HistoryPanel" Width="580" MaxHeight="500"
+                <Border Width="580" MaxHeight="500"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1"
@@ -2048,7 +2152,7 @@
                             </StackPanel>
                             <!-- 【2026-10-14 用户要求】右上角改为**关闭叉号**（原来这里是「清空」按钮，
                                  现在「清空」移到面板右下角）。 -->
-                            <Button x:Name="HistoryCloseBtn" Grid.Column="1"
+                            <Button Grid.Column="1"
                                     Click="OnHistoryCloseClick"
                                     Style="{StaticResource IconGhostButton}"
                                     Width="28" Height="28" Focusable="False"
@@ -2083,7 +2187,7 @@
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextTertiaryBrush}"
                                            Text="点任意一条即可重新解析该分享 · 右键可置顶或删除 · 按 Esc、或点面板外的空白处关闭"/>
-                                <Button x:Name="HistoryClearBtn" Grid.Column="1" Content="清空"
+                                <Button Grid.Column="1" Content="清空"
                                         Click="OnHistoryClearClick"
                                         Style="{StaticResource SecondaryButton}"
                                         Padding="12,5" FontSize="12" Margin="12,0,0,0"

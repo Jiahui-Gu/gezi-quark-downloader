@@ -40,14 +40,11 @@
 
     <!-- ────────── 主色（靛蓝，全应用唯一强调色） -->
     <Color x:Key="PrimaryColor">#FF4F6BED</Color>
-    <Color x:Key="PrimaryHoverColor">#FF3D57D6</Color>
-    <Color x:Key="PrimaryPressedColor">#FF3348B8</Color>
     <Color x:Key="PrimaryLightColor">#FFEEF1FE</Color>
     <Color x:Key="PrimarySoftColor">#FFDDE3FB</Color>
 
     <!-- ────────── 语义色 -->
     <Color x:Key="SuccessColor">#FF10B981</Color>
-    <Color x:Key="SuccessLightColor">#FFE6F7F1</Color>
     <Color x:Key="WarningColor">#FFF59E0B</Color>
     <Color x:Key="WarningLightColor">#FFFEF3E0</Color>
     <Color x:Key="DangerColor">#FFEF4444</Color>
@@ -69,6 +66,12 @@
     <Color x:Key="ShadowColor">#FF1F2430</Color>
     <!-- 悬浮层（下拉/菜单）用稍重的阴影，表达"浮在内容之上" -->
     <Color x:Key="ShadowStrongColor">#FF1F2430</Color>
+
+    <!-- ────────── 波纹（选项栏点击反馈，2026-10-17 新增）
+         Material 手感：按下点扩散一圈渐隐圆。颜色 = TextPrimary 的 12% 淡版
+         （深色波纹配浅色底）——刻意不用品牌蓝：界面里蓝色只留给 Logo，
+         波纹是中性交互反馈，抢戏就"AI 味"了。深浅两版必须同键名。 -->
+    <Color x:Key="RippleColor">#1F1F2430</Color>
 
     <!-- ────────── 头像底色（无头像时用昵称首字生成，按名字散列取一个） -->
     <Color x:Key="AvatarTint1Color">#FF4F6BED</Color>

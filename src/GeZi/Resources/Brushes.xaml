@@ -19,14 +19,11 @@
 
     <!-- ────────── 主色 -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}"/>
-    <SolidColorBrush x:Key="PrimaryHoverBrush" Color="{DynamicResource PrimaryHoverColor}"/>
-    <SolidColorBrush x:Key="PrimaryPressedBrush" Color="{DynamicResource PrimaryPressedColor}"/>
     <SolidColorBrush x:Key="PrimaryLightBrush" Color="{DynamicResource PrimaryLightColor}"/>
     <SolidColorBrush x:Key="PrimarySoftBrush" Color="{DynamicResource PrimarySoftColor}"/>
 
     <!-- ────────── 语义色 -->
     <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}"/>
-    <SolidColorBrush x:Key="SuccessLightBrush" Color="{DynamicResource SuccessLightColor}"/>
     <SolidColorBrush x:Key="WarningBrush" Color="{DynamicResource WarningColor}"/>
     <SolidColorBrush x:Key="WarningLightBrush" Color="{DynamicResource WarningLightColor}"/>
     <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}"/>
@@ -51,13 +48,6 @@
     <SolidColorBrush x:Key="TitleBarHoverBrush" Color="{DynamicResource TitleBarHoverColor}"/>
     <SolidColorBrush x:Key="TitleBarCloseHoverBrush" Color="{DynamicResource TitleBarCloseHoverColor}"/>
 
-    <!-- ────────── 透明 -->
-    <SolidColorBrush x:Key="TransparentBrush" Color="Transparent"/>
-
-    <!-- ────────── 阴影 -->
-    <SolidColorBrush x:Key="ShadowBrush" Color="{DynamicResource ShadowColor}"/>
-    <SolidColorBrush x:Key="ShadowStrongBrush" Color="{DynamicResource ShadowStrongColor}"/>
-
     <!-- ────────── 头像底色 -->
     <SolidColorBrush x:Key="AvatarTint1Brush" Color="{DynamicResource AvatarTint1Color}"/>
     <SolidColorBrush x:Key="AvatarTint2Brush" Color="{DynamicResource AvatarTint2Color}"/>
@@ -70,10 +60,11 @@
     <SolidColorBrush x:Key="CapacityMidBrush" Color="{DynamicResource CapacityMidColor}"/>
     <SolidColorBrush x:Key="CapacityHighBrush" Color="{DynamicResource CapacityHighColor}"/>
 
-    <!-- 侧栏背景：从 AppBg 往白里推一点，与内容区形成"底色差"而非"硬线分隔" -->
-    <SolidColorBrush x:Key="SidebarBrush" Color="{DynamicResource SurfaceColor}"/>
-
     <!-- 模态遮罩：居中浮层（解析历史面板）背后的压暗层。深浅两套值见 Colors.*.xaml -->
     <SolidColorBrush x:Key="OverlayBrush" Color="{DynamicResource OverlayColor}"/>
+
+    <!-- 波纹：选项栏点击反馈（RippleEffect.cs 生成椭圆时取此刷子）。
+         Color 是 DynamicResource → 主题切换自动换色，刷子实例不变。 -->
+    <SolidColorBrush x:Key="RippleBrush" Color="{DynamicResource RippleColor}"/>
 
 </ResourceDictionary>

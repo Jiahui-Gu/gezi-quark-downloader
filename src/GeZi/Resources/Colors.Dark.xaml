@@ -38,15 +38,12 @@
 
     <!-- ────────── 主色（靛蓝，全应用唯一强调色；深底上提亮约 6%） -->
     <Color x:Key="PrimaryColor">#FF5B74F0</Color>
-    <Color x:Key="PrimaryHoverColor">#FF6D83F3</Color>
-    <Color x:Key="PrimaryPressedColor">#FF4A61D9</Color>
     <!-- ⚠️ 浅色底 → 深色底（语义反转）：亮色版是淡蓝色块，这里必须是深蓝色块 -->
     <Color x:Key="PrimaryLightColor">#FF232A47</Color>
     <Color x:Key="PrimarySoftColor">#FF2C3556</Color>
 
     <!-- ────────── 语义色（主色值沿用；Light 变体反转为深底） -->
     <Color x:Key="SuccessColor">#FF10B981</Color>
-    <Color x:Key="SuccessLightColor">#FF13312A</Color>
     <Color x:Key="WarningColor">#FFF59E0B</Color>
     <Color x:Key="WarningLightColor">#FF33280F</Color>
     <Color x:Key="DangerColor">#FFEF4444</Color>
@@ -66,6 +63,9 @@
     <!-- ────────── 阴影（深色界面里偏蓝的深灰几乎不可见 → 用纯黑） -->
     <Color x:Key="ShadowColor">#FF000000</Color>
     <Color x:Key="ShadowStrongColor">#FF000000</Color>
+
+    <!-- ────────── 波纹（与亮色版同键名；浅色波纹配深色底） -->
+    <Color x:Key="RippleColor">#1FE8EAF0</Color>
 
     <!-- ────────── 头像底色（深底上略降饱和，避免过于跳脱） -->
     <Color x:Key="AvatarTint1Color">#FF5B74F0</Color>

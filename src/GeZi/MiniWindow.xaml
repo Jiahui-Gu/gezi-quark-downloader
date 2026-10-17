@@ -39,7 +39,7 @@
                 <Path Data="{StaticResource IconDownload}" Stretch="Uniform"
                       Width="14" Height="14" Margin="12,0,0,0"
                       HorizontalAlignment="Left" VerticalAlignment="Center"
-                      Stroke="{DynamicResource PrimaryBrush}" StrokeThickness="1.8"
+                      Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.8"
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                       StrokeLineJoin="Round"/>
                 <TextBlock x:Name="TitleText" Text="下载中"
@@ -48,7 +48,7 @@
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            TextTrimming="CharacterEllipsis"/>
                 <!-- 收起：只是隐藏小窗，程序继续在托盘跑 -->
-                <Button x:Name="HideBtn" Click="OnHideClick"
+                <Button Click="OnHideClick"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"
                         AutomationProperties.Name="收起小窗"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -81,7 +81,7 @@
                                    Foreground="{DynamicResource TextTertiaryBrush}"/>
                         <TextBlock x:Name="TotalSpeedText" Text="—"
                                    FontSize="14" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource PrimaryBrush}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                    Style="{StaticResource NumericText}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1">

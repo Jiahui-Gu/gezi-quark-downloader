@@ -63,7 +63,7 @@
                     </StackPanel>
                     <!-- 版本标签小色块（视觉上呼应"有新版本"）-->
                     <Border Grid.Column="1" VerticalAlignment="Center"
-                            Background="{DynamicResource PrimaryBrush}" CornerRadius="6"
+                            Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6"
                             Padding="8,4" Margin="8,0,0,0">
                         <TextBlock x:Name="SizeText" Text="?" FontSize="11"
                                    Foreground="{DynamicResource SurfaceBrush}"/>
@@ -71,13 +71,13 @@
                 </Grid>
 
                 <!-- 更新说明入口 -->
-                <Button x:Name="ReleaseBtn" Click="OnReleaseClick"
+                <Button Click="OnReleaseClick"
                         AutomationProperties.Name="查看更新说明"
                         HorizontalAlignment="Left" Margin="0,10,0,0"
                         Cursor="Hand" Background="Transparent" BorderThickness="0" Padding="0">
                     <TextBlock Text="查看更新说明（GitHub Releases）"
                                FontSize="11" TextDecorations="Underline"
-                               Foreground="{DynamicResource PrimaryBrush}"/>
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                 </Button>
 
                 <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,14,0,0"/>
@@ -112,16 +112,16 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="IgnoreBtn" Grid.Column="0" Content="忽略此版本" Click="OnIgnoreClick"
+                    <Button Grid.Column="0" Content="忽略此版本" Click="OnIgnoreClick"
                             AutomationProperties.Name="忽略此版本"
                             Style="{StaticResource SecondaryButton}"
                             MinWidth="96" HorizontalAlignment="Left"
                             ToolTip="之后不再提示这个版本；想恢复：再点一次「检查更新」"/>
-                    <Button x:Name="CancelBtn" Grid.Column="2" Content="暂不" Click="OnCloseClick"
+                    <Button Grid.Column="2" Content="暂不" Click="OnCloseClick"
                             AutomationProperties.Name="暂不更新"
                             Style="{StaticResource SecondaryButton}"
                             MinWidth="84" Margin="0,0,10,0"/>
-                    <Button x:Name="DownloadBtn" Grid.Column="3" Content="开始下载" Click="OnDownloadClick"
+                    <Button Grid.Column="3" Content="开始下载" Click="OnDownloadClick"
                             AutomationProperties.Name="开始下载更新"
                             Style="{StaticResource PrimaryButton}"
                             MinWidth="96"/>

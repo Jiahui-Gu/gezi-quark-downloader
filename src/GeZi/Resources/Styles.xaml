@@ -124,7 +124,14 @@
     <!-- 【2026-10-14 全站去蓝】主按钮从实心靛蓝改成**深灰底白字**。
          参考 Motrix：全站几乎零彩色，主操作用深色而非品牌蓝。
          保留"唯一实心"的层级（与描边/幽灵按钮区分），只是把颜色从蓝换成中性深灰。
-         ⚠️ TextOnPrimaryBrush 在深色主题下仍是白字，正好复用，不用新增画笔。 -->
+         🚨 【2026-10-17 修正 —— 旧注释是错的，已作废】
+            旧话是「TextOnPrimaryBrush 在深色主题下仍是白字，正好复用，不用新增画笔」，
+            这句在去蓝改造后**不再成立**：
+              · 亮色主题：SolidBtnBg=#1F2430（深底） + SolidBtnFg=#FFFFFF（白字）
+              · 深色主题：SolidBtnBg=#E8EAF0（浅底） + SolidBtnFg=#1A1D23（深字）  ← 反过来
+            ⇒ 按钮内的图标/文字**一律用 SolidBtnFgBrush**（它就是 Foreground 用的画笔）；
+            ⛔ 绝不能写 TextOnPrimaryBrush —— 那个两个主题恒为纯白，画在深色主题的浅灰底上会直接消失
+              （用户反馈「下载选中」「获取二维码」的图标看不见，就是这个原因）。 -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
@@ -139,7 +146,7 @@
                     <Grid>
                         <!-- 焦点环：默认隐藏，键盘聚焦时才出现（不改变按钮本体几何） -->
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource BorderStrongBrush}"
+                                BorderBrush="{DynamicResource BorderBrushStrong}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -205,7 +212,7 @@
                 <ControlTemplate TargetType="Button">
                     <Grid>
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource BorderStrongBrush}"
+                                BorderBrush="{DynamicResource BorderBrushStrong}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -304,7 +311,7 @@
                 <ControlTemplate TargetType="Button">
                     <Grid>
                         <Border x:Name="FocusRing" Margin="-3" CornerRadius="12"
-                                BorderBrush="{DynamicResource BorderStrongBrush}"
+                                BorderBrush="{DynamicResource BorderBrushStrong}"
                                 BorderThickness="2" Visibility="Collapsed"/>
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
@@ -532,6 +539,12 @@
         <Setter Property="Width" Value="24"/>
         <Setter Property="Height" Value="24"/>
         <Setter Property="Background" Value="Transparent"/>
+        <!-- 【2026-10-17 补】以前这里没有 Foreground ⇒ 取到默认的深色文字色。
+             而 UiBusy.MakeSpinner() 造的加载转圈会**绑定到按钮的 Foreground**，
+             于是出现「图标是浅灰、转圈却是深色」的割裂 ——
+             用户反馈「左下角那个刷新按钮的转圈和它不是同个颜色」。
+             统一给成 TextSecondaryBrush：与 ToolButton 的文字/图标同档。 -->
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -1075,6 +1088,36 @@
     </Style>
 
     <!--
+        无装饰的列表行容器 —— `PlainListBox` 的默认 ItemContainerStyle。
+
+        【为什么需要它】WPF 默认的 ListBoxItem 模板自带两条「系统蓝」：
+          · IsSelected  → 蓝底 + 白字（SystemColors.HighlightBrush）
+          · IsKeyboardFocusWithin → **1px 浅蓝描边**（ListBoxItemKeyboardFocusVisualBrushKey）
+        在这套自绘界面里非常突兀 —— 用户截图反馈「这个选定窗口的蓝边太丑了」，
+        而且那圈蓝框是**矩形**，套在圆角行卡片外面，边缘还是错开的。
+
+        【这里怎么处理】行内容自己就是一张完整卡片（背景/描边/圆角/内边距全在行里画），
+        所以容器只需要原样呈现内容：纯 ContentPresenter，选中/焦点一律不给任何视觉。
+        ⚠️ 别在这里加 Border/Padding —— 行卡片的留白由行自己控制，加了会双重内缩。
+    -->
+    <Style x:Key="PlainListRow" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <!-- 去掉键盘焦点那圈虚线/蓝框 -->
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
         任务行上的「播放 / 暂停」图标按钮（无文字，图标随状态互换）。
 
         【控制什么】控制**这个下载任务**的暂停 / 恢复 —— 与右键菜单的「暂停 / 恢复」同一套逻辑。
@@ -1152,7 +1195,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource BorderStrongBrush}"/>
+                                    Value="{DynamicResource BorderBrushStrong}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
@@ -1485,11 +1528,29 @@
                         <Border x:Name="Bd" CornerRadius="8" Background="Transparent"
                                 BorderThickness="1" BorderBrush="Transparent">
                             <Grid>
-                                <!-- 选中：左侧 3px 指示竖条。
+                                <!-- 【2026-10-17 波纹改造】
+                                     三层叠加替代原来的"整块换底色"：
+                                     ① SelBg   选中底色（SurfaceSunken 浅灰）
+                                     ② HoverBg 悬停底色（SurfaceAlt，叠在选中层之上，
+                                                所以选中项悬停时显示的是悬停色）
+                                     ③ RippleHost 波纹画布（RippleEffect.cs 动态加椭圆，
+                                                裁到圆角；必须位于底色之上、内容之下）
+                                     两层底色平时 Opacity=0，由触发器做透明度过渡 ——
+                                     硬切底色是"生硬感"的根源，150ms 淡入淡出即可消掉。 -->
+                                <Border x:Name="SelBg" CornerRadius="8" Opacity="0"
+                                        Background="{DynamicResource SurfaceSunkenBrush}"
+                                        IsHitTestVisible="False"/>
+                                <Border x:Name="HoverBg" CornerRadius="8" Opacity="0"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        IsHitTestVisible="False"/>
+                                <Canvas x:Name="RippleHost" ClipToBounds="True"
+                                        IsHitTestVisible="False"/>
+                                <!-- 选中：左侧 3px 指示竖条（淡入淡出，不再硬弹）。
                                      【2026-10-14 去蓝】从主色蓝改成 TextPrimary（深灰/黑）——
                                      蓝色只留给 Logo。指示性靠这条深色竖线 + 底色 + 粗体共同表达。 -->
                                 <Border x:Name="SelBar" Width="3" CornerRadius="2"
                                         HorizontalAlignment="Left" Margin="2,7"
+                                        Opacity="0"
                                         Background="{DynamicResource TextPrimaryBrush}"
                                         Visibility="Collapsed"/>
                                 <ContentPresenter Margin="14,10" VerticalAlignment="Center"/>
@@ -1503,20 +1564,83 @@
                                 IsHitTestVisible="False"/>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- 悬停：底色淡入 150ms（先快后慢）/ 淡出 120ms。
+                             文字色与字重不参与过渡 —— 纯文字的瞬间切换反而利落，
+                             且 Foreground 在触发器和内容绑定上同时生效，动画它容易打架。 -->
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource SurfaceAltBrush}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverBg"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.15">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverBg"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
+                        <!-- 选中：底色平滑过渡 180ms + 竖条淡入；文字加粗瞬间（见上）。
+                             【2026-10-14 去 AI 味】选中底色从 PrimaryLightBrush（淡蓝块）
+                             改成 SurfaceSunkenBrush（中性浅灰）。
+                             为什么：白底 + 淡蓝选中块 + 蓝色图标是"AI 生成 UI"的典型配方，
+                             用户一眼就认出"模板感"。改成中性灰后，蓝色只出现在左侧那条
+                             3px 竖线上 —— 克制、有指示性、不抢戏（VSCode / Linear 的做法）。
+                             文字用 TextPrimary + SemiBold 表达"被选中"，不再靠变蓝。 -->
                         <Trigger Property="IsSelected" Value="True">
-                            <!-- 【2026-10-14 去 AI 味】选中底色从 PrimaryLightBrush（淡蓝块）
-                                 改成 SurfaceSunkenBrush（中性浅灰）。
-                                 为什么：白底 + 淡蓝选中块 + 蓝色图标是"AI 生成 UI"的典型配方，
-                                 用户一眼就认出"模板感"。改成中性灰后，蓝色只出现在左侧那条
-                                 3px 竖线上 —— 克制、有指示性、不抢戏（VSCode / Linear 的做法）。
-                                 文字用 TextPrimary + SemiBold 表达"被选中"，不再靠变蓝。 -->
-                            <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
-                            <Setter TargetName="SelBar" Property="Visibility" Value="Visible"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="SelBg"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelBar"
+                                                                       Storyboard.TargetProperty="Visibility">
+                                            <DiscreteObjectKeyFrame KeyTime="0:0:0"
+                                                Value="{x:Static Visibility.Visible}"/>
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="SelBar"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.15">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="SelBg"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.15"/>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="SelBar"
+                                                                       Storyboard.TargetProperty="Visibility">
+                                            <DiscreteObjectKeyFrame KeyTime="0:0:0"
+                                                Value="{x:Static Visibility.Collapsed}"/>
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="SelBar"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
@@ -1648,11 +1772,9 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <!-- 选中 = 白底（浮起）+ 深色粗体字，**不再把文字变蓝**。
-                                 【2026-10-14 去 AI 味】与侧栏选中态同一套逻辑：
-                                 蓝色越少越不像模板。指示性靠"浮起的白底 + 加粗"表达。 -->
-                            <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource SurfaceBrush}"/>
+                            <!-- 选中 = 深色粗体字。**底色不再由 RadioButton 自绘**——
+                                 2026-10-17 改走 SegmentedSlider 滑块（整段面板共用一个滑块滑到选中项），
+                                 这里只负责文字态，避免滑块滑到后选中态"双重背景"。 -->
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
@@ -1664,48 +1786,8 @@
 
 
     <!-- ============================================================
-         提示条
-         ============================================================ -->
-    <!-- ══════════════════════════════════════════════════════════
-         设置页顶部分类 Tab（2026-10-14 UI 重构）
-         ══════════════════════════════════════════════════════════
-         为什么加：原来设置页是**一长串卡片纵向堆叠**（个性化 → 下载与网络 →
-         分片与缓存），6 个设置项挤在一张卡里、要滚很久才找得到 —— 这是
-         "没做信息架构"的表现。大厂设置页都用**分类导航 + 内容区**
-         （Motrix 顶部 Tab、VSCode 左侧列表），核心是"一次只看一类"。
-
-         样式：顶部文字 Tab + 选中态**下划线**（2px）。
-         ⚠️ 下划线用 TextPrimaryBrush（深灰）而不是主色 —— 遵循全站去蓝原则；
-            蓝色只留给品牌 Logo 与状态色。 -->
-    <Style x:Key="SettingsTabControl" TargetType="TabControl">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding" Value="0"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TabControl">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <!-- ⚠️ 必须用 StackPanel 而不是 TabPanel：WPF 的 TabPanel 放在 Auto 行里
-                             会把 TabItem 高度压成接近 0（实测渲染出来 5 个 Tab 变成 5 条细竖线）。
-                             StackPanel 的测量行为可预测，能按内容自然撑高。 -->
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" IsItemsHost="True"
-                                    Margin="0,0,0,16"/>
-                        <ContentPresenter Grid.Row="1" ContentSource="SelectedContent"/>
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- ══════════════════════════════════════════════════════════
-         任务页顶部分类 Tab（2026-10-14 UI 重构）
-         ══════════════════════════════════════════════════════════
-         参考 Motrix 的任务列表分类（全部 / 进行中 / 失败 / 已完成）。
-         原来所有任务混在一个列表里，用户要找"哪个失败了"得自己一行行扫。
+         任务页顶部筛选（全部 / 进行中 / 已完成）
+         ============================================================
 
          ⚠️ 用 RadioButton 而不是 TabItem：4 个分类**共用同一个任务列表**
             （只切换过滤器），用 TabItem 就得放 4 份列表副本 —— 状态会不同步。
@@ -1732,8 +1814,9 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource TextPrimaryBrush}"/>
+                            <!-- 选中 = 深色粗体字。**下划线不再由 RadioButton 自绘**——
+                                 2026-10-17 改走 SegmentedSlider 滑块（Height=2 的指示条在筛选项间滑动），
+                                 模板上保留透明底边框占位保证布局高度不跳。 -->
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>
@@ -1743,39 +1826,10 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SettingsTabItem" TargetType="TabItem">
-        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
-        <Setter Property="FontSize" Value="13"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Padding" Value="0,0,0,7"/>
-        <Setter Property="Margin" Value="0,0,24,0"/>
-        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="Bd" Background="Transparent"
-                            BorderThickness="0,0,0,2" BorderBrush="Transparent"
-                            Padding="{TemplateBinding Padding}"
-                            SnapsToDevicePixels="True">
-                        <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                        </Trigger>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush"
-                                    Value="{DynamicResource TextPrimaryBrush}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                            <Setter Property="FontWeight" Value="SemiBold"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
+
+    <!-- ============================================================
+         提示条
+         ============================================================ -->
 
     <Style x:Key="InfoBanner" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>

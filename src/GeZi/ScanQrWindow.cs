@@ -53,6 +53,7 @@ namespace GeZi
         // ⚠️ 这里的 Image 是 WPF 的 System.Windows.Controls.Image（下方 using 了别名 WpfImage），
         //    不能直接写 Image —— 会跟 System.Drawing.Image 撞名（CS0104）。
         private WpfImage _imgPreviewBox;
+        private StackPanel _emptyPanel;   // 空态（图标+提示），出图后隐藏
         private TextBlock _statusText;
         private Button _decodeBtn;
 
@@ -66,7 +67,10 @@ namespace GeZi
 
             Title = "识别二维码";
             ResizeMode = ResizeMode.NoResize;
-            DialogChrome.StyleWindow(this, 520, 560);
+            // 【2026-10-17 用户要求】520×560 → 440×440：
+            //   原来预览卡是 Star 行拉伸占满整个窗口（白框巨大），
+            //   现在预览卡固定 220 高、居中，窗口跟着收小。
+            DialogChrome.StyleWindow(this, 440, 440);
             DialogChrome.ApplyRoundedCorners(this);
         }
 
@@ -110,6 +114,23 @@ namespace GeZi
             // 再堆三行文字是"加噪音"。Row 1 保留为空 Auto 行（高度 0）。
 
             // 预览区：一个虚线框感的卡片，里面放拖放提示或已选图片
+            // 【2026-10-17 用户要求】空态时中间显示二维码图标（IconQr 是描边几何，只能 Stroke）：
+            var qrIcon = new System.Windows.Shapes.Path
+            {
+                Data = TryFindResource("IconQr") as System.Windows.Media.Geometry,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                Width = 44,
+                Height = 44,
+                StrokeThickness = 1.5,
+                StrokeStartLineCap = System.Windows.Media.PenLineCap.Round,
+                StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            {
+                var b = TryFindResource("TextTertiaryBrush") as System.Windows.Media.Brush;
+                if (b != null) qrIcon.Stroke = b;
+            }
+
             var dropHint = new TextBlock
             {
                 Text = "把图片拖到这里\n（或 Ctrl+V 粘贴 / 点下方「选择图片…」）",
@@ -118,11 +139,21 @@ namespace GeZi
                 FontSize = 12.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 12, 0, 0),
             };
             {
                 var b = TryFindResource("TextTertiaryBrush") as System.Windows.Media.Brush;
                 if (b != null) dropHint.Foreground = b;
             }
+
+            _emptyPanel = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            _emptyPanel.Children.Add(qrIcon);
+            _emptyPanel.Children.Add(dropHint);
 
             var preview = new WpfImage
             {
@@ -133,12 +164,14 @@ namespace GeZi
                 preview, System.Windows.Media.BitmapScalingMode.HighQuality);
 
             var previewHost = new Grid();
-            previewHost.Children.Add(dropHint);
+            previewHost.Children.Add(_emptyPanel);
             previewHost.Children.Add(preview);
             _imgPreviewBox = preview;
 
             var previewCard = DialogChrome.Card(previewHost);
-            previewCard.VerticalAlignment = VerticalAlignment.Stretch;
+            // 【2026-10-17】固定高度 + 居中，不再吃 Star 行撑满窗口（原来 560 高的窗口大半是这块白）
+            previewCard.Height = 220;
+            previewCard.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetRow(previewCard, 2);
             root.Children.Add(previewCard);
 
@@ -313,10 +346,13 @@ namespace GeZi
                     bi.Freeze();
                 }
                 _imgPreviewBox.Source = bi;
+                // 图出来了 → 收起空态提示（图标+文字），只留图片
+                if (_emptyPanel != null) _emptyPanel.Visibility = Visibility.Collapsed;
             }
             catch
             {
-                // 预览失败不影响解码
+                // 预览失败不影响解码；图没出来 → 空态提示保持可见
+                if (_emptyPanel != null) _emptyPanel.Visibility = Visibility.Visible;
             }
         }
 
