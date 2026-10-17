@@ -5177,9 +5177,11 @@ namespace GeZi
             Grid.SetRow(gridCard, 2);
             root.Children.Add(gridCard);
 
-            var copyBtn = DialogChrome.SecondaryButton("复制诊断文本");
-            var clearBtn = DialogChrome.SecondaryButton("清空");
-            var closeBtn = DialogChrome.SecondaryButton("关闭");
+            // 【2026-10-17 用户要求】三个按钮「AI 味太重」→ 透明幽灵按钮
+            var diagGhost = TryFindResource("GhostButton") as Style;
+            var copyBtn = new Button { Content = "复制诊断文本", Style = diagGhost };
+            var clearBtn = new Button { Content = "清空", Style = diagGhost };
+            var closeBtn = new Button { Content = "关闭", Style = diagGhost };
             var btns = DialogChrome.ButtonRow(copyBtn, clearBtn, closeBtn);
             btns.Margin = new Thickness(0, 14, 0, 0);
             Grid.SetRow(btns, 3);

@@ -962,8 +962,13 @@
                                     <TextBlock Text="下载选中" Margin="7,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
+                            <!-- 【2026-10-17 用户反馈】三个按钮之间的**视觉缝隙不一致**。
+                                 根因：GhostButton 的 Padding 是 10,5、FontSize 12（比 Primary 的 16,7 / 13 小），
+                                 按钮实际边界更窄 → 看起来中间那道缝更大。
+                                 这里给「下载全部」本地覆盖成与另外两个完全一致的 16,7 / 13。 -->
                             <Button x:Name="DownloadAllBtn" Click="OnDownloadAll"
-                                    Style="{StaticResource GhostButton}" Margin="0,0,8,0">
+                                    Style="{StaticResource GhostButton}" Padding="16,7" FontSize="13"
+                                    Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource IconDownload}" Stretch="Uniform" Width="14"
                                           Height="14" VerticalAlignment="Center"
@@ -1771,9 +1776,6 @@
                                                         <TextBlock Text="免费、开源（GPL-2.0+）、无广告、不联网也能用。几乎支持所有音视频格式与字幕；边下边播时以共享模式读取文件，不会干扰继续写盘。"
                                                                    FontSize="11" Margin="0,5,0,0"
                                                                    TextWrapping="Wrap"
-                                                                   Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                                        <TextBlock Text="videolan.org/vlc"
-                                                                   FontSize="11" Margin="0,4,0,0"
                                                                    Foreground="{DynamicResource TextTertiaryBrush}"/>
                                                     </StackPanel>
                                                 </Border>

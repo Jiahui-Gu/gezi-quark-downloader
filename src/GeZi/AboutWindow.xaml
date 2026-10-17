@@ -62,7 +62,10 @@
             </Grid>
 
             <!-- ============ 内容（可滚动） ============ -->
-            <ScrollViewer Grid.Row="1" MaxHeight="560" VerticalScrollBarVisibility="Auto"
+            <!-- 【2026-10-17 用户反馈】底部「白条挡字」—— 根因是 MaxHeight=560 把滚动视口
+                 卡死在一个固定高度，内容在视口边界被硬切，切在卡片中间就成了"白条"。
+                 去掉 MaxHeight，让 ScrollViewer 吃满 Row 1（窗口多大视口就多大）。 -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
                 <StackPanel Margin="18,0,18,6">
 
@@ -158,7 +161,7 @@
                             <Button x:Name="UpdateDetailBtn" Content="查看更新详情"
                                     Click="OnUpdateDetailClick"
                                     AutomationProperties.Name="查看更新详情"
-                                    Style="{StaticResource SecondaryButton}"
+                                    Style="{StaticResource GhostButton}"
                                     HorizontalAlignment="Left" MinWidth="118"
                                     Margin="0,11,0,0" Visibility="Collapsed"/>
                         </StackPanel>
@@ -168,14 +171,14 @@
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"
-                                Style="{StaticResource SecondaryButton}"
+                                Style="{StaticResource GhostButton}"
                                 Padding="12,6" FontSize="11"
                                 ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
                             <TextBlock Text="开源地址"/>
                         </Button>
                         <Button Click="OnBiliClick"
                                 AutomationProperties.Name="打开作者B站主页"
-                                Style="{StaticResource SecondaryButton}"
+                                Style="{StaticResource GhostButton}"
                                 Padding="12,6" FontSize="11" Margin="8,0,0,0"
                                 ToolTip="在浏览器中打开作者 B 站主页">
                             <TextBlock Text="作者 B 站"/>
