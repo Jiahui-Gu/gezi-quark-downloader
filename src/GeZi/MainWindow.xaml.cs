@@ -6521,6 +6521,8 @@ namespace GeZi
         private Grid _themeRevealLayer;
         /// <summary>连续点击时只让最后一次收尾。</summary>
         private int _themeRevealSeq;
+        /// <summary>连续点击主题时的序号：只有最后一次才启动波纹（前面的滑块动画照常播）。</summary>
+        private int _themeSwitchSeq;
 
         /// <summary>取根容器（Content 是 Border，里面那层 Grid 才是真正的宿主）。</summary>
         private Panel GetRootPanel(FrameworkElement rootEl)
@@ -6697,7 +6699,20 @@ namespace GeZi
                 }
 
                 // 双快照 + 圆形揭示：SetTheme 在 PlayThemeReveal 内部、抓完旧图之后才执行
-                PlayThemeReveal(sender as FrameworkElement, want, persist);
+                // 【2026-10-17 用户要求】先让分段控件的滑块滑完（SegmentedSlider = 200ms），
+                // 再启动波纹。否则覆盖层一盖，滑块就被冻在旧位置 ——
+                // 看起来像"卡住不动，等波纹扩散完才瞬间跳过去"。
+                // 延迟 215ms（略大于 200ms 的滑动时长），期间界面完全不动、只有滑块在滑。
+                var origin = sender as FrameworkElement;
+                int my = ++_themeSwitchSeq;
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(215) };
+                timer.Tick += (s2, e2) =>
+                {
+                    timer.Stop();
+                    if (my != _themeSwitchSeq) return;   // 期间又点过 → 让最后一次来播
+                    PlayThemeReveal(origin, want, persist);
+                };
+                timer.Start();
             }
             catch (Exception ex)
             {
