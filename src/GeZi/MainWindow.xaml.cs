@@ -31,6 +31,7 @@ using System.Windows.Data;                  // Binding（同上）
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;   // RenderTargetBitmap（主题切换的双快照）
 using System.Windows.Threading;
 using GeZi.Core.Api;
 using GeZi.Core.Download;
@@ -6516,107 +6517,145 @@ namespace GeZi
 
         // ================= 外观主题（2026-10-04 新增） =================
 
-        /// <summary>主题切换水波纹的覆盖层（懒建，整窗最顶层）。</summary>
-        private Canvas _themeRippleLayer;
-        /// <summary>连续点击时只让最后一次的换肤生效。</summary>
-        private int _themeRippleSeq;
+        /// <summary>主题切换「圆形揭示」的覆盖层（懒建，整窗最顶层）。</summary>
+        private Grid _themeRevealLayer;
+        /// <summary>连续点击时只让最后一次收尾。</summary>
+        private int _themeRevealSeq;
 
-        /// <summary>取指定主题的「页面底色」—— 波纹用它，扩散完与背景无缝。</summary>
-        private static Color ThemeBgColor(bool dark)
+        /// <summary>取根容器（Content 是 Border，里面那层 Grid 才是真正的宿主）。</summary>
+        private Panel GetRootPanel(FrameworkElement rootEl)
         {
-            try
-            {
-                var d = new ResourceDictionary
-                {
-                    Source = new Uri(
-                        dark ? "Resources/Colors.Dark.xaml" : "Resources/Colors.Light.xaml",
-                        UriKind.Relative)
-                };
-                if (d.Contains("AppBgColor")) return (Color)d["AppBgColor"];
-            }
-            catch { }
-            return dark ? Color.FromRgb(0x1A, 0x1D, 0x23) : Color.FromRgb(0xEB, 0xEE, 0xF5);
+            var p = rootEl as Panel;
+            if (p != null) return p;
+            var b = rootEl as Border;
+            if (b != null) return b.Child as Panel;
+            var d = rootEl as Decorator;
+            if (d != null) return d.Child as Panel;
+            return null;
         }
 
         /// <summary>
-        /// 【2026-10-17 用户要求】切换主题时，从**被点的那个按钮**中心扩散一圈
-        /// 「新主题背景色」的水波纹，铺满整个窗口后再真正换肤 ——
-        /// 视觉上像水滴落入水面（Material You 主题切换的做法）。
-        /// ⚠️ 换肤必须放在动画完成后：波纹期间窗口还是旧色，圆是新色才看得见；
-        ///    换肤后圆与新背景同色，直接清掉不会闪。
+        /// 把当前视觉树抓成位图。
+        /// ⚠️ 用 RenderTargetBitmap（同步绘制视觉树），不用屏幕截图 ——
+        ///    不会把别的程序拍进来，也不受窗口遮挡/最小化影响。
         /// </summary>
-        private void PlayThemeRipple(FrameworkElement origin, bool targetDark, Action apply)
+        private static RenderTargetBitmap CaptureRoot(FrameworkElement rootEl)
         {
-            Panel host = null;
-            if (Content is Panel p0) host = p0;
-            else
-            {
-                var b = Content as Border;
-                if (b != null) host = b.Child as Panel;
-            }
-            if (host == null || origin == null) { apply(); return; }
+            var dpi = VisualTreeHelper.GetDpi(rootEl);
+            int w = Math.Max(1, (int)Math.Ceiling(rootEl.ActualWidth * dpi.DpiScaleX));
+            int h = Math.Max(1, (int)Math.Ceiling(rootEl.ActualHeight * dpi.DpiScaleY));
+            var bmp = new RenderTargetBitmap(
+                w, h, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            bmp.Render(rootEl);
+            return bmp;
+        }
 
-            if (_themeRippleLayer == null)
+        /// <summary>
+        /// 【2026-10-17 用户指正后重做】主题切换 = 「双快照 + 圆形揭示」。
+        ///
+        /// 旧实现（已废弃）：动画期间只放大一个**纯色圆**，底层 UI 一直是旧主题 ——
+        /// 用户看到的只是"一块颜色在放大"，而不是新界面被揭开。
+        ///
+        /// 新实现（Material You 的做法）：
+        ///   ① 切换前先抓一张**旧 UI 快照**；
+        ///   ② 立刻换肤 + UpdateLayout，再抓一张**新 UI 快照**；
+        ///   ③ 覆盖层叠两张图：底 = 旧快照，上 = 新快照（EllipseGeometry 裁剪）；
+        ///   ④ 动画只改裁剪圆半径，从点击点向外扩展 ——
+        ///      每一帧露出来的都是**已经完成切换的新 UI**。
+        ///
+        /// ⚠️ ①②③ 全在同一个 UI 线程消息里同步执行（中间没有 await），
+        ///    WPF 不会渲染中间态，用户看不到"直接跳变"。
+        /// ⚠️ 换肤后的收尾（存配置 / 日志 / 提示文案）放在动画 Completed 里，
+        ///    避免磁盘 I/O 卡住动画启动。
+        /// </summary>
+        private void PlayThemeReveal(FrameworkElement origin, AppTheme want, Action afterApply)
+        {
+            var rootEl = Content as FrameworkElement;
+            var host = rootEl == null ? null : GetRootPanel(rootEl);
+            double w = rootEl == null ? 0 : rootEl.ActualWidth;
+            double h = rootEl == null ? 0 : rootEl.ActualHeight;
+
+            // 尺寸/宿主不满足 → 退化成"直接切换"（不能因为动画把主题切换搞失败）
+            if (host == null || origin == null || w < 1 || h < 1)
             {
-                _themeRippleLayer = new Canvas { IsHitTestVisible = false };
-                Panel.SetZIndex(_themeRippleLayer, 99999);
-                var g = host as Grid;
-                if (g != null)
-                {
-                    Grid.SetRow(_themeRippleLayer, 0);
-                    Grid.SetRowSpan(_themeRippleLayer, Math.Max(1, g.RowDefinitions.Count));
-                }
-                host.Children.Add(_themeRippleLayer);
+                ThemeManager.SetTheme(want);
+                afterApply();
+                return;
             }
-            _themeRippleLayer.Children.Clear();
 
             Point center;
             try
             {
                 center = origin.TranslatePoint(
-                    new Point(origin.ActualWidth / 2, origin.ActualHeight / 2), host);
+                    new Point(origin.ActualWidth / 2, origin.ActualHeight / 2), rootEl);
             }
             catch
             {
-                center = new Point(host.ActualWidth / 2, host.ActualHeight / 2);
+                center = new Point(w / 2, h / 2);
             }
 
-            double w = host.ActualWidth, h = host.ActualHeight;
-            if (w < 1 || h < 1) { apply(); return; }
-
-            // 半径 = 从圆心到最远那个角的距离（保证铺满）
             double maxR = Math.Sqrt(
                 Math.Pow(Math.Max(center.X, w - center.X), 2) +
                 Math.Pow(Math.Max(center.Y, h - center.Y), 2));
 
-            // ⚠️ 不能加 using System.Windows.Shapes —— 会和 System.IO.Path 撞名
-            var ellipse = new System.Windows.Shapes.Ellipse
-            {
-                Width = maxR * 2,
-                Height = maxR * 2,
-                Fill = new SolidColorBrush(ThemeBgColor(targetDark)),
-                IsHitTestVisible = false,
-                RenderTransformOrigin = new Point(0.5, 0.5),
-                RenderTransform = new ScaleTransform(0, 0),
-            };
-            Canvas.SetLeft(ellipse, center.X - maxR);
-            Canvas.SetTop(ellipse, center.Y - maxR);
-            _themeRippleLayer.Children.Add(ellipse);
+            // ① 旧快照
+            var oldBmp = CaptureRoot(rootEl);
 
-            int my = ++_themeRippleSeq;
+            // ② 换肤 + 强制布局，让新资源真正落到视觉树上，再抓新快照
+            // ⚠️ UpdateThemeHint 也要在抓图之前：否则新快照里还留着旧主题的提示文案
+            //    （比如已经切到深色，图上却写着「始终使用浅色界面」）。
+            ThemeManager.SetTheme(want);
+            UpdateThemeHint();
+            rootEl.UpdateLayout();
+            var newBmp = CaptureRoot(rootEl);
+
+            // ③ 覆盖层
+            if (_themeRevealLayer == null)
+            {
+                _themeRevealLayer = new Grid { IsHitTestVisible = false };
+                Panel.SetZIndex(_themeRevealLayer, 99999);
+                var g = host as Grid;
+                if (g != null)
+                {
+                    Grid.SetRow(_themeRevealLayer, 0);
+                    Grid.SetRowSpan(_themeRevealLayer, Math.Max(1, g.RowDefinitions.Count));
+                }
+                host.Children.Add(_themeRevealLayer);
+            }
+            _themeRevealLayer.Children.Clear();
+
+            var oldImg = new Image
+            {
+                Source = oldBmp,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false,
+            };
+            var newImg = new Image
+            {
+                Source = newBmp,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false,
+            };
+            // 裁剪圆：坐标系与 Image 一致（DIP）
+            var clip = new EllipseGeometry(center, 0, 0);
+            newImg.Clip = clip;
+            _themeRevealLayer.Children.Add(oldImg);
+            _themeRevealLayer.Children.Add(newImg);
+
+            // ④ 动画：只放大裁剪圆
+            int my = ++_themeRevealSeq;
             var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
             var dur = TimeSpan.FromMilliseconds(420);
-            var sx = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
-            var sy = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
-            sx.Completed += (s, e) =>
+            var rx = new DoubleAnimation(0, maxR, dur) { EasingFunction = ease };
+            var ry = new DoubleAnimation(0, maxR, dur) { EasingFunction = ease };
+            rx.Completed += (s, e) =>
             {
-                if (my != _themeRippleSeq) return;   // 期间又切过 → 让最后一次收尾
-                try { apply(); } catch { }
-                if (_themeRippleLayer != null) _themeRippleLayer.Children.Clear();
+                if (my != _themeRevealSeq) return;   // 期间又切过 → 让最后一次收尾
+                try { afterApply(); } catch { }
+                if (_themeRevealLayer != null) _themeRevealLayer.Children.Clear();
             };
-            var st = (ScaleTransform)ellipse.RenderTransform;
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
+            clip.BeginAnimation(EllipseGeometry.RadiusXProperty, rx);
+            clip.BeginAnimation(EllipseGeometry.RadiusYProperty, ry);
         }
 
         /// <summary>
@@ -6636,9 +6675,9 @@ namespace GeZi
 
             try
             {
-                Action commit = () =>
+                // 换肤后的收尾（动画结束时才做：存盘 / 日志 / 提示文案）
+                Action persist = () =>
                 {
-                    ThemeManager.SetTheme(want);
                     _settings.Theme = want;
                     SettingsStore.Save(_settings);
                     UpdateThemeHint();
@@ -6649,15 +6688,16 @@ namespace GeZi
                 bool targetDark = want == AppTheme.Dark
                     || (want == AppTheme.System && ThemeManager.IsSystemDark());
 
-                // 明暗实际没变（例如 浅色 ↔ 跟随系统，而系统本来就是浅色）→ 不用播波纹
+                // 明暗实际没变（例如 浅色 ↔ 跟随系统，而系统本来就是浅色）→ 直接切，不播动画
                 if (targetDark == ThemeManager.IsDarkEffective)
                 {
-                    commit();
+                    ThemeManager.SetTheme(want);
+                    persist();
                     return;
                 }
 
-                // 从被点的选项中心扩散水波纹，铺满整个窗口后再换肤
-                PlayThemeRipple(sender as FrameworkElement, targetDark, commit);
+                // 双快照 + 圆形揭示：SetTheme 在 PlayThemeReveal 内部、抓完旧图之后才执行
+                PlayThemeReveal(sender as FrameworkElement, want, persist);
             }
             catch (Exception ex)
             {
