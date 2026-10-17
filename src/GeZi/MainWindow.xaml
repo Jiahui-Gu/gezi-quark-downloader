@@ -791,7 +791,7 @@
                                                               StrokeLineJoin="Round"/>
                                                     </MenuItem.Icon>
                                                 </MenuItem>
-                                                <MenuItem Header="获取直链…" Click="OnFetchLinks">
+                                                <MenuItem Header="获取直链" Click="OnFetchLinks">
                                                     <MenuItem.Icon>
                                                         <Path Data="{StaticResource IconLink}" Stretch="Uniform"
                                                               Width="14" Height="14"
@@ -802,7 +802,7 @@
                                                     </MenuItem.Icon>
                                                 </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
-                                                <MenuItem Header="全选" Click="OnFileListSelectAll">
+                                                <MenuItem Header="全选文件" Click="OnFileListSelectAll">
                                                     <MenuItem.Icon>
                                                         <Path Data="{StaticResource IconCheck}" Stretch="Uniform"
                                                               Width="14" Height="14"
@@ -814,7 +814,7 @@
                                                 </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
                                                 <!-- 破坏性操作：整项（含图标）用红色，与普通项区分 -->
-                                                <MenuItem Header="删除网盘文件…（仅我的网盘）"
+                                                <MenuItem Header="删除网盘文件"
                                                           Click="OnDeleteCloudSelected"
                                                           Foreground="{DynamicResource DangerBrush}">
                                                     <MenuItem.Icon>
@@ -1561,34 +1561,32 @@
                                                 <TextBlock Text="存储" Style="{StaticResource CardTitleText}"
                                                            FontSize="14" Margin="0,0,0,10"/>
 
-                                                <!-- 下载目录：标签 / 输入框 / 「浏览…」/「打开下载目录」
-                                                四个元素全部排在同一行。
-                                                【2026-10-02 改】原先是 [150][*][Auto] 两行布局，
-                                                「浏览…」在上、「打开下载目录」在下叠放 —— 用户反馈
-                                                「把这三个框弄在同一行不要这样分开」。现在改成
-                                                [120][*][Auto][Auto] 单行，两个按钮并排在输入框右侧。 -->
+                                                <!-- 【2026-10-17 用户要求「对齐」】原来是 [120][*][Auto][Auto] 单行：
+                                                     输入框被「浏览…」+「打开下载目录」两个按钮挤到只剩 ~60px，
+                                                     只显示得出 "C://Users" 就被截断。
+                                                     改成与右列「分片与缓存」完全同构的**竖排**：
+                                                     标签在上、输入框吃满整行、两个按钮并排在右侧。 -->
+                                                <TextBlock Text="下载目录" Style="{StaticResource FieldLabel}"
+                                                           Margin="0,0,0,6"/>
                                                 <Grid Margin="0,0,0,16">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="120"/>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-
-                                                    <TextBlock Text="下载目录" Style="{StaticResource FieldLabel}"
-                                                               Grid.Column="0"/>
-                                                    <TextBox x:Name="OutDirBox" Grid.Column="1"
+                                                    <TextBox x:Name="OutDirBox" Grid.Column="0"
                                                              Style="{StaticResource AppTextBox}"
                                                              LostFocus="OnSettingChanged"
                                                              KeyDown="OnSettingKeyDown"/>
-                                                    <Button Grid.Column="2" Content="浏览…"
+                                                    <Button Grid.Column="1" Content="浏览…"
                                                             Click="OnBrowseOutDir"
                                                             Style="{StaticResource SecondaryButton}"
                                                             Margin="8,0,0,0"/>
                                                     <Button Click="OnOpenOutDir"
-                                                            Grid.Column="3"
+                                                            Grid.Column="2"
                                                             Style="{StaticResource SecondaryButton}"
-                                                            Margin="8,0,0,0">
+                                                            Margin="8,0,0,0"
+                                                            ToolTip="在资源管理器中打开下载目录">
                                                         <StackPanel Orientation="Horizontal">
                                                             <Path Data="{StaticResource IconFolder}" Stretch="Uniform"
                                                                   Width="14" Height="14" VerticalAlignment="Center"
@@ -1596,7 +1594,7 @@
                                                                   StrokeThickness="1.8"
                                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                                                   StrokeLineJoin="Round"/>
-                                                            <TextBlock Text="打开下载目录" Margin="7,0,0,0"
+                                                            <TextBlock Text="打开" Margin="7,0,0,0"
                                                                        VerticalAlignment="Center"/>
                                                         </StackPanel>
                                                     </Button>
@@ -1718,7 +1716,7 @@
                                                              Style="{StaticResource AppTextBox}"
                                                              LostFocus="OnSettingChanged"
                                                              KeyDown="OnSettingKeyDown"
-                                                             ToolTip="留空 = 分片与目标文件同目录（默认）。指定后可把分片集中到另一块盘（如 SSD）。"/>
+                                                             ToolTip="默认与下载目录相同。指定到另一块盘（如 SSD）可减轻机械盘压力。"/>
                                                     <Button Grid.Column="1" Content="浏览…" Click="OnBrowsePartsRoot"
                                                             Style="{StaticResource SecondaryButton}" Margin="8,0,0,0"/>
                                                     <Button Click="OnOpenPartsRoot"

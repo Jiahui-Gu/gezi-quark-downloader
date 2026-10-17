@@ -2415,6 +2415,7 @@ namespace GeZi
                 Log("「免转存下载」只在分享模式下可用（网盘文件无需转存）。");
                 return;
             }
+            if (!RequireLogin("下载")) return;
             long t0 = BusyClock();
             if (!BeginEnqueue(DownloadSelBtn)) return;
             try
@@ -2650,8 +2651,31 @@ namespace GeZi
 
         // ---------------- 下载 ----------------
 
+        /// <summary>
+        /// 【2026-10-17 用户要求】未登录时使用「必须登录」的功能（下载 / 获取直链等），
+        /// **明确弹框提示**并切到登录页。
+        /// 原来这些入口只往日志里写一行「请先登录或解析分享」—— 日志在界面下方不起眼，
+        /// 用户点了没反应，只会以为程序坏了。
+        /// </summary>
+        private bool RequireLogin(string action)
+        {
+            if (_client != null) return true;
+            try
+            {
+                AppDialog.Show(this,
+                    action + "需要先登录夸克账号。\n\n"
+                    + "登录后可浏览「我的网盘」、转存分享文件、下载文件与获取直链。",
+                    "需要登录", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch { }
+            // 顺手把用户带到登录页（登录页 = 第 4 个 Tab，索引 3）
+            try { Tabs.SelectedIndex = 3; } catch { }
+            return false;
+        }
+
         private async void OnDownloadSelected(object sender, RoutedEventArgs e)
         {
+            if (!RequireLogin("下载")) return;
             // 下载前要先递归展开目录 + 取直链（网络）→ 按钮就地变成"入队中…"
             // 【2026-10-11】入队期间按钮保持可点：再点一次 = 终止（见 BeginEnqueue）。
             long t0 = BusyClock();
@@ -2673,6 +2697,7 @@ namespace GeZi
 
         private async void OnDownloadAll(object sender, RoutedEventArgs e)
         {
+            if (!RequireLogin("下载")) return;
             long t0 = BusyClock();
             if (!BeginEnqueue(DownloadAllBtn)) return;
             try
@@ -2710,11 +2735,7 @@ namespace GeZi
         /// </summary>
         private async void OnFetchLinks(object sender, RoutedEventArgs e)
         {
-            if (_client == null)
-            {
-                Log("请先登录或解析分享");
-                return;
-            }
+            if (!RequireLogin("获取直链")) return;
             var selected = FileList.SelectedItems.Cast<ShareFileItem>().ToList();
             if (selected.Count == 0)
             {
@@ -6427,7 +6448,19 @@ namespace GeZi
                 ConcurrentBox.Text = _settings.ConcurrentTasks.ToString();
                 OutDirBox.Text = _settings.OutDir;
                 AutoCleanCheck.IsChecked = _settings.AutoClean;
-                PartsRootBox.Text = _settings.PartsRoot ?? "";
+                // 【2026-10-17 用户要求】"默认留空的是哪一个目录，直接打上去"
+                // 原语义「留空 = 与目标文件同目录」没有单一目录，用户看不到分片会去哪。
+                // 现在：留空就落到**下载目录**，并且同步写进设置 —— 保证"看到的就是生效的"。
+                if (!string.IsNullOrWhiteSpace(_settings.PartsRoot))
+                {
+                    PartsRootBox.Text = _settings.PartsRoot;
+                }
+                else
+                {
+                    PartsRootBox.Text = _settings.OutDir ?? "";
+                    if (!string.IsNullOrWhiteSpace(_settings.OutDir))
+                        _settings.PartsRoot = _settings.OutDir;
+                }
                 HidePartsCheck.IsChecked = _settings.HideParts;
                 CloseActionBox.SelectedIndex = (int)_settings.OnCloseButton;
                 // 剪贴板自动解析（默认开）。注意这里**只回填控件**：真正的注册在窗口句柄
@@ -6824,7 +6857,23 @@ namespace GeZi
         /// 打开账号管理弹窗：列出本机保存的账号，可一键切换 / 删除，或去扫码登录新账号。
         /// 移植自 Flet 版的 _open_account_dialog。
         /// </summary>
-        private void OnOpenAccounts(object sender, RoutedEventArgs e) => ShowAccountsDialog();
+        private void OnOpenAccounts(object sender, RoutedEventArgs e)
+        {
+            // 【2026-10-17 用户要求】未登录且**一个已保存账号都没有**时，
+            // 直接取二维码并提示扫码（而不是弹一个空列表让人更困惑）。
+            if (_client == null)
+            {
+                int saved = 0;
+                try { saved = AccountStore.LoadAll().Count; } catch { }
+                if (saved == 0)
+                {
+                    Log("还没有已保存的账号，正在获取二维码…请用夸克 App 扫码登录。");
+                    OnQrLogin(sender, e);
+                    return;
+                }
+            }
+            ShowAccountsDialog();
+        }
 
         private void ShowAccountsDialog()
         {
@@ -7474,9 +7523,9 @@ namespace GeZi
             _settings.CurrentAccountKey = "";
             SettingsStore.Save(_settings);
             UpdateAccountCard(null, 0, 0);
-            // 【2026-10-17】「登录」按钮已删除（和左侧扫码 / 下方导入 Cookie 重复）；
-            // 未登录时没有账号可切，所以「切换账号」保持隐藏。
-            AccountsBtn.Visibility = Visibility.Collapsed;
+            // 【2026-10-17 二次修改】登出后**不再隐藏**「切换账号」——
+            // 它现在同时是"未登录时的登录入口"（有已保存账号就叫「选择账号」）。
+            // 可见性与文案统一由 SyncLoginPageState 控制（UpdateAccountCard 内部会调到）。
             // 若正停在「我的网盘」模式，把文件列表清空 —— 已登出，那些内容不再属于任何人。
             if (!ShareMode)
                 ResetNav();
@@ -7541,9 +7590,8 @@ namespace GeZi
                     _settings.CurrentAccountKey = acctKey ?? "";
 
                     UpdateAccountCard(nick, 0, 0);
-                    // 【2026-10-17】「登录」按钮已删除；登录成功后把「切换账号」亮出来
-                    // （它在「当前状态」卡片里账号信息那一行的最右侧）。
-                    AccountsBtn.Visibility = Visibility.Visible;
+                    // 「切换账号」的可见性/文案统一由 SyncLoginPageState 控制
+                    // （登录成功 → 显示「切换账号」），这里不再单独设。
                     Log("登录成功: " + nick);
 
                     // 【2026-10-11】若此刻正停在「我的网盘」模式，缓存/快照刚被清空，
@@ -8276,7 +8324,19 @@ namespace GeZi
                     LoginAvatarImage.Visibility = Visibility.Collapsed;
                     LoginAvatarText.Visibility = Visibility.Visible;
                     LoginWhoText.Text = "未登录";
-                    LoginSubText.Text = "扫码或导入 Cookie 即可登录";
+                    // 【2026-10-17 用户反馈】"我有两个账号，删掉正在登录的那个之后
+                    // 就再也没有登录入口了 —— 明明另一个账号还在。"
+                    // 根因：未登录时把「切换账号」按钮整个隐藏了，而它同时也是账号选择入口。
+                    // 现在未登录也显示，并按"有没有已保存账号"换文案/行为：
+                    //   有账号 →「选择账号」→ 打开账号列表一键切回
+                    //   没账号 →「登录」    → 直接取二维码并提示扫码
+                    int saved = 0;
+                    try { saved = AccountStore.LoadAll().Count; } catch { }
+                    AccountsBtn.Content = saved > 0 ? "选择账号" : "登录";
+                    AccountsBtn.Visibility = Visibility.Visible;
+                    LoginSubText.Text = saved > 0
+                        ? "本机已保存 " + saved + " 个账号，点右侧「选择账号」直接切回"
+                        : "扫码或导入 Cookie 即可登录";
                     return;
                 }
 
@@ -8288,6 +8348,8 @@ namespace GeZi
                 LoginSubText.Text = total > 0
                     ? "已用 " + Util.FormatSize(used) + " / 共 " + Util.FormatSize(total)
                     : "已登录（容量获取中…）";
+                AccountsBtn.Content = "切换账号";
+                AccountsBtn.Visibility = Visibility.Visible;
             }
             catch { }
         }

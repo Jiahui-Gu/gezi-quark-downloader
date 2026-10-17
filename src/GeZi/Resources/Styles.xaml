@@ -852,8 +852,13 @@
                                 Background="{DynamicResource SurfaceBrush}"
                                 BorderBrush="{DynamicResource BorderBrushStrong}"
                                 BorderThickness="1.5" VerticalAlignment="Center">
+                            <!-- 【2026-10-17 用户反馈】暗色模式下对勾"根本看不见"：
+                                 原来勾写死 Stroke="White"，而选中底色是 TextPrimaryBrush ——
+                                 暗色下它是**浅色**（#E8EAF0）→ 白勾画在浅底上直接消失。
+                                 改成 SolidBtnFgBrush（与实心按钮前景同一套）：
+                                 亮色=白勾配深底、暗色=深勾配浅底，两边都有对比度。 -->
                             <Path x:Name="Tick" Data="{StaticResource IconCheck}"
-                                  Stroke="White" StrokeThickness="2.2"
+                                  Stroke="{DynamicResource SolidBtnFgBrush}" StrokeThickness="2.2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                   Stretch="Uniform" Margin="3" Visibility="Collapsed"/>
                         </Border>
