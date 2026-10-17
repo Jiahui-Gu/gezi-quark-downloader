@@ -2124,20 +2124,9 @@ namespace GeZi
         /// <summary>列表底部那行提示：还有没加载完的就说清楚。</summary>
         private void UpdateDirMoreHint()
         {
-            try
-            {
-                if (FileMoreHint == null) return;
-                bool more = _curDir != null
-                    && (_curDir.HasMore || _files.Count < _curDir.Items.Count);
-                if (!more)
-                {
-                    FileMoreHint.Visibility = Visibility.Collapsed;
-                    return;
-                }
-                FileMoreHint.Text = "已显示 " + _files.Count + " 项 · 下面还有，下滑继续加载";
-                FileMoreHint.Visibility = Visibility.Visible;
-            }
-            catch { }
+            // 【2026-10-17 用户要求】删除「已显示 N 项 · 下面还有，下滑继续加载」这行提示。
+            // 分页加载逻辑本身保留（滚到底自动续），只是不再显示这行文字。
+            if (FileMoreHint != null) FileMoreHint.Visibility = Visibility.Collapsed;
         }
 
         /// <summary>
@@ -2816,10 +2805,23 @@ namespace GeZi
             // ===== 说明：压成一行，说清"页签只选种类、导出靠下方按钮" =====
             // 这一行同时兼作**切换页签时的加载指示区**：切换期间整行原地换成
             // 「转圈 + 正在切换到 xxx…」，切完再换回说明文字（两者尺寸接近，不会跳）。
-            string hint = "先在上方选一种直链种类，再点下方「导出直链」——结果会复制到剪贴板，并另存为桌面上的 txt 文件。";
+            // 【2026-10-17 用户要求】文案改为「获取直链后可导出为 …（后三者自带 UA 与 Cookie）」，
+            // 括号部分用警示红（与下载页底部那行提示同一套语义色）。
+            var head = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 12),
+            };
+            var hintFg = TryFindResource("TextTertiaryBrush") as Brush;
+            if (hintFg != null) head.Foreground = hintFg;
+            head.Inlines.Add(new Run("获取直链后可导出为 纯直链 / curl 命令 / aria2c 命令 / Motrix 界面 "));
+            var hintWarn = new Run("（后三者自带 UA 与 Cookie）");
+            var hintWarnBrush = TryFindResource("DangerBrush") as Brush;
+            if (hintWarnBrush != null) hintWarn.Foreground = hintWarnBrush;
+            head.Inlines.Add(hintWarn);
             if (noUrlCount > 0)
-                hint += string.Format("（另有 {0} 条未取到链接，已略过）", noUrlCount);
-            var head = DialogChrome.Hint(hint, 0, 12);
+                head.Inlines.Add(new Run(string.Format("（另有 {0} 条未取到链接，已略过）", noUrlCount)));
 
             var hintBusyText = new TextBlock
             {
@@ -2843,34 +2845,41 @@ namespace GeZi
             Grid.SetRow(hintHost, 1);
             root.Children.Add(hintHost);
 
-            // ===== 页签 + 文件清单：套在同一个连体外框里 =====
-            // 【2026-10-02 用户反馈】「将顶上的这三个按钮变成下面文件夹的三种标签页」
-            //   并选定形态为「顶部文件夹标签」。
-            //   命名同时纠正：上一轮误把首位按钮叫「标注版」，
-            //   用户要求「改回原本的名字纯直链」→ 显示名统一为 纯直链 / curl 命令 / aria2c 命令。
-            var host = new Grid();
-            host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // 页签条
-            host.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // 列表
-
-            // 页签条：Grid 里最后加的一层在最上面 —— 先放分隔线，页签压在上面，
-            // 选中页签再用 Margin 下移 1px 吃掉分隔线，形成"与下方连体"的文件夹页签效果。
-            var strip = new Grid { Margin = new Thickness(14, 0, 14, 0) };
-            strip.Children.Add(DialogChrome.TabStrip());
-
-            var tabBar = new StackPanel
+            // ===== 直链种类：分段控件 + 滑块指示器 =====
+            // 【2026-10-17 用户要求】原来的「文件夹页签」改为与全站一致的分段控件，
+            // 选中态由一个白底滑块在四项之间平滑滑动表达（SegmentedSlider 附加行为）。
+            // ⚠️ 原来「选中页签与下方列表连体」的文件夹观感随之取消 —— 滑块本身
+            //    已经足够表达选中态，再叠一条连体边反而脏。
+            var segStyle = TryFindResource("SegmentedRadio") as Style;
+            var tabPlain = new RadioButton
             {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Bottom,
+                Content = "纯直链",
+                Style = segStyle,
+                GroupName = "LinkFormat",
+                IsChecked = true,
+                Margin = new Thickness(0),
             };
-            strip.Children.Add(tabBar);
-            Grid.SetRow(strip, 0);
-            host.Children.Add(strip);
-
-            var tabPlain = DialogChrome.FileTab("纯直链", LinkExporter.Format.Labeled);
-            var tabCurl = DialogChrome.FileTab("curl 命令", LinkExporter.Format.Curl);
-            var tabAria = DialogChrome.FileTab("aria2c 命令", LinkExporter.Format.Aria2);
-            var tabMotrix = DialogChrome.FileTab("Motrix 界面", LinkExporter.Format.MotrixGui);
+            var tabCurl = new RadioButton
+            {
+                Content = "curl 命令",
+                Style = segStyle,
+                GroupName = "LinkFormat",
+                Margin = new Thickness(2, 0, 0, 0),
+            };
+            var tabAria = new RadioButton
+            {
+                Content = "aria2c 命令",
+                Style = segStyle,
+                GroupName = "LinkFormat",
+                Margin = new Thickness(2, 0, 0, 0),
+            };
+            var tabMotrix = new RadioButton
+            {
+                Content = "Motrix 界面",
+                Style = segStyle,
+                GroupName = "LinkFormat",
+                Margin = new Thickness(2, 0, 0, 0),
+            };
             // 【用户要求】「后两者自带 UA 与 Cookie，把它的颜色改红」。
             // curl / aria2c / Motrix 界面 三种格式会把**登录凭证（UA + Cookie）**一起写进导出文件，
             // 属于敏感内容 → 用警示红标出来，和下载页那行提示保持同一套语义色。
@@ -2884,6 +2893,32 @@ namespace GeZi
                 tabAria.Foreground = warnBrush;
                 tabMotrix.Foreground = warnBrush;
             }
+            // 分段控件容器：凹陷底 + 3px 内边距；滑块是容器内第一个子元素（垫底）
+            var tabBar = new StackPanel { Orientation = Orientation.Horizontal };
+            var segGrid = new Grid();
+            SegmentedSlider.SetIsEnabled(segGrid, true);
+            var segThumb = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                IsHitTestVisible = false,
+                Background = TryFindResource("SurfaceBrush") as Brush,
+            };
+            SegmentedSlider.SetThumb(segGrid, segThumb);
+            segGrid.Children.Add(segThumb);
+            segGrid.Children.Add(tabBar);
+
+            var segHost = new Border
+            {
+                Child = segGrid,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                CornerRadius = new CornerRadius(8),
+                Background = TryFindResource("SurfaceSunkenBrush") as Brush,
+                Padding = new Thickness(3),
+                Margin = new Thickness(0, 0, 0, 12),
+            };
+
             tabBar.Children.Add(tabPlain);
             tabBar.Children.Add(tabCurl);
             tabBar.Children.Add(tabAria);
@@ -2953,12 +2988,22 @@ namespace GeZi
                 row.Inlines.Add(nm);
                 list.Items.Add(row);
             }
-            Grid.SetRow(list, 1);
-            host.Children.Add(list);
+            // 内容区：上面一行是直链种类分段控件，下面是文件清单卡片
+            var contentArea = new Grid();
+            contentArea.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            var hostCard = DialogChrome.TabHost(host);
-            Grid.SetRow(hostCard, 2);
-            root.Children.Add(hostCard);
+            Grid.SetRow(segHost, 0);
+            contentArea.Children.Add(segHost);
+
+            var listCard = DialogChrome.Card(list);
+            // 列表自带内边距（Padding 4,5），卡片不再重复缩进，保持贴边观感
+            listCard.Padding = new Thickness(0);
+            Grid.SetRow(listCard, 1);
+            contentArea.Children.Add(listCard);
+
+            Grid.SetRow(contentArea, 2);
+            root.Children.Add(contentArea);
 
             // ===== 底部按钮：等宽 =====
             // 【2026-10-02】「复制全部连接按钮改成导出直链」（按页签选中的种类导出）
