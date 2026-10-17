@@ -326,15 +326,24 @@ namespace GeZi
         {
             var cm = new ContextMenu();
 
-            var miShow = new MenuItem { Header = "显示主窗口" };
+            // 【2026-10-17 用户反馈】托盘菜单左右空隙太大。
+            // 根因：复用了带 **22px 图标列** 的隐式 MenuItem 样式（那是给任务行/文件列表
+            // 右键菜单对齐图标用的），而托盘这四项**都没有图标** —— 图标列 + Margin 变成
+            // 左侧一大块空白，Header 列又是 `*` 填满，右侧再留一截。
+            // 统一套 TrayMenuItem（无图标列、Padding 14,7，见 Styles.xaml）。
+            var itemStyle = Application.Current != null
+                ? Application.Current.TryFindResource("TrayMenuItem") as Style
+                : null;
+
+            var miShow = new MenuItem { Header = "显示主窗口", Style = itemStyle };
             miShow.Click += (s, e) => Raise(DoubleClickRequested);
             cm.Items.Add(miShow);
 
-            _miMini = new MenuItem { Header = "显示小窗", IsCheckable = true };
+            _miMini = new MenuItem { Header = "显示小窗", IsCheckable = true, Style = itemStyle };
             _miMini.Click += (s, e) => Raise(ToggleMiniRequested);
             cm.Items.Add(_miMini);
 
-            _miPause = new MenuItem { Header = "暂停全部" };
+            _miPause = new MenuItem { Header = "暂停全部", Style = itemStyle };
             _miPause.Click += (s, e) => Raise(PauseAllRequested);
             cm.Items.Add(_miPause);
 
@@ -360,7 +369,7 @@ namespace GeZi
             catch { }
             cm.Items.Add(sep);
 
-            var miExit = new MenuItem { Header = "退出" };
+            var miExit = new MenuItem { Header = "退出", Style = itemStyle };
             miExit.Click += (s, e) => Raise(ExitRequested);
             cm.Items.Add(miExit);
 

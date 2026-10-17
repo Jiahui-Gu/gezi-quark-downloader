@@ -237,9 +237,10 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- ============ 底部（固定，不随内容滚动） ============ -->
-            <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
+            <!-- ============ 底部（固定，不随内容滚动） ============
+                 【2026-10-17 用户要求】「关闭」改为悬浮：去掉白条背景和上边那条分隔线，
+                 只留按钮本身贴在右下角。 -->
+            <Border Grid.Row="2" Background="Transparent" BorderThickness="0"
                     Padding="18,12">
                 <Button Content="关闭" Click="OnCloseClick"
                         AutomationProperties.Name="关闭"

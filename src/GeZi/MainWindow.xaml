@@ -938,7 +938,10 @@
                              【2026-10-14 UI 改造】上方留白 12 → 24，与内容区拉开呼吸。
                              这是"AI味"诊断里指出的「按钮区像被硬塞在窗口底部」的正解：
                              **用空间分隔，不画分割线**（Linear 的做法 —— 线是噪音，留白才是层级）。 -->
-                        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,24,0,0">
+                        <!-- 【2026-10-17 用户要求】三个按钮靠右对齐 —— 原来贴左边，右侧一大片空白，
+                             视觉重心全压在左半边。 -->
+                        <StackPanel Grid.Row="4" Orientation="Horizontal"
+                                    HorizontalAlignment="Right" Margin="0,24,0,0">
                             <!-- 【2026-10-14 UI 改造】Fluent 主次原则：**一个视图只有一个实心主操作**。
                                  改前「下载选中」实心、「下载全部」描边 —— 其实已经是主次分明的。
                                  这里做的是**统一三者的视觉重量**：下载全部从 SecondaryButton 降为
@@ -1756,20 +1759,20 @@
                                                             Click="OnRecheckPlayer" Style="{StaticResource SecondaryButton}"/>
                                                 </StackPanel>
 
-                                                <!-- 【2026-10-17 用户要求】删掉长说明后卡片下方空了一大块，
-                                                     补一段软件介绍（开源 / 免费 / 无广告），顺带交代项目地址。 -->
+                                                <!-- 【2026-10-17 用户指正】这里要介绍的是 **VLC**（本卡的主题是播放器），
+                                                     不是鸽子下载自己。 -->
                                                 <Border Margin="0,14,0,0" Padding="0,12,0,0"
                                                         BorderBrush="{DynamicResource BorderBrushSoft}"
                                                         BorderThickness="0,1,0,0">
                                                     <StackPanel>
-                                                        <TextBlock Text="鸽子下载 · 开源夸克网盘直链下载器"
+                                                        <TextBlock Text="VLC media player · 开源全格式播放器"
                                                                    FontSize="12" FontWeight="SemiBold"
                                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                                        <TextBlock Text="免费、开源（GPL-3.0）、无广告、不上传任何数据。支持多连接分片下载、断点续传与边下边播。"
+                                                        <TextBlock Text="免费、开源（GPL-2.0+）、无广告、不联网也能用。几乎支持所有音视频格式与字幕；边下边播时以共享模式读取文件，不会干扰继续写盘。"
                                                                    FontSize="11" Margin="0,5,0,0"
                                                                    TextWrapping="Wrap"
                                                                    Foreground="{DynamicResource TextTertiaryBrush}"/>
-                                                        <TextBlock Text="github.com/huaotem-bot/gezi-quark-downloader"
+                                                        <TextBlock Text="videolan.org/vlc"
                                                                    FontSize="11" Margin="0,4,0,0"
                                                                    Foreground="{DynamicResource TextTertiaryBrush}"/>
                                                     </StackPanel>

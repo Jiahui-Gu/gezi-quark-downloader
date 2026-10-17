@@ -1337,6 +1337,41 @@
         </Setter>
     </Style>
 
+    <!-- ============================================================
+         托盘右键菜单专用：紧凑版 MenuItem
+         ============================================================
+
+         ⚠️ 不能复用下面那个隐式 MenuItem 样式：它带一个**固定 22px 的图标列**
+            （右键任务行 / 文件列表时用来对齐图标），而托盘菜单四项**都没有图标** ——
+            那 22px 图标列 + 8px Margin 就变成左侧一大块空白；
+            再加上 Header 列是 `*`（填满），右侧又留一截，菜单看起来"左右都空"。
+         托盘菜单只有纯文字，用这个不带图标列的紧凑模板。 -->
+    <Style x:Key="TrayMenuItem" TargetType="MenuItem">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SurfaceSunkenBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="MenuItem">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
         <Setter Property="FontSize" Value="13"/>
