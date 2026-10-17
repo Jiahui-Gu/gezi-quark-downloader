@@ -102,6 +102,7 @@ namespace GeZi
             public List<string> PathList = new List<string>();
             public string PwdId;
             public string Stoken;
+            public string StartFid;   // 【2026-10-17】分享进入目录（切模式再切回来不能丢）
         }
 
         /// <summary>「分享」模式与「我的网盘」模式各自的导航快照。</summary>
@@ -135,6 +136,12 @@ namespace GeZi
         private System.Threading.Tasks.Task _startupLoginTask;
         private string _pwdId;
         private string _stoken;
+        /// <summary>当前分享的进入目录 fid（普通分享 "0"，带 fid 的链接指向子目录）。
+        /// 【2026-10-17】自动重解析分享时从这里开始逐级展开。</summary>
+        private string _startFid = "0";
+        /// <summary>当前分享的提取码。【2026-10-17】下载器回调跑在线程池线程，
+        /// 不能读 PassBox.Text，重解析分享（换 stoken）只能从字段拿。</summary>
+        private string _passcode = "";
         private string _curFid = "0";
         private AppSettings _settings;
         private DownloadScheduler _scheduler;
@@ -921,6 +928,7 @@ namespace GeZi
             into.PathList = _pathList.ToList();
             into.PwdId = _pwdId;
             into.Stoken = _stoken;
+            into.StartFid = _startFid;
         }
 
         /// <summary>把快照还原成当前导航状态（含分享的 pwd_id / stoken）。</summary>
@@ -942,6 +950,7 @@ namespace GeZi
 
             _pwdId = s.PwdId;
             _stoken = s.Stoken;
+            _startFid = string.IsNullOrEmpty(s.StartFid) ? "0" : s.StartFid;
 
             UpdatePathText();
             UpdateEmptyStates();
@@ -1174,6 +1183,9 @@ namespace GeZi
             if (!string.IsNullOrEmpty(info.Passcode) && PassBox.Text.Trim() != info.Passcode)
                 PassBox.Text = info.Passcode;
             _pwdId = info.PwdId;
+            // 【2026-10-17】提取码留下字段副本：下载器回调（线程池线程）不能读 PassBox，
+            // 而自动重解析分享（换新 stoken）必须带上它。
+            _passcode = passcode;
             _linkCache.Clear();   // 换分享后旧 fid 的直链不再适用
             // 目录缓存与大小缓存同理：fid 是分享内的编号，换了分享再留着会张冠李戴。
             _dirCache.Clear();
@@ -1198,6 +1210,7 @@ namespace GeZi
                 }
                 ResetNav();
                 _curFid = info.StartFid;
+                _startFid = string.IsNullOrEmpty(info.StartFid) ? "0" : info.StartFid;
                 await LoadDirAsync(_curFid);
                 Log("解析成功。双击文件夹进入子目录；选中文件后点「下载选中」即可下载"
                     + "（多选用 Shift / Ctrl+点击，或右键该行）。");
@@ -3219,9 +3232,11 @@ namespace GeZi
                     ResumeCannotRefresh = item.FromShare,
                     Pending = new PendingInfo
                     {
-                        PwdId = _pwdId, Stoken = _stoken, Passcode = PassBox.Text,
+                        PwdId = _pwdId, Stoken = _stoken, Passcode = item.Passcode,
                         Fid = item.Fid, Token = item.Token, FromShare = item.FromShare,
                         RelDir = item.RelDir ?? "", Dest = dest, Size = item.Size,
+                        // 【2026-10-17】自动重解析分享的上下文（stoken 过期时换新凭证用）
+                        StartFid = item.StartFid, ShareRelDir = item.ShareRelDir,
                     },
                 });
             }
@@ -3336,10 +3351,12 @@ namespace GeZi
                         Pending = new PendingInfo
                         {
                             PwdId = _pwdId, Stoken = _stoken,
-                            Passcode = PassBox.Text,   // 分享提取码（无码时为空）
+                            Passcode = item.Passcode,   // 从 item 拿（await 之后不在 UI 线程）
                             Fid = item.Fid, Token = item.Token,
                             FromShare = item.FromShare, RelDir = item.RelDir ?? "",
                             Dest = dest, Size = item.Size,
+                            // 【2026-10-17】自动重解析分享的上下文（stoken 过期时换新凭证用）
+                            StartFid = item.StartFid, ShareRelDir = item.ShareRelDir,
                         },
                     });
                 }
@@ -3464,6 +3481,12 @@ namespace GeZi
             CancellationToken ct = default(CancellationToken))
         {
             ct.ThrowIfCancellationRequested();
+            // 【2026-10-17】重解析分享所需的上下文。
+            // ⚠️ 必须在**任何 await 之前**取快照：下载准备期间用户可能双击进别的目录，
+            // _pathList 会变（提取码同理，下载器回调更不能回头读 PassBox）。
+            string shareDir = CurrentShareRelDir();
+            string passcode = _passcode;
+            string startFid = _startFid;
             var targets = files.Select(f => new LinkTarget { Fid = f.Fid, Token = f.Token, Name = f.Name }).ToList();
             var urlOf = await FetchUrlsWithRetryAsync(targets, fromShare: true, ct: ct);
             var items = new List<DownloadItem>();
@@ -3474,11 +3497,28 @@ namespace GeZi
                     {
                         Name = f.Name, Size = f.Size, Url = url, RelDir = f.RelDir,
                         Fid = f.Fid, Token = f.Token, FromShare = true,
+                        // f.RelDir 是「相对当前浏览目录」的，拼上 shareDir 才是「相对分享进入点」的完整路径
+                        Passcode = passcode, StartFid = startFid,
+                        ShareRelDir = Path.Combine(shareDir, f.RelDir ?? ""),
                     });
                 else
                     Log("跳过（无直链）: " + f.Name);
             }
             return items;
+        }
+
+        /// <summary>
+        /// 当前浏览目录在分享内的完整相对路径（相对分享进入点 <see cref="_startFid"/>）。
+        /// 数据来源是导航栈里的 <see cref="_pathList"/>（进一层加一个目录名）。
+        /// 【2026-10-17】供自动重解析分享逐级下钻用；调用方必须在 await 前取快照。
+        /// </summary>
+        private string CurrentShareRelDir()
+        {
+            var segs = new List<string>();
+            foreach (var s in _pathList)
+                if (!string.IsNullOrEmpty(s))
+                    segs.Add(s);
+            return segs.Count == 0 ? "" : Path.Combine(segs.ToArray());
         }
 
         private async Task<List<DownloadItem>> DriveGetItemsAsync(List<ShareFileItem> files,
@@ -3756,23 +3796,34 @@ namespace GeZi
             List<DownloadLink> links;
             if (item.FromShare)
             {
-                links = await _client.GetShareDownloadAsync(
-                    new List<string> { item.Fid },
-                    new List<string> { item.Token ?? "" },
-                    _pwdId, _stoken);
+                // 【2026-10-17】stoken 过期时自动重解析分享：换新 stoken + 新
+                // share_fid_token 再取链。写回 _stoken / item.Token ——
+                // 当前会话后续取链都用新值（下载器回调在线程池线程，不能读 PassBox，
+                // 所以提取码从 item 字段拿）。
+                string url = await GetShareLinkWithReResolveAsync(
+                    _client, item.Fid, item.Token, _pwdId, _stoken, item.Passcode,
+                    item.StartFid, item.ShareRelDir,
+                    (freshStoken, freshToken) =>
+                    {
+                        _stoken = freshStoken;
+                        item.Token = freshToken;
+                    }, ct).ConfigureAwait(false);
+                if (url != null)
+                    _linkCache.Put(item.Fid, url);   // 新链写回缓存，供后续同类操作复用
+                return url;
             }
             else
             {
-                links = await _client.GetDownloadAsync(new List<string> { item.Fid });
+                links = await _client.GetDownloadAsync(new List<string> { item.Fid }).ConfigureAwait(false);
             }
 
             if (links == null)
                 return null;
             var hit = links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl));
-            string url = hit == null ? null : hit.DownloadUrl;
-            if (url != null)
-                _linkCache.Put(item.Fid, url);   // 新链写回缓存，供后续同类操作复用
-            return url;
+            string u = hit == null ? null : hit.DownloadUrl;
+            if (u != null)
+                _linkCache.Put(item.Fid, u);   // 新链写回缓存，供后续同类操作复用
+            return u;
         }
 
         /// <summary>转存后校验：等文件异步落盘，过滤不在目标目录里的 fid（对应原版 _resolve_saved_fids）。</summary>
@@ -4064,6 +4115,9 @@ namespace GeZi
                             Stoken = pi?.Stoken,
                             Passcode = pi?.Passcode,
                             RelDir = pi?.RelDir,
+                            // 【2026-10-17】自动重解析分享的上下文（stoken 过期自愈用）
+                            StartFid = pi?.StartFid,
+                            ShareRelDir = pi?.ShareRelDir,
                         });
                     }
                 }
@@ -6218,14 +6272,22 @@ namespace GeZi
 
                         if (p.FromShare)
                         {
-                            // 分享模式：直接用记录里的 pwd_id/stoken 重取（GetShareDownloadAsync
+                            // 分享模式：先用记录里的 pwd_id/stoken/token 重取（GetShareDownloadAsync
                             // 的参数是显式传入的，不依赖客户端的"当前分享"状态）。
-                            string stoken = p.Stoken;
-                            var links = await client.GetShareDownloadAsync(
-                                new List<string> { p.Fid },
-                                new List<string> { p.Token ?? "" },
-                                p.PwdId, stoken);
-                            url = links?.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl))?.DownloadUrl;
+                            // 【2026-10-17】stoken 一般几小时~几天就过期，过期后这一路必失败。
+                            // 交给 GetShareLinkWithReResolveAsync：旧凭证失败就自动重解析分享
+                            // （换新 stoken + 新 share_fid_token）再试 —— 用户点一次续传即自愈。
+                            url = await GetShareLinkWithReResolveAsync(
+                                client, p.Fid, p.Token, p.PwdId, p.Stoken, p.Passcode,
+                                p.StartFid, p.ShareRelDir,
+                                (freshStoken, freshToken) =>
+                                {
+                                    // 只在真正发生重解析时才打（旧 stoken 还有效时不会进这里）
+                                    Log("[" + p.Name + "] 分享凭证已过期，已自动重新解析分享。");
+                                    // 写回记录：下面构造 job.Pending 时 Stoken = p.Stoken 用的就是新值
+                                    p.Stoken = freshStoken;
+                                    p.Token = freshToken;
+                                }, default(CancellationToken)).ConfigureAwait(false);
                         }
                         else
                         {
@@ -6255,6 +6317,9 @@ namespace GeZi
                                 PwdId = p.PwdId, Stoken = p.Stoken, Passcode = p.Passcode,
                                 Fid = p.Fid, Token = p.Token, FromShare = p.FromShare,
                                 RelDir = p.RelDir ?? "", Dest = dest, Size = p.Size,
+                                // 【2026-10-17】自动重解析分享的上下文（stoken 过期自愈用）。
+                                // 上面取链若触发过重解析，p.Stoken/p.Token 已是新值。
+                                StartFid = p.StartFid, ShareRelDir = p.ShareRelDir,
                             },
                         };
                         var captured = job;
@@ -6294,21 +6359,184 @@ namespace GeZi
                 return null;
             try
             {
-                List<DownloadLink> links;
                 if (p.FromShare)
                 {
-                    links = await _client.GetShareDownloadAsync(
-                        new List<string> { p.Fid },
-                        new List<string> { p.Token ?? "" },
-                        p.PwdId, p.Stoken);
+                    // 【2026-10-17】与续传入队同理：旧 stoken 过期就自动重解析分享换新凭证。
+                    // 写回 p.Stoken/p.Token —— job.Pending 是引用：本次换链立即用上新值，
+                    // 之后落盘的 PendingTask（保存时从 pi 序列化）也是新值。
+                    return await GetShareLinkWithReResolveAsync(
+                        _client, p.Fid, p.Token, p.PwdId, p.Stoken, p.Passcode,
+                        p.StartFid, p.ShareRelDir,
+                        (freshStoken, freshToken) =>
+                        {
+                            p.Stoken = freshStoken;
+                            p.Token = freshToken;
+                        }, ct).ConfigureAwait(false);
                 }
-                else
-                {
-                    links = await _client.GetDownloadAsync(new List<string> { p.Fid });
-                }
+
+                var links = await _client.GetDownloadAsync(new List<string> { p.Fid }).ConfigureAwait(false);
                 return links?.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl))?.DownloadUrl;
             }
             catch { return null; }
+        }
+
+        // ---------------- 免转存续传：stoken 过期自愈（2026-10-17） ----------------
+
+        /// <summary>
+        /// 免转存取链：先用手头的（可能已过期的）stoken / share_fid_token 试一次；
+        /// 失败就**自动重解析分享** —— 重新申请 stoken、沿 ShareRelDir 逐级展开定位
+        /// 目标文件拿到新的 share_fid_token，再取一次链。
+        ///
+        /// 【为什么】免转存续传原先只认"保存下来的旧 stoken"，它一般几小时~几天就过期，
+        /// 过期后 <see cref="QuarkClient.GetShareDownloadAsync"/> 一律失败：
+        /// 点续传 → 该任务被跳过；下载中换链 → 任务中止。用户只能手动重新解析分享。
+        /// 现在改成点一次续传/换链即自愈（分享被取消/改密码仍救不回，如实返回 null
+        /// 让上层按原逻辑提示）。
+        /// </summary>
+        /// <param name="client">取链用的客户端（续传路径可能是局部 client，不能假设是 _client）。</param>
+        /// <param name="fid">分享内文件 fid（分享内稳定不变，重解析后仍用它定位）。</param>
+        /// <param name="token">share_fid_token。</param>
+        /// <param name="pwdId">分享 ID。</param>
+        /// <param name="stoken">分享凭证。</param>
+        /// <param name="passcode">提取码；无码分享为空串/null。</param>
+        /// <param name="startFid">分享进入目录 fid（普通分享为 "0"）。</param>
+        /// <param name="shareRelDir">文件在分享内的完整相对目录（相对 startFid；"" = 进入目录本身）。</param>
+        /// <param name="onReResolved">重解析成功时回调，把 (新 stoken, 新 token) 写回调用方记录。</param>
+        /// <returns>直链；彻底失败返回 null（调用方按原逻辑提示"需重新解析分享"）。</returns>
+        private async Task<string> GetShareLinkWithReResolveAsync(
+            QuarkClient client, string fid, string token, string pwdId, string stoken,
+            string passcode, string startFid, string shareRelDir,
+            Action<string, string> onReResolved, CancellationToken ct)
+        {
+            if (client == null || string.IsNullOrEmpty(fid) || string.IsNullOrEmpty(pwdId))
+                return null;
+
+            // ① 先用现有凭据试一次 —— 绝大多数情况这一步就成，不值得惊动重解析
+            string url = await TryShareDownloadAsync(client, fid, token, pwdId, stoken).ConfigureAwait(false);
+            if (url != null)
+                return url;
+
+            ct.ThrowIfCancellationRequested();
+
+            // ② 自动重解析：换新 stoken + 新 share_fid_token
+            //    （async 方法不能用 out 参数，用 Tuple 回传：Item1 = 新 stoken，Item2 = 新 token）
+            var fresh = await TryReResolveShareTokenAsync(
+                client, pwdId, passcode, startFid, shareRelDir, fid, ct).ConfigureAwait(false);
+            if (fresh == null)
+            {
+                Log("分享直链获取失败，自动重新解析分享也没有成功（分享可能已被取消、删除或改了提取码）。");
+                return null;
+            }
+
+            if (onReResolved != null)
+                onReResolved(fresh.Item1, fresh.Item2);
+
+            // ③ 用新凭据再取一次
+            url = await TryShareDownloadAsync(client, fid, fresh.Item2, pwdId, fresh.Item1).ConfigureAwait(false);
+            if (url != null)
+                Log("分享凭证已过期，已自动重新解析分享并拿到新直链。");
+            return url;
+        }
+
+        /// <summary>取分享直链；吞掉一切接口异常，失败只返回 null（由上层决定提示文案）。</summary>
+        private async Task<string> TryShareDownloadAsync(
+            QuarkClient client, string fid, string token, string pwdId, string stoken)
+        {
+            try
+            {
+                var links = await client.GetShareDownloadAsync(
+                    new List<string> { fid },
+                    new List<string> { token ?? "" },
+                    pwdId, stoken).ConfigureAwait(false);
+                return links == null
+                    ? null
+                    : links.FirstOrDefault(l => !string.IsNullOrEmpty(l.DownloadUrl)).DownloadUrl;
+            }
+            catch (Exception ex)
+            {
+                Log("获取分享直链失败: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 重新解析分享：申请新 stoken → 从 startFid 起沿 shareRelDir 逐级进目录 →
+        /// 在最终目录里**按 fid** 找到目标文件的**新** share_fid_token。
+        /// 按 fid 匹配而不是按名字：fid 在分享内不变，比文件名可靠。
+        /// </summary>
+        /// <returns>null = 失败；否则 Item1 = 新 stoken，Item2 = 新 share_fid_token。
+        /// 用 Tuple 而不是 out 参数：async 方法不允许 ref/out。</returns>
+        private async Task<Tuple<string, string>> TryReResolveShareTokenAsync(
+            QuarkClient client, string pwdId, string passcode, string startFid,
+            string shareRelDir, string fid, CancellationToken ct)
+        {
+            try
+            {
+                // ① 重新申请分享凭证（分享取消/改密码都会在这一步失败）
+                string stoken = await client.GetStokenAsync(pwdId, passcode ?? "").ConfigureAwait(false);
+                if (string.IsNullOrEmpty(stoken))
+                    return null;
+
+                // ② 从进入目录开始，沿完整相对路径逐级下钻。
+                //    名字匹配做两手准备：_pathList 里存的是目录原名，而 RelDir 系列
+                //    字段是 SanitizeFileName 规范化过的，原名带非法字符时两者不同。
+                string pdirFid = string.IsNullOrEmpty(startFid) ? "0" : startFid;
+                string rel = (shareRelDir ?? "").Replace('/', '\\').Trim('\\');
+                if (rel.Length > 0)
+                {
+                    foreach (string seg in rel.Split('\\'))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        if (seg.Length == 0)
+                            continue;
+                        var dir = await FindShareEntryAsync(client, pwdId, stoken, pdirFid,
+                            e => e.IsDir
+                                 && (e.Name == seg || PathUtil.SanitizeFileName(e.Name) == seg),
+                            ct).ConfigureAwait(false);
+                        if (dir == null)
+                            return null;   // 目录被改名/移动/删除 → 按路径找不到了
+                        pdirFid = dir.Fid;
+                    }
+                }
+
+                // ③ 最终目录里按 fid 定位文件，拿它的新 share_fid_token
+                var file = await FindShareEntryAsync(client, pwdId, stoken, pdirFid,
+                    e => !e.IsDir && e.Fid == fid, ct).ConfigureAwait(false);
+                if (file == null || string.IsNullOrEmpty(file.Token))
+                    return null;
+
+                return Tuple.Create(stoken, file.Token);
+            }
+            catch (Exception ex)
+            {
+                Log("自动重新解析分享失败: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 在分享的一个目录里**逐页**找第一个满足条件的条目，找到即停。
+        /// 用一页一页的 <see cref="QuarkClient.ShareDetailPageAsync"/> 而不是整目录
+        /// 拉完的 <see cref="QuarkClient.ShareDetailAsync"/>：目标文件常在靠前的页，
+        /// 逐页找能少拉几十页（几千项的分享整目录拉完要十几秒）。
+        /// </summary>
+        private async Task<QuarkFileEntry> FindShareEntryAsync(
+            QuarkClient client, string pwdId, string stoken, string pdirFid,
+            Func<QuarkFileEntry, bool> pred, CancellationToken ct)
+        {
+            for (int page = 1; page <= 200; page++)   // 200 页兜底，与 ShareDetailAsync 一致
+            {
+                ct.ThrowIfCancellationRequested();
+                var dir = await client.ShareDetailPageAsync(pwdId, stoken, pdirFid, page).ConfigureAwait(false);
+                if (dir == null || dir.Items == null)
+                    return null;
+                foreach (var e in dir.Items)
+                    if (pred(e))
+                        return e;
+                if (!dir.HasMore)
+                    break;
+            }
+            return null;
         }
 
 

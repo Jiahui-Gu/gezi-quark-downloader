@@ -32,5 +32,17 @@ namespace GeZi
 
         /// <summary>true = 走「分享免转存」取链（需要 pwd_id + stoken + token），false = 走我的网盘取链。</summary>
         public bool FromShare;
+
+        /// <summary>分享提取码。【2026-10-17】重解析分享（换新 stoken）时要带上。</summary>
+        public string Passcode;
+
+        /// <summary>分享进入目录 fid（普通分享为 "0"）。重解析分享的起点。</summary>
+        public string StartFid;
+
+        /// <summary>
+        /// 文件在分享内的完整相对目录（相对 <see cref="StartFid"/>）。
+        /// 仅供重解析分享时逐级定位文件；本地路径仍看 <see cref="RelDir"/>。
+        /// </summary>
+        public string ShareRelDir;
     }
 }

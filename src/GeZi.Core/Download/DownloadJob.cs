@@ -102,6 +102,14 @@ namespace GeZi.Core.Download
         public bool FromShare { get; set; }
         /// <summary>相对目录（含尾部分隔符时也算合法），用于重建目标路径。</summary>
         public string RelDir { get; set; }
+        /// <summary>分享进入目录 fid（带 fid 的分享链接才有意义，普通分享是 "0"）。
+        /// 【2026-10-17】自动重解析分享时的起点。</summary>
+        public string StartFid { get; set; }
+        /// <summary>
+        /// 文件在分享内的完整相对目录（相对 <see cref="StartFid"/>）。
+        /// 仅供重解析分享定位文件；本地路径仍看 <see cref="RelDir"/>。
+        /// </summary>
+        public string ShareRelDir { get; set; }
         /// <summary>目标文件完整路径。</summary>
         public string Dest { get; set; }
         /// <summary>文件总大小（0 = 未知）。</summary>

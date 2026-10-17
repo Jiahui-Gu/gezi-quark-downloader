@@ -362,6 +362,20 @@ namespace GeZi
         /// <summary>该任务的相对目录（用于重建目标路径，保持目录结构）。</summary>
         [DataMember(Order = 13)] public string RelDir { get; set; }
 
+        /// <summary>
+        /// 分享链接的进入目录 fid（带 fid 的分享链接才有意义，普通分享是 "0"）。
+        /// 【2026-10-17】自动重解析分享时的**起点**：从它开始逐级展开找目标文件。
+        /// </summary>
+        [DataMember(Order = 15)] public string StartFid { get; set; }
+
+        /// <summary>
+        /// 文件在分享内的**完整相对目录**（相对 <see cref="StartFid"/>，不是相对浏览目录）。
+        /// 仅供重解析分享时逐级定位文件用。
+        /// ⚠️ 与 <see cref="RelDir"/> 的分工：RelDir 相对"下载时浏览的目录"，决定本地
+        /// Dest 路径（保持既有语义不变）；ShareRelDir 相对"分享进入点"，只服务重解析。
+        /// </summary>
+        [DataMember(Order = 16)] public string ShareRelDir { get; set; }
+
         /// <summary>写入模式是否为"边下边播"（独立分片+边合并）。</summary>
         [DataMember(Order = 14)] public bool StreamPlayMode { get; set; }
 
