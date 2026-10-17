@@ -966,8 +966,12 @@
                                  根因：GhostButton 的 Padding 是 10,5、FontSize 12（比 Primary 的 16,7 / 13 小），
                                  按钮实际边界更窄 → 看起来中间那道缝更大。
                                  这里给「下载全部」本地覆盖成与另外两个完全一致的 16,7 / 13。 -->
+                            <!-- 【2026-10-17 用户反馈】幽灵按钮背景透明、看不见边界，
+                                 视觉上「实心→幽灵」的缝隙会比「幽灵→描边」小（光学错觉），
+                                 代码里明明都是 8px 却看着不匀。改成 SecondaryButton
+                                 （白底 + 1px 描边，Padding 15,7 已做边框补偿），三个按钮边界都清晰。 -->
                             <Button x:Name="DownloadAllBtn" Click="OnDownloadAll"
-                                    Style="{StaticResource GhostButton}" Padding="16,7" FontSize="13"
+                                    Style="{StaticResource SecondaryButton}"
                                     Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Data="{StaticResource IconDownload}" Stretch="Uniform" Width="14"
