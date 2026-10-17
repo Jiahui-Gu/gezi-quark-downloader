@@ -44,7 +44,6 @@ namespace GeZi.Core.Api
     /// </summary>
     public static class PanAccountBridge
     {
-        private const string AccountUrl = "https://pan.quark.cn/account/info";
         private const string Referer = "https://pan.quark.cn/";
 
         /// <summary>与老 helper 脚本一致的"驱动接口"UA（补全 Cookie 时用）。</summary>
@@ -62,12 +61,6 @@ namespace GeZi.Core.Api
             "https://drive.quark.cn/1/clouddrive/member"
                 + "?pr=ucpro&fr=pc&uc_param_str=&fetch_subscribe=true",
         };
-
-        /// <summary>通道是否可用（OpenSSL DLL 能否加载）。不可用时调用方应降级到「导入并登录」。</summary>
-        public static bool Available
-        {
-            get { return OpenSslTls.IsAvailable; }
-        }
 
         /// <summary>通道诊断信息（DLL 版本 / 失败原因），用于日志。</summary>
         public static string Diagnostics

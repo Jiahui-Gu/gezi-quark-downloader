@@ -55,19 +55,6 @@ namespace GeZi.Core.Support
 
         public const string DefaultFolder = "GeZi";
         public const string LoginCookieKey = "__puus";
-        /// <summary>
-        /// 登录态的备用关键 Cookie（前缀匹配）。
-        ///
-        /// 【2026-10-02 实测背景】`pan.quark.cn` 的前置 ALB 对过小的 ClientHello 直接
-        /// TCP RST，而 .NET Framework 的 SChannel 不支持 TLS 1.3、ClientHello 天然偏小，
-        /// 因此在 .NET 里**根本无法访问 `pan.quark.cn`**（SChannel/WinINet 均被拒；
-        /// Python 的 OpenSSL 可以）。这导致 `account/info` 这条换 Cookie 的主路径走不通。
-        ///
-        /// 好在登录态在 `uop.quark.cn` 上有一组等价表示（`_UP_*` 系列，Domain=.quark.cn），
-        /// 且 `uop.quark.cn` 在 .NET 里可达。所以校验登录态时不能只认 `__puus` 一个名字，
-        /// 否则会把一份可用的 Cookie 判成无效。
-        /// </summary>
-        public const string LoginCookiePrefix = "_UP_";
 
         public const string QrLoginGetToken = "https://uop.quark.cn/cas/ajax/getTokenForQrcodeLogin";
         public const string QrLoginGetTicket = "https://uop.quark.cn/cas/ajax/getServiceTicketByQrcodeToken";
@@ -90,8 +77,6 @@ namespace GeZi.Core.Support
         // 夸克 uop 接口用 status 区分阶段，而不是只靠有没有 service_ticket。
         // 早前 C# 版只判断 ticket 是否非空，导致"等待扫码 / 已扫码待确认 / 已过期"
         // 三种状态全被吞掉，界面一直卡着不动 —— 这才是"扫码好像有问题"的根因。
-        /// <summary>接口调用成功（取 token 时返回，轮询时不会出现）。</summary>
-        public const long QrStatusOk = 2000000;
         /// <summary>未扫码：'Query result is empty' —— 二维码还没被扫。</summary>
         public const long QrStatusWaitingScan = 50004001;
         /// <summary>token 无效或已过期：'Token Not Found' —— 需刷新二维码。</summary>
@@ -100,12 +85,8 @@ namespace GeZi.Core.Support
         public const long QrStatusTokenExpired = 50004003;
 
         public const int DownloadThreads = 64;
-        public const int LoginTimeoutSeconds = 300;
 
         /// <summary>单次读取字节数（下载缓冲区大小）。</summary>
         public const int DownloadChunk = 256 * 1024;
-
-        /// <summary>每个分段至少 4MB 才启用分片下载。</summary>
-        public const long DownloadMinSegment = 4L * 1024 * 1024;
     }
 }

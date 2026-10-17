@@ -50,7 +50,6 @@ namespace GeZi.Core.Support
         /// <summary>两次请求之间的最小间隔（毫秒）。过低会被视为机器流量，过高影响体验。</summary>
         public int MinIntervalMs { get; set; } = 260;
 
-        public CookieContainer Jar => _jar;
         public HttpClient Http => _http;
 
         public QuarkSession(string cookie = null, DecompressionMethods decompression = DecompressionMethods.None)
@@ -152,21 +151,6 @@ namespace GeZi.Core.Support
                 sb.Append(kv.Key).Append('=').Append(kv.Value);
             }
             return sb.ToString();
-        }
-
-        public bool HasCookie(string name)
-        {
-            foreach (var d in CookieDomains)
-            {
-                try
-                {
-                    foreach (Cookie c in _jar.GetCookies(new Uri(d)))
-                        if (string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                }
-                catch { }
-            }
-            return false;
         }
 
         // ---------------- 请求头指纹 ----------------

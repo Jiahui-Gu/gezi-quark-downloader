@@ -329,53 +329,5 @@ namespace GeZi
         {
             return "\"" + (value ?? "").Replace("\"", "\\\"") + "\"";
         }
-
-        private static string Probe(string exeName, string relPath)
-        {
-            foreach (var root in new[]
-                     {
-                         @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\" + exeName,
-                         @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\" + exeName,
-                     })
-            {
-                try
-                {
-                    using (var k = Registry.LocalMachine.OpenSubKey(root))
-                    {
-                        if (k == null) continue;
-                        var v = k.GetValue(null) as string;
-                        if (!string.IsNullOrEmpty(v) && File.Exists(v)) return v;
-                    }
-                }
-                catch { }
-            }
-
-            foreach (var baseDir in new[]
-                     {
-                         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                     })
-            {
-                if (string.IsNullOrEmpty(baseDir)) continue;
-                try
-                {
-                    string p = Path.Combine(baseDir, relPath);
-                    if (File.Exists(p)) return p;
-                }
-                catch { }
-            }
-
-            try
-            {
-                foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'))
-                {
-                    if (string.IsNullOrWhiteSpace(dir)) continue;
-                    string p = Path.Combine(dir.Trim(), exeName);
-                    if (File.Exists(p)) return p;
-                }
-            }
-            catch { }
-            return null;
-        }
     }
 }

@@ -51,19 +51,6 @@ namespace GeZi.Core.Api
         /// <summary>实时汇总的 Cookie 串（含服务端 Set-Cookie 更新后的最新值）。</summary>
         public string CookieStr => _session.BuildCookieString();
 
-        /// <summary>登录态是否仍然存在（关键 Cookie __puus 是否在 jar 中）。</summary>
-        public bool IsLoggedIn => _session.HasCookie(QuarkConstants.LoginCookieKey);
-
-        public static Dictionary<string, string> ParseCookieDict(string s)
-            => QuarkSession.ParseCookies(s);
-
-        private static readonly string[] CookieDomains =
-        {
-            "https://pan.quark.cn", "https://drive-pc.quark.cn", "https://drive-m.quark.cn",
-            "https://drive.quark.cn", "https://drive-h.quark.cn", "https://uop.quark.cn",
-            "https://su.quark.cn", "https://quark.cn",
-        };
-
         // ---------------- 底层请求 ----------------
 
         private Timer _keepAliveTimer;

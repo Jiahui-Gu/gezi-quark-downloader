@@ -64,12 +64,6 @@ namespace GeZi
         /// <summary>是否已成功创建电源请求句柄。</summary>
         private static bool _powerReady;
 
-        /// <summary>当前是否处于"阻止睡眠"状态（供诊断/提示用）。</summary>
-        internal static bool IsBlocking
-        {
-            get { return _blocking; }
-        }
-
         /// <summary>
         /// 状态变化的日志回调（由 MainWindow 挂到界面的 Log）。
         /// 用户能从日志里看到"为什么电脑没睡" —— 不做开关，但保留知情权。

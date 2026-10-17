@@ -120,18 +120,6 @@ namespace GeZi.Core.Support
                 new List<KeyValuePair<string, string>>();
 
             public bool Ok { get { return StatusCode >= 200 && StatusCode < 400; } }
-
-            /// <summary>把拿到的 Cookie 合并成 "k=v; k2=v2" 形式（供 QuarkSession 播种）。</summary>
-            public string CookieString()
-            {
-                var sb = new StringBuilder();
-                foreach (var kv in Cookies)
-                {
-                    if (sb.Length > 0) sb.Append("; ");
-                    sb.Append(kv.Key).Append('=').Append(kv.Value);
-                }
-                return sb.ToString();
-            }
         }
 
         // ---------------- 请求 ----------------

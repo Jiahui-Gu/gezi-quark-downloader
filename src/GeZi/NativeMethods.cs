@@ -84,12 +84,6 @@ namespace GeZi
         [DllImport("user32.dll")]
         internal static extern bool AllowSetForegroundWindow(int dwProcessId);
 
-        [DllImport("user32.dll")]
-        internal static extern bool IsIconic(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        internal static extern IntPtr SetActiveWindow(IntPtr hWnd);
-
         // ---------------- 原生标题栏深浅（深色模式） ----------------
 
         /// <summary>
@@ -104,7 +98,6 @@ namespace GeZi
         internal const uint SWP_NOSIZE = 0x0001;
         internal const uint SWP_NOMOVE = 0x0002;
         internal const uint SWP_NOZORDER = 0x0004;
-        internal const uint SWP_NOACTIVATE = 0x0010;
         internal const uint SWP_FRAMECHANGED = 0x0020;
 
         // ---------------- 剪贴板变更通知 ----------------
@@ -133,19 +126,6 @@ namespace GeZi
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
-        /// <summary>
-        /// 系统当前的双击间隔（毫秒，默认 500）。
-        ///
-        /// 用途：文件列表「单击文件夹即进入」之后，要靠它吞掉"双击的第二下"
-        /// （见 <see cref="MainWindow.EnterFolder"/>）。
-        /// 不写死毫秒数 —— 用户把双击速度调慢（辅助功能里能调到 900ms）时判据要跟着变。
-        ///
-        /// ⚠️ 不要改用 WPF 的 `SystemParameters`：它只有 `DoubleClickWidth/Height`
-        ///    （双击的**矩形容差**），**没有**时间间隔这一项（实测编译不过）。
-        /// </summary>
-        [DllImport("user32.dll")]
-        internal static extern uint GetDoubleClickTime();
-
         // ---------------- 保活：阻止系统空闲睡眠 ----------------
 
         /// <summary>
@@ -172,10 +152,6 @@ namespace GeZi
 
         /// <summary>要求系统保持可用（阻止空闲睡眠）。</summary>
         internal const uint ES_SYSTEM_REQUIRED = 0x00000001;
-
-        /// <summary>要求显示器保持开启。⚠️ 本项目**刻意不用** —— 用户自己会关显示器，
-        /// 加上它只会白耗电。</summary>
-        internal const uint ES_DISPLAY_REQUIRED = 0x00000002;
 
         // ---------------- 保活（Modern Standby 路径）----------------
         //
@@ -206,10 +182,8 @@ namespace GeZi
         /// <summary>POWER_REQUEST_CONTEXT_SIMPLE_STRING —— 用简单字符串作为申请理由。</summary>
         internal const uint POWER_REQUEST_CONTEXT_SIMPLE_STRING = 0x1;
 
-        internal const int PowerRequestDisplayRequired = 0;
         /// <summary>阻止系统自动睡眠。</summary>
         internal const int PowerRequestSystemRequired = 1;
-        internal const int PowerRequestAwayModeRequired = 2;
         /// <summary>阻止 DAM 在 Modern Standby 期间挂起本进程。</summary>
         internal const int PowerRequestExecutionRequired = 3;
 

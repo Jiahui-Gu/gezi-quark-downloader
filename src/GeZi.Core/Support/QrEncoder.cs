@@ -30,22 +30,6 @@ namespace GeZi.Core.Support
     /// </summary>
     public static class QrEncoder
     {
-        /// <summary>调试用：仅做码字构建，不走矩阵，便于分层定位问题。</summary>
-        public static byte[] DebugCodewords(string text)
-        {
-            byte[] d = Encoding.UTF8.GetBytes(text);
-            int v = ChooseVersion(d.Length);
-            var (cw, _, _) = BuildCodewords(d, v);
-            return cw;
-        }
-
-        /// <summary>调试用：用外部给定的码字构建矩阵（用于隔离"排布"环节）。</summary>
-        public static bool[,] DebugMatrixFromCodewords(byte[] cw, int version, int forceMask = -1)
-        {
-            var groups = new List<BlockGroup>();
-            return BuildMatrix(cw, version, EcCodewordsPerBlockM[version], groups, forceMask);
-        }
-
         /// <summary>编码结果为模块矩阵，true 表示深色。</summary>
         public static bool[,] Encode(string text)
         {
