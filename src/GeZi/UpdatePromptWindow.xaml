@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="更新可用"
-        Width="420"
+        Width="460"
         SizeToContent="Height"
+        MaxHeight="640"
         WindowStyle="None"
         Background="{DynamicResource SurfaceBrush}"
         ShowInTaskbar="False"
@@ -16,9 +17,11 @@
         SnapsToDevicePixels="True">
 
     <!--
-        「更新详情」窗口（2026-10-11 第三步）：用户点「检查更新」发现新版本后弹出。
+        「更新详情」窗口（2026-10-18 新一代）：用户点「检查更新」发现新版本后弹出。
+        【和旧版的变化】不再由程序下载/安装更新包（旧那套绑在夸克网盘转存上，已整套退役）——
+        本窗口负责展示版本对比 + GitHub Release 更新说明，「前往下载」直接打开
+        Release 页交给浏览器。
         ⚠️ 跟关于/主窗一样走 WindowChrome（非分层窗口 → 文字清晰），圆角交给 DWM。
-        ⚠️ CaptionHeight=44 让标题栏可拖动；关闭按钮要 IsHitTestVisibleInChrome。
     -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="0"
@@ -47,7 +50,7 @@
             </Grid>
 
             <StackPanel Margin="20,4,20,20">
-                <!-- 版本对比 -->
+                <!-- 版本对比 + 发布信息徽章 -->
                 <Grid Margin="0,2,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -61,50 +64,25 @@
                                    FontSize="11" Margin="0,3,0,0"
                                    Foreground="{DynamicResource TextTertiaryBrush}"/>
                     </StackPanel>
-                    <!-- 版本标签小色块（视觉上呼应"有新版本"）-->
                     <Border Grid.Column="1" VerticalAlignment="Center"
                             Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6"
                             Padding="8,4" Margin="8,0,0,0">
                         <TextBlock x:Name="SizeText" Text="?" FontSize="11"
-                                   Foreground="{DynamicResource SurfaceBrush}"/>
+                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
                     </Border>
                 </Grid>
 
-                <!-- 更新说明入口 -->
-                <Button Click="OnReleaseClick"
-                        AutomationProperties.Name="查看更新说明"
-                        HorizontalAlignment="Left" Margin="0,10,0,0"
-                        Cursor="Hand" Background="Transparent" BorderThickness="0" Padding="0">
-                    <TextBlock Text="查看更新说明（GitHub Releases）"
-                               FontSize="11" TextDecorations="Underline"
-                               Foreground="{DynamicResource TextSecondaryBrush}"/>
-                </Button>
-
-                <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,14,0,0"/>
-
-                <!-- 未登录提示（需求第 7 条：未登录时提示「请登录后更新」）。
-                     默认折叠，未登录时由代码显示 —— 不用 Visibility 绑定，保持与项目其它窗口一致。 -->
-                <Border x:Name="LoginHintBox" Visibility="Collapsed"
-                        Background="{DynamicResource SurfaceSunkenBrush}"
-                        CornerRadius="6" Padding="10,7" Margin="0,12,0,0">
-                    <TextBlock x:Name="LoginHintText" Text="请登录后更新"
-                               FontSize="11" TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <!-- 更新说明（Release body 原文，只读滚动） -->
+                <TextBlock Text="更新说明" Style="{StaticResource SectionLabel}" Margin="0,14,0,6"/>
+                <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6" Padding="10">
+                    <TextBox x:Name="BodyText" IsReadOnly="True" BorderThickness="0"
+                             Background="Transparent" FontSize="11" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" MaxHeight="220"
+                             Foreground="{DynamicResource TextSecondaryBrush}"/>
                 </Border>
 
-                <!-- 下载方式：**默认直接转存下载**，不再让用户二选一。
-                     「免转存」只在两种情况下出现（都不在这里选）：
-                       · 未登录 —— 无法转存，直接走免转存（上面的提示条已说明）；
-                       · 网盘容量不足 —— 由主窗口弹提示，让用户决定清理网盘还是改用免转存。
-                     ⚠️ 转存说明里**必须保留「60 小时后自动删除」**这句：用户会关心
-                        网盘里是不是被塞了个长期占地的副本。 -->
-                <TextBlock Text="下载方式" Style="{StaticResource SectionLabel}" Margin="0,14,0,8"/>
-                <TextBlock x:Name="ModeNote" Text="" Style="{StaticResource ProseText}"
-                           TextWrapping="Wrap" FontSize="11"/>
-
-                <!-- 底部按钮：左侧「忽略此版本」，右侧「暂不 / 开始下载」。
-                     「忽略此版本」原来挂在「关于」页那层"是否查看详情"确认框的「否」上，
-                     容易手滑把提醒永久屏蔽；现在挪到这里，要忽略必须明确点它。 -->
+                <!-- 底部按钮：左「忽略此版本」，右「暂不 / 前往下载」。
+                     要忽略必须明确点它（以前挂在别处，容易手滑永久屏蔽）。 -->
                 <Grid Margin="0,18,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -121,10 +99,10 @@
                             AutomationProperties.Name="暂不更新"
                             Style="{StaticResource GhostButton}"
                             MinWidth="84" Margin="0,0,10,0"/>
-                    <Button Grid.Column="3" Content="开始下载" Click="OnDownloadClick"
-                            AutomationProperties.Name="开始下载更新"
+                    <Button Grid.Column="3" Content="前往下载" Click="OnDownloadClick"
+                            AutomationProperties.Name="前往下载更新"
                             Style="{StaticResource GhostButton}"
-                            MinWidth="96"/>
+                            MinWidth="96" ToolTip="在浏览器里打开 Release 页，下载最新安装包"/>
                 </Grid>
             </StackPanel>
         </StackPanel>

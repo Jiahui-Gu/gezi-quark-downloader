@@ -15,7 +15,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using GeZi.Core.Update;
@@ -23,18 +22,17 @@ using GeZi.Core.Update;
 namespace GeZi
 {
     /// <summary>
-    /// 「检查更新」的 UI 层编排（2026-10-11 新增）。
+    /// 「检查更新」的 UI 层编排。
     ///
-    /// 【职责】把 Core 的 <see cref="UpdateChecker"/>（只管找包）接进界面：
-    /// 记录检查时间、判定"算不算有更新"、记住用户忽略过哪个版本、
-    /// 以及维护"网盘里到期要删的转存文件"清单。
+    /// 【职责】把 Core 的 <see cref="GitHubReleaseChecker"/>（只查 GitHub Releases）接进界面：
+    /// 记录检查时间、判定"算不算有更新"、记住用户忽略过哪个版本。
     ///
     /// 【为什么不弹窗】需求明确要求**不打断用户**：启动时只做后台检查，
     /// 有新版本就点亮红点 + 弹一次气泡，用户不点就当没发生过。
     /// 真正的窗口只在用户**主动点**「检查更新」之后才出现。
     ///
-    /// 【接口失效怎么办】启动时那次检查**吞掉所有异常并静默返回** ——
-    /// 分享被删、接口改版、断网，都不该让用户看到一个"更新检查失败"的弹窗。
+    /// 【网络失败怎么办】启动时那次检查**吞掉所有异常并静默返回** ——
+    /// GitHub 访问不通、接口改版、断网，都不该让用户看到一个"更新检查失败"的弹窗。
     /// 用户**手动点**「检查更新」时才把错误如实告诉他（那时他是真的想知道）。
     ///
     /// ⚠️ <b>线程约定</b>：除 <see cref="CheckNowAsync"/> 外，会改写 <c>AppSettings</c> 的
@@ -50,11 +48,8 @@ namespace GeZi
         /// </summary>
         public const double MinCheckIntervalMinutes = 10.0;
 
-        /// <summary>
-        /// 待删除记录最多保留多久（天）。超过就丢弃 ——
-        /// 说明删了很多次都没删掉（比如文件早被用户手动删了），没必要一直记着。
-        /// </summary>
-        public const double MaxPendingDeleteDays = 7.0;
+        /// <summary>GitHub Releases 列表页（查询失败时给用户的手动入口）。</summary>
+        public const string ReleasesPageUrl = GitHubReleaseChecker.ReleasesPageUrl;
 
         static UpdateService()
         {
@@ -73,11 +68,11 @@ namespace GeZi
         public static UpdateVersion CurrentVersion { get; private set; }
 
         /// <summary>
-        /// 最近一次**实际查询**得到的更新包（含 fid / token，下载要用）。
-        /// ⚠️ 重启后为 null —— 落盘的只有版本号（字符串），要拿 fid 必须重新查一次。
-        ///    所以「检查更新」按钮总是先查再动作，靠这里不会出现"有红点但下不了"的情况。
+        /// 最近一次**实际查询**得到的发布信息（下载页地址、更新说明都要用）。
+        /// ⚠️ 重启后为 null —— 落盘的只有版本号（字符串），要拿详情必须重新查一次。
+        ///    所以「检查更新」按钮总是先查再动作，靠这里不会出现"有红点但打不开"的情况。
         /// </summary>
-        public static UpdateManifest Latest { get; private set; }
+        public static GitHubRelease Latest { get; private set; }
 
         /// <summary>当前是否有（未被忽略的）新版本。红点与气泡都看它。</summary>
         public static bool HasUpdate { get; private set; }
@@ -175,28 +170,28 @@ namespace GeZi
         /// 启动检查。失败一律静默。
         /// </summary>
         /// <param name="onNewUpdate">确认有新版本时回调（UI 线程），用来弹气泡。</param>
-        public static async Task RunStartupCheckAsync(AppSettings s, Action<UpdateManifest> onNewUpdate)
+        public static async Task RunStartupCheckAsync(AppSettings s, Action<GitHubRelease> onNewUpdate)
         {
             if (s == null) return;
             if (!ShouldCheck(s.UpdateLastCheckTicks, DateTime.Now)) return;
 
-            UpdateManifest found = null;
+            GitHubRelease found = null;
             try
             {
-                // 不需要登录：列分享目录用的是公开凭证。
+                // 不需要登录、不写网盘 —— GitHub Releases 是公开只读接口。
                 //
                 // 🚨 【这里**不能**加 ConfigureAwait(false)】
-                //    加了的后果（实测踩到）：await 之后回到**线程池线程**，
+                //    加了的后果（旧版实测踩到）：await 之后回到**线程池线程**，
                 //    于是下面的 Apply / onNewUpdate 也在非 UI 线程执行 ——
                 //    写日志、弹气泡（NotifyToast 是 Window）都会抛异常，
                 //    再被各自的 try/catch 吞掉，表现就是"什么都没发生、日志也没有一行"。
                 //    启动检查本来就跑在 UI 线程上，让它原样回到 UI 线程即可。
-                var checker = UpdateChecker.CreateAnonymous();
+                var checker = new GitHubReleaseChecker();
                 found = await checker.FindLatestAsync();
             }
             catch
             {
-                // 分享失效 / 接口改版 / 断网 —— 启动检查失败必须静默，不打扰用户
+                // 断网 / 接口改版 —— 启动检查失败必须静默，不打扰用户
                 return;
             }
 
@@ -206,14 +201,18 @@ namespace GeZi
         /// <summary>
         /// 用户手动点「检查更新」：不做节流，失败也如实抛出（他是真的想知道结果）。
         /// </summary>
-        public static Task<UpdateManifest> CheckNowAsync()
+        public static async Task<GitHubRelease> CheckNowAsync()
         {
-            var checker = UpdateChecker.CreateAnonymous();
-            return checker.FindLatestAsync();
+            var checker = new GitHubReleaseChecker();
+            var found = await checker.FindLatestAsync();
+            if (found == null)
+                throw new InvalidOperationException(
+                    "无法读取 GitHub Releases（网络不通或仓库地址有变）。");
+            return found;
         }
 
         /// <summary>把一次检查结果落到设置与内存状态里。</summary>
-        public static void Apply(AppSettings s, UpdateManifest found, Action<UpdateManifest> onNewUpdate)
+        public static void Apply(AppSettings s, GitHubRelease found, Action<GitHubRelease> onNewUpdate)
         {
             if (s == null) return;
 
@@ -224,65 +223,6 @@ namespace GeZi
 
             if (HasUpdate && onNewUpdate != null)
                 onNewUpdate(Latest);
-        }
-
-        // ---------------- 网盘待删除清单 ----------------
-
-        /// <summary>
-        /// 待删除清单。老配置里没有这个节点时 <c>UpdatePendingDeletes</c> 是 null
-        /// （XmlSerializer 不执行字段初始化器），这里补一个空表。
-        /// </summary>
-        public static List<NetdiskDeleteTask> PendingDeletes(AppSettings s)
-        {
-            if (s == null) return new List<NetdiskDeleteTask>();
-            if (s.UpdatePendingDeletes == null)
-                s.UpdatePendingDeletes = new List<NetdiskDeleteTask>();
-            return s.UpdatePendingDeletes;
-        }
-
-        /// <summary>记一条"到期要删"。同一 fid 只留一条。</summary>
-        public static void NotePendingDelete(AppSettings s, string fid, string name, DateTime dueAt)
-        {
-            if (s == null || string.IsNullOrEmpty(fid)) return;
-            var list = PendingDeletes(s);
-            list.RemoveAll(x => x != null && string.Equals(x.Fid, fid, StringComparison.Ordinal));
-            list.Add(new NetdiskDeleteTask
-            {
-                Fid = fid,
-                Name = name ?? "",
-                DueTicks = dueAt.Ticks,
-            });
-        }
-
-        /// <summary>删完了（或确认已不存在）就移除记录。</summary>
-        public static void DropPendingDelete(AppSettings s, string fid)
-        {
-            if (s == null || s.UpdatePendingDeletes == null || string.IsNullOrEmpty(fid)) return;
-            s.UpdatePendingDeletes.RemoveAll(
-                x => x != null && string.Equals(x.Fid, fid, StringComparison.Ordinal));
-        }
-
-        /// <summary>已到期、现在该删的记录。</summary>
-        public static List<NetdiskDeleteTask> DueDeletes(AppSettings s, DateTime now)
-        {
-            var list = PendingDeletes(s);
-            return list.FindAll(x => x != null
-                                     && !string.IsNullOrEmpty(x.Fid)
-                                     && x.DueTicks > 0
-                                     && x.DueTicks <= now.Ticks);
-        }
-
-        /// <summary>
-        /// 清掉"过期太久还没删掉"的记录（说明目标早就不存在了）。
-        /// 返回被清掉的数量，便于日志。
-        /// </summary>
-        public static int DropStalePendingDeletes(AppSettings s, DateTime now)
-        {
-            if (s == null || s.UpdatePendingDeletes == null) return 0;
-            long cut = now.AddDays(-MaxPendingDeleteDays).Ticks;
-            int before = s.UpdatePendingDeletes.Count;
-            s.UpdatePendingDeletes.RemoveAll(x => x != null && x.DueTicks > 0 && x.DueTicks < cut);
-            return before - s.UpdatePendingDeletes.Count;
         }
     }
 }

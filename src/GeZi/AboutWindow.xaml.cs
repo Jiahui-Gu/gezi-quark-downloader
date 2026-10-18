@@ -82,19 +82,13 @@ namespace GeZi
 
             BuildFeatureList();
             RefreshUpdateDot();
-            RefreshUpdateCard();
 
             Loaded += (s, e) =>
             {
                 DialogChrome.ApplyRoundedCorners(this);
                 // 再刷一次：启动检查是异步的，可能刚好在构造之后才完成。
                 RefreshUpdateDot();
-                RefreshUpdateCard();
-                StartUpdateProgressTimer();   // 更新包下载进度要持续刷新
             };
-
-            // 窗口关掉就别再定时刷了（更新包的下载不受影响，继续在后台跑）
-            Closed += (s, e) => StopUpdateProgressTimer();
         }
 
         // ---------------- 检查更新（2026-10-11 新增） ----------------
@@ -161,7 +155,6 @@ namespace GeZi
                 {
                     OpenUpdatePrompt(m);
                     RefreshUpdateDot();
-                    RefreshUpdateCard();
                 }
                 else if (UpdateService.Latest != null
                          && UpdateService.Latest.Version.CompareTo(UpdateService.CurrentVersion) > 0)
@@ -184,7 +177,7 @@ namespace GeZi
             {
                 AppDialog.Show(this,
                     "检查更新失败：" + ex.Message
-                    + "\n\n你也可以手动打开更新源查看：\n" + GeZi.Core.Update.UpdateConstants.ShareUrl,
+                    + "\n\n你也可以手动打开 Releases 页查看：\n" + UpdateService.ReleasesPageUrl,
                     "检查更新", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally
@@ -199,28 +192,16 @@ namespace GeZi
         /// 每格 = 标题（半粗）+ 一句说明（小一号、淡色）。
         /// </summary>
         /// <summary>
-        /// 打开「更新详情」窗口，并把用户的选择交给主窗口去下载。
-        /// 抽出来是因为有两个入口：「检查更新」按钮，以及更新卡里的「查看更新详情」。
+        /// 打开「更新详情」窗口。
+        /// 抽出来是因为有两个入口：「检查更新」按钮，以及启动气泡跳过来的场景。
         /// </summary>
-        private void OpenUpdatePrompt(GeZi.Core.Update.UpdateManifest m)
+        private void OpenUpdatePrompt(GeZi.Core.Update.GitHubRelease m)
         {
             if (m == null) return;
 
-            bool loggedIn = UpdateService.Settings != null
-                && !string.IsNullOrEmpty(UpdateService.Settings.Cookie);
-            var prompt = new UpdatePromptWindow(m, loggedIn)
+            var prompt = new UpdatePromptWindow(m)
             {
                 Owner = this,
-                DownloadRequested = (manifest, save) =>
-                {
-                    // 回调里拿到主窗口，把"真正下载"交给它（复用主下载器与调度器）。
-                    // 主窗口可能还不可见，但实例一定在（单实例：先 MainWindow 后 AboutWindow）。
-                    var main = Application.Current.MainWindow as MainWindow;
-                    if (main != null)
-                        main.StartUpdateDownload(manifest, save);
-                    else
-                        AppDialog.Show(this, "无法定位主窗口，请回到主界面后重试更新。", "更新");
-                },
             };
             prompt.ShowDialog();
 
@@ -230,112 +211,6 @@ namespace GeZi
                 UpdateService.IgnoreCurrent(UpdateService.Settings);
                 SettingsStore.Save(UpdateService.Settings);
             }
-        }
-
-        // ---------------- 更新卡（更新包下载显示在这里，不进「下载」页） ----------------
-
-        private System.Windows.Threading.DispatcherTimer _updateTimer;
-
-        /// <summary>
-        /// 刷新「更新」卡：正在下载 → 显示进度条；有更新未下载 → 显示版本 + 详情按钮；
-        /// 都没有 → 整卡折叠。
-        ///
-        /// 【为什么要轮询而不是订阅事件】更新包不在任务列表里（用户要求别出现在「下载」页），
-        /// 进度由主窗口维护成快照；本窗口是临时 new 出来的，用定时器读快照最省事，
-        /// 关窗即停（下载本身不受影响，仍在后台跑）。
-        /// </summary>
-        private void RefreshUpdateCard()
-        {
-            try
-            {
-                var main = Application.Current.MainWindow as MainWindow;
-                // ⚠️ 必须先赋初值：调用在 `&&` 右侧，短路时 out 参数不会被赋值，
-                //    不初始化的话编译期就报 CS0165（未赋值的局部变量）。
-                int percent = 0;
-                string text = null;
-                bool running = main != null && main.TryGetUpdateDownloadProgress(out percent, out text);
-
-                if (running)
-                {
-                    UpdateCard.Visibility = Visibility.Visible;
-                    UpdateTitleText.Text = "正在下载更新包";
-                    UpdateSizeText.Text = "";
-                    UpdateStatusText.Text = string.IsNullOrEmpty(text) ? "正在下载…" : text;
-                    UpdateProgress.Visibility = Visibility.Visible;
-                    UpdateProgress.Value = Math.Max(0, Math.Min(100, percent));
-                    UpdateDetailBtn.Visibility = Visibility.Collapsed;
-                    return;
-                }
-
-                // 没有下载中 → 看有没有待更新的版本。
-                // ⚠️ 重启后 UpdateService.Latest 是 null（只持久化了版本号字符串），
-                //    这时用配置里的版本号显示，点按钮会重新查一次拿到 manifest。
-                var latest = UpdateService.Latest;
-                string verText = latest != null
-                    ? latest.Version.ToString()
-                    : (UpdateService.Settings != null ? UpdateService.Settings.UpdateLatestVersion : null);
-
-                if (UpdateService.HasUpdate && !string.IsNullOrEmpty(verText))
-                {
-                    UpdateCard.Visibility = Visibility.Visible;
-                    UpdateTitleText.Text = "发现新版本 v" + verText;
-                    UpdateSizeText.Text = (latest != null && latest.Size > 0)
-                        ? (latest.Size / 1048576.0).ToString("0.0") + " MB" : "";
-                    UpdateStatusText.Text = "点「查看更新详情」选择下载方式。更新包的下载进度会显示在这里。";
-                    UpdateProgress.Visibility = Visibility.Collapsed;
-                    UpdateDetailBtn.Visibility = Visibility.Visible;
-                }
-                else
-                {
-                    UpdateCard.Visibility = Visibility.Collapsed;
-                }
-            }
-            catch { }
-        }
-
-        private void StartUpdateProgressTimer()
-        {
-            try
-            {
-                if (_updateTimer != null) return;
-                _updateTimer = new System.Windows.Threading.DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(400),
-                };
-                _updateTimer.Tick += (s, e) => RefreshUpdateCard();
-                _updateTimer.Start();
-            }
-            catch { }
-        }
-
-        private void StopUpdateProgressTimer()
-        {
-            try
-            {
-                if (_updateTimer == null) return;
-                _updateTimer.Stop();
-                _updateTimer = null;
-            }
-            catch { }
-        }
-
-        /// <summary>更新卡里的「查看更新详情」：没有现成 manifest 就重新查一次。</summary>
-        private void OnUpdateDetailClick(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var latest = UpdateService.Latest;
-                if (latest != null)
-                {
-                    OpenUpdatePrompt(latest);
-                    RefreshUpdateDot();
-                    RefreshUpdateCard();
-                    return;
-                }
-                // 重启后只剩版本号 → 走一次手动检查（顺便把 manifest 补回来）
-                OnCheckUpdateClick(sender, e);
-            }
-            catch { }
         }
 
         private void BuildFeatureList()

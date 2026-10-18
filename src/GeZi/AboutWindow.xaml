@@ -127,55 +127,19 @@
                         </Grid>
                     </Border>
 
-                    <!-- ② 更新卡：有更新 / 正在下载时才出现。
-                         更新包的下载**不进「下载」页**，进度就显示在这里。 -->
-                    <Border x:Name="UpdateCard" Style="{StaticResource PrimaryCard}"
-                            Margin="0,12,0,0" Padding="16" Visibility="Collapsed">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="UpdateTitleText" Grid.Column="0"
-                                           Text="发现新版本" FontSize="13" FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="UpdateSizeText" Grid.Column="1" Text=""
-                                           FontSize="11" Margin="10,0,0,0"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                            </Grid>
-
-                            <TextBlock x:Name="UpdateStatusText" Text="" FontSize="11"
-                                       Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-
-                            <ProgressBar x:Name="UpdateProgress" Style="{StaticResource SlimProgressBar}"
-                                         Value="0" Margin="0,9,0,0" Visibility="Collapsed"/>
-
-                            <Button x:Name="UpdateDetailBtn" Content="查看更新详情"
-                                    Click="OnUpdateDetailClick"
-                                    AutomationProperties.Name="查看更新详情"
-                                    Style="{StaticResource SecondaryButton}"
-                                    HorizontalAlignment="Left" MinWidth="118"
-                                    Margin="0,11,0,0" Visibility="Collapsed"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字） -->
+                    <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字）
+                         【2026-10-18 用户要求】背景透明（GhostButton），与各小窗口按钮一致 -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="RepoBtn" Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"
-                                Style="{StaticResource SecondaryButton}"
+                                Style="{StaticResource GhostButton}"
                                 Padding="12,6" FontSize="11"
                                 ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
                             <TextBlock x:Name="RepoText" Text="开源地址"/>
                         </Button>
                         <Button x:Name="BiliBtn" Click="OnBiliClick"
                                 AutomationProperties.Name="打开作者B站主页"
-                                Style="{StaticResource SecondaryButton}"
+                                Style="{StaticResource GhostButton}"
                                 Padding="12,6" FontSize="11" Margin="8,0,0,0"
                                 ToolTip="在浏览器中打开作者 B 站主页">
                             <TextBlock x:Name="BiliText" Text="作者 B 站"/>

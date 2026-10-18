@@ -21,26 +21,19 @@ using GeZi.Core.Update;
 namespace GeZi
 {
     /// <summary>
-    /// 「更新详情」窗口（2026-10-11 第三步）。
+    /// 「更新详情」窗口（2026-10-18 新一代）。
     ///
-    /// 【职责】展示"发现新版本"的关键信息（版本号 / 大小 / 更新说明入口），
-    /// 让用户**二选一**下载方式，然后把选择回传给主窗口去真正下载。
-    /// 本窗口**不碰任何网络** —— 取链、下载、安装都交给 MainWindow，保持职责单一、便于单测。
+    /// 【职责】展示"发现新版本"的关键信息（版本号 / 发布时间 / GitHub 更新说明），
+    /// 「前往下载」把用户送到 Release 页（浏览器下载）。本窗口**不碰任何网络**，
+    /// 保持职责单一。
     ///
-    /// 【为什么用回调而不是反向拿 MainWindow】关于窗口是临时 new 出来的，
-    /// 让本窗口硬编码依赖 MainWindow 类型会让依赖变绕；用 <see cref="DownloadRequested"/>
-    /// 把"用户选了什么"抛给调用方，由调用方决定怎么接（关于页把它接到 MainWindow.StartUpdateDownload）。
-    ///
-    /// 【未登录的处理】"转存到网盘"必须登录，未登录时那个选项直接禁用并默认选中免转存，
-    /// 同时在说明里讲清楚"需登录"—— 不静默降级，让用户知道有更优选项但需要先登录。
+    /// 【为什么不再程序内下载】旧实现把更新包托管在夸克网盘分享里，找包、转存、下载、
+    /// 到期清理整套绑在夸克接口上；新版只读 GitHub Releases，安装包交给浏览器，
+    /// 没有中转文件、没有覆盖安装、也没有"自我更新"的误报面。
     /// </summary>
     public partial class UpdatePromptWindow : Window
     {
-        private readonly UpdateManifest _manifest;
-        private readonly bool _loggedIn;
-
-        /// <summary>用户点了「开始下载」后回调：参数为（更新包, 是否转存到网盘）。</summary>
-        public Action<UpdateManifest, bool> DownloadRequested { get; set; }
+        private readonly GitHubRelease _release;
 
         /// <summary>
         /// 用户在详情窗里点了「忽略此版本」。
@@ -48,39 +41,28 @@ namespace GeZi
         /// </summary>
         public bool IgnoredByUser { get; private set; }
 
-        /// <summary>GitHub Releases 地址（查看更新说明）。</summary>
-        private const string ReleasesUrl =
-            "https://github.com/huaotem-bot/gezi-quark-downloader/releases";
-
-        public UpdatePromptWindow(UpdateManifest manifest, bool loggedIn)
+        public UpdatePromptWindow(GitHubRelease release)
         {
-            if (manifest == null) throw new ArgumentNullException("manifest");
-            _manifest = manifest;
-            _loggedIn = loggedIn;
+            if (release == null) throw new ArgumentNullException("release");
+            _release = release;
 
             InitializeComponent();
 
-            NewVersionText.Text = "发现新版本 v" + _manifest.Version;
+            NewVersionText.Text = "发现新版本 v" + _release.Version;
             CurrentVersionText.Text = "当前版本 v" + (UpdateService.CurrentVersion != null
                 ? UpdateService.CurrentVersion.ToString() : "?");
-            SizeText.Text = FormatSize(_manifest.Size);
 
-            // 下载方式**不由用户选**：
-            //   · 已登录 → 直接转存到网盘后下载（默认路径）；
-            //   · 未登录 → 只能免转存（转存需要登录），给一句明确提示。
-            // 「免转存」的另一个入口是**网盘容量不足**时由主窗口弹提示给出，不在这里选。
-            if (_loggedIn)
-            {
-                ModeNote.Text = "先转存到你的网盘再下载（速度更稳、支持断点续传）。\n"
-                    + "转存的副本会在 " + UpdateConstants.DeleteAfterHours.ToString("0")
-                    + " 小时后自动从网盘删除，不会永久占用空间。";
-            }
+            // 徽章：有发布时间就显示日期，否则显示安装包大小，都没有显示版本标签
+            if (_release.PublishedAt.HasValue)
+                SizeText.Text = _release.PublishedAt.Value.ToLocalTime().ToString("yyyy-MM-dd") + " 发布";
+            else if (_release.AssetSize > 0)
+                SizeText.Text = (_release.AssetSize / 1048576.0).ToString("0.0") + " MB";
             else
-            {
-                LoginHintText.Text = "请登录后更新：转存到网盘需要登录，本次只能免转存直接下载。";
-                LoginHintBox.Visibility = Visibility.Visible;
-                ModeNote.Text = "免转存直接下载：不写入网盘、不占空间（游客可能受额度限制）。";
-            }
+                SizeText.Text = "v" + _release.TagName;
+
+            BodyText.Text = string.IsNullOrWhiteSpace(_release.Body)
+                ? "（这个版本没有写更新说明，可打开 Release 页查看。）"
+                : _release.Body.Trim();
 
             Loaded += (s, e) =>
             {
@@ -88,39 +70,22 @@ namespace GeZi
             };
         }
 
-        private static string FormatSize(long bytes)
-        {
-            if (bytes <= 0) return "大小未知";
-            if (bytes >= 1024 * 1024)
-                return (bytes / 1048576.0).ToString("0.0") + " MB";
-            return (bytes / 1024.0).ToString("0") + " KB";
-        }
-
+        /// <summary>「前往下载」：打开 Release 详情页（浏览器下载安装包）。</summary>
         private void OnDownloadClick(object sender, RoutedEventArgs e)
         {
-            // 默认路径：登录了就走转存（转存副本 60 小时后自动删）；没登录只能免转存。
-            bool save = _loggedIn;
+            var url = _release.HtmlUrl;
+            if (string.IsNullOrEmpty(url))
+                url = UpdateService.ReleasesPageUrl;
             try
             {
-                if (DownloadRequested != null)
-                    DownloadRequested(_manifest, save);
+                if (!ShellLaunch.OpenUrl(url))
+                    AppDialog.Show(this, "打开浏览器失败，请手动访问：\n\n" + url, "更新");
             }
             catch (Exception ex)
             {
-                AppDialog.Show(this, "启动更新下载失败：" + ex.Message, "更新",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Show(this, "打开浏览器失败：" + ex.Message, "更新");
             }
             try { Close(); } catch { }
-        }
-
-        private void OnReleaseClick(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!ShellLaunch.OpenUrl(ReleasesUrl))
-                    AppDialog.Show(this, "打开浏览器失败，请手动访问：\n\n" + ReleasesUrl, "更新说明");
-            }
-            catch { }
         }
 
         /// <summary>

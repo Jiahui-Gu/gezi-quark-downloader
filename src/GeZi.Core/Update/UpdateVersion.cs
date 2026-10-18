@@ -82,28 +82,6 @@ namespace GeZi.Core.Update
             return true;
         }
 
-        /// <summary>
-        /// 从更新包文件名里提取版本号 —— <b>严格匹配</b>
-        /// <c>GeZi-v{主}.{次}.{补}-win64.zip</c>，其它一律忽略。
-        /// </summary>
-        public static bool TryParsePackageFileName(string fileName, out UpdateVersion result)
-        {
-            result = null;
-            if (string.IsNullOrWhiteSpace(fileName)) return false;
-
-            Match m = UpdateConstants.PackageFileNamePattern.Match(fileName.Trim());
-            if (!m.Success) return false;
-
-            int major, minor, patch;
-            if (!int.TryParse(m.Groups["major"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out major)
-                || !int.TryParse(m.Groups["minor"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out minor)
-                || !int.TryParse(m.Groups["patch"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out patch))
-                return false;
-
-            result = new UpdateVersion(major, minor, patch);
-            return true;
-        }
-
         /// <summary>把 <see cref="Version"/>（程序集版本）转成三段式。</summary>
         public static UpdateVersion FromVersion(Version v)
         {
