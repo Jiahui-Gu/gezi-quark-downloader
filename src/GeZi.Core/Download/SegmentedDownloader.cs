@@ -750,12 +750,13 @@ namespace GeZi.Core.Download
                 return new DownloadResult
                 {
                     Ok = false,
-                    // 免转存任务不能承诺"可续传" —— 它依赖分享 stoken，
-                    // 而续传不会重新换 stoken（详见 ResumeCannotRefresh 的注释）。
-                    // 说清楚"要重新解析分享"，比让用户反复点重试强。
+                    // 免转存任务依赖分享 stoken；v2.3.1 起引擎在 stoken 过期时会
+                    // 自动重新解析分享（commit 0aa2f53）并续传，所以"看似失败"
+                    // 也能续上。仍保留 ResumeCannotRefresh 用于内部决策，但向用户
+                    // 说明"会自动重新解析并续传"，比让用户不知所措强。
                     Message = msg + (ResumeCannotRefresh
                         ? "（已保留断点与已下载部分。注意：这是「免转存下载」，"
-                          + "分享凭证过期后无法续传 —— 需要重新解析分享后再下。）"
+                          + "分享凭证过期时会自动重新解析分享并续传。）"
                         : "（已保留断点与已下载部分，重新获取直链后可续传）"),
                 };
             }

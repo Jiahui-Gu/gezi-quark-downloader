@@ -780,12 +780,11 @@
                                                     </MenuItem.Icon>
                                                 </MenuItem>
                                                 <!-- 免转存下载：不往自己网盘写中转文件，直接从分享取链。
-                                                     ⚠️ 续传时不会重新换 stoken（全代码只在解析时取一次），
-                                                     stoken 过期就取不到新链 → 中途断了只能重新解析分享、从头再来。
-                                                     必须让用户在点之前就知道，所以括号里写明「无法续传」。 -->
+                                                     v2.3.1 起支持自动续传：分享凭证过期时引擎会自动重新解析分享（commit 0aa2f53），
+                                                     中途中断也能续上，无需手动重头再下。 -->
                                                 <MenuItem x:Name="NoSaveDownloadMenuItem"
-                                                          Header="免转存下载（无法续传）"
-                                                          ToolTip="不往自己网盘写中转文件，省网盘空间。&#x0a;但中断后无法续传 —— 分享凭证过期就取不到新链，只能重新解析分享从头下。"
+                                                          Header="免转存下载"
+                                                          ToolTip="不往自己网盘写中转文件，省网盘空间。&#x0a;v2.3.1+ 已支持自动续传：分享凭证过期时会自动重新解析分享，无需手动重头再下。"
                                                           Click="OnDownloadSelectedNoSave">
                                                     <MenuItem.Icon>
                                                         <Path Data="{StaticResource IconFile}" Stretch="Uniform"
