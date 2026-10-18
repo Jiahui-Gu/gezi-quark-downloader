@@ -6757,10 +6757,10 @@ namespace GeZi
         /// </summary>
         private static RenderTargetBitmap CaptureRoot(FrameworkElement rootEl, double scale = 1.0)
         {
-            // ⚠️ scale < 1 是为了**降低抓图耗时**：RenderTargetBitmap.Render 在 UI 线程同步执行，
-            //    全分辨率（1550×975）实测要 ~100ms，会把滑块动画一起冻住，
-            //    用户感觉"点了半天才动"。0.6 倍把渲染量降到 36%，耗时 ~30ms。
-            //    代价：过渡期间圆外的旧图会略糊（只有 420ms，且注意力在圆边缘，实测可接受）。
+            // ⚠️ 2026-10-18 用户明确不接受过渡期的模糊（"中间有一整个界面变得特别模糊"）
+            //    → 从 0.6 倍改回**全分辨率**。0.6 倍抓图铺满全窗，圆外区域必然糊；
+            //    全分辨率虽然抓图耗时回到 ~100ms，但抓的是像素级清晰的旧图，
+            //    真正"点击后立刻扩散"的结构不变（中间没有任何额外等待）。
             var dpi = VisualTreeHelper.GetDpi(rootEl);
             double sx = dpi.DpiScaleX * scale;
             double sy = dpi.DpiScaleY * scale;
@@ -6812,8 +6812,9 @@ namespace GeZi
                 Math.Pow(Math.Max(center.X, w - center.X), 2) +
                 Math.Pow(Math.Max(center.Y, h - center.Y), 2));
 
-            // ① 旧快照垫底（圆外露出来的就是它）
-            ThemeOldSnapshot.Source = CaptureRoot(rootEl, 0.6);
+            // ① 旧快照垫底（圆外露出来的就是它）。
+            //    ⚠️ 2026-10-18 用户实测不接受模糊 → 必须全分辨率（0.6 倍铺满全窗必糊）。
+            ThemeOldSnapshot.Source = CaptureRoot(rootEl);
             ThemeOldSnapshot.Visibility = Visibility.Visible;
 
             // ② 换肤 + 提示文案 + 强制布局
@@ -6884,7 +6885,8 @@ namespace GeZi
                 }
 
                 // 【2026-10-17 用户反馈「开始扩散还是太晚」→ **不再等滑块**，点击就扩散。
-                // 现在唯一的前置耗时是抓旧图（0.6 倍 ≈ 30ms，基本感知不到）；
+                // 2026-10-18 用户又反馈「切换时整个界面特别模糊」→ 旧快照改回全分辨率
+                // （0.6 倍快照铺满全窗必然糊）。现在唯一的前置耗时是抓旧图（全分辨率 ≈ 100ms）；
                 // 抓完立刻换肤 + 上圆形 Clip，滑块与扩散**同时进行** ——
                 // Clip 方案下真实 UI 一直在渲染，滑块不会被冻住。
                 PlayThemeReveal(sender as FrameworkElement, want, persist);

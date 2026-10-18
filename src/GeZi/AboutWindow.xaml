@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="关于 鸽子下载"
         Width="460"
-        Height="600"
+        SizeToContent="Height"
         WindowStyle="None"
         Background="{DynamicResource SurfaceBrush}"
         ShowInTaskbar="False"
@@ -40,6 +40,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ============ 标题栏 ============ -->
@@ -61,10 +62,7 @@
             </Grid>
 
             <!-- ============ 内容（可滚动） ============ -->
-            <!-- 【2026-10-17 用户反馈】底部「白条挡字」—— 根因是 MaxHeight=560 把滚动视口
-                 卡死在一个固定高度，内容在视口边界被硬切，切在卡片中间就成了"白条"。
-                 去掉 MaxHeight，让 ScrollViewer 吃满 Row 1（窗口多大视口就多大）。 -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+            <ScrollViewer Grid.Row="1" MaxHeight="560" VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
                 <StackPanel Margin="18,0,18,6">
 
@@ -94,15 +92,15 @@
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <!-- 版本号做成小徽章，比混在标语里清楚 -->
-                                    <Border Background="{DynamicResource SurfaceSunkenBrush}"
+                                    <Border Background="{DynamicResource PrimarySoftBrush}"
                                             CornerRadius="6" Padding="6,1,6,2" Margin="8,2,0,0"
                                             VerticalAlignment="Center">
                                         <TextBlock x:Name="VersionPillText" Text="v?"
                                                    FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource PrimaryBrush}"/>
                                     </Border>
                                 </StackPanel>
-                                <TextBlock Text="夸克网盘 · 直链助手"
+                                <TextBlock x:Name="VersionText" Text="夸克网盘 · 直链助手"
                                            FontSize="11" Margin="0,5,0,0"
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                             </StackPanel>
@@ -160,7 +158,7 @@
                             <Button x:Name="UpdateDetailBtn" Content="查看更新详情"
                                     Click="OnUpdateDetailClick"
                                     AutomationProperties.Name="查看更新详情"
-                                    Style="{StaticResource GhostButton}"
+                                    Style="{StaticResource SecondaryButton}"
                                     HorizontalAlignment="Left" MinWidth="118"
                                     Margin="0,11,0,0" Visibility="Collapsed"/>
                         </StackPanel>
@@ -168,19 +166,19 @@
 
                     <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字） -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Click="OnRepoClick"
+                        <Button x:Name="RepoBtn" Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"
-                                Style="{StaticResource GhostButton}"
+                                Style="{StaticResource SecondaryButton}"
                                 Padding="12,6" FontSize="11"
                                 ToolTip="在浏览器中打开 GitHub 仓库（源码公开可审计）">
-                            <TextBlock Text="开源地址"/>
+                            <TextBlock x:Name="RepoText" Text="开源地址"/>
                         </Button>
-                        <Button Click="OnBiliClick"
+                        <Button x:Name="BiliBtn" Click="OnBiliClick"
                                 AutomationProperties.Name="打开作者B站主页"
-                                Style="{StaticResource GhostButton}"
+                                Style="{StaticResource SecondaryButton}"
                                 Padding="12,6" FontSize="11" Margin="8,0,0,0"
                                 ToolTip="在浏览器中打开作者 B 站主页">
-                            <TextBlock Text="作者 B 站"/>
+                            <TextBlock x:Name="BiliText" Text="作者 B 站"/>
                         </Button>
                     </StackPanel>
 
@@ -210,7 +208,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <!-- ⚠️ 用真 Button 而不是 Border+MouseLeftButtonUp：
                                      Border 没有 automation peer，UIA 树里找不到（点不到也测不了）。 -->
-                                <Button Click="OnQrClick"
+                                <Button x:Name="QrBtn" Click="OnQrClick"
                                         Style="{StaticResource IconGhostButton}"
                                         Width="Auto" Height="Auto" Padding="0"
                                         VerticalAlignment="Center"
@@ -239,6 +237,15 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- ============ 底部（固定，不随内容滚动） ============ -->
+            <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
+                    Padding="18,12">
+                <Button x:Name="OkBtn" Content="关闭" Click="OnCloseClick"
+                        AutomationProperties.Name="关闭"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right" MinWidth="96"/>
+            </Border>
         </Grid>
     </Border>
 </Window>

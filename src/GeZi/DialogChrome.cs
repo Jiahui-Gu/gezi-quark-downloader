@@ -184,36 +184,42 @@ namespace GeZi
         }
 
         /// <summary>主色实心按钮。</summary>
+        /// <summary>
+        /// 主动作按钮。
+        /// 【2026-10-18 用户要求】「除主界面外的小窗口按钮全部改成背景透明」。
+        /// 主界面的按钮走 XAML 里的 PrimaryButton 样式（不受影响）；
+        /// 这些对话框一律用 GhostButton（透明底 + 悬停反馈）。
+        /// </summary>
         public static Button PrimaryButton(string text, RoutedEventHandler onClick = null)
         {
             var b = new Button { Content = text };
-            var s = Res<Style>("PrimaryButton", null);
+            var s = Res<Style>("GhostButton", null);
             if (s != null) b.Style = s;
             if (onClick != null) b.Click += onClick;
             return b;
         }
 
-        /// <summary>白底描边按钮（次要操作）。</summary>
+        /// <summary>白底描边按钮（次要操作）。【2026-10-18】小窗口统一透明化 → GhostButton。</summary>
         public static Button SecondaryButton(string text, RoutedEventHandler onClick = null)
         {
             var b = new Button { Content = text };
-            var s = Res<Style>("SecondaryButton", null);
+            var s = Res<Style>("GhostButton", null);
             if (s != null) b.Style = s;
             if (onClick != null) b.Click += onClick;
             return b;
         }
 
-        /// <summary>危险操作按钮（删除类）—— 红底。</summary>
+        /// <summary>
+        /// 危险操作按钮（删除类）。【2026-10-18】背景透明化（用户要求全部透明），
+        /// 但保留**红色文字**警示 —— 「丢弃这些任务」是破坏性操作，不能失去语义。
+        /// </summary>
         public static Button DangerButton(string text, RoutedEventHandler onClick = null)
         {
             var b = new Button { Content = text };
-            var s = Res<Style>("DangerButton", null);
+            var s = Res<Style>("GhostButton", null);
             if (s != null) b.Style = s;
-            else
-            {
-                var s2 = Res<Style>("SecondaryButton", null);
-                if (s2 != null) b.Style = s2;
-            }
+            var fg = Res<System.Windows.Media.Brush>("DangerBrush", null);
+            if (fg != null) b.Foreground = fg;
             if (onClick != null) b.Click += onClick;
             return b;
         }

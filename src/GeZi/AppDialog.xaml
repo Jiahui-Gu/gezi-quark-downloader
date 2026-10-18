@@ -94,13 +94,15 @@
                       Style="{StaticResource AppCheckBox}"/>
 
             <!-- 按钮区 -->
+            <!-- 【2026-10-18 用户要求】小窗口按钮全部背景透明（GhostButton）。
+                 AppDialog 也是小窗口（消息框），一并透明化。 -->
             <StackPanel x:Name="ButtonRow" Grid.Row="3" Orientation="Horizontal"
                         HorizontalAlignment="Right" Margin="20,20,20,18">
-                <Button x:Name="Btn3" Click="OnButton3" Style="{StaticResource SecondaryButton}"
+                <Button x:Name="Btn3" Click="OnButton3" Style="{StaticResource GhostButton}"
                         Margin="0,0,8,0" MinWidth="84" Visibility="Collapsed"/>
-                <Button x:Name="Btn2" Click="OnButton2" Style="{StaticResource SecondaryButton}"
+                <Button x:Name="Btn2" Click="OnButton2" Style="{StaticResource GhostButton}"
                         Margin="0,0,8,0" MinWidth="84"/>
-                <Button x:Name="Btn1" Click="OnButton1" Style="{StaticResource PrimaryButton}"
+                <Button x:Name="Btn1" Click="OnButton1" Style="{StaticResource GhostButton}"
                         MinWidth="84"/>
             </StackPanel>
         </Grid>

@@ -114,16 +114,16 @@
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="忽略此版本" Click="OnIgnoreClick"
                             AutomationProperties.Name="忽略此版本"
-                            Style="{StaticResource SecondaryButton}"
+                            Style="{StaticResource GhostButton}"
                             MinWidth="96" HorizontalAlignment="Left"
                             ToolTip="之后不再提示这个版本；想恢复：再点一次「检查更新」"/>
                     <Button Grid.Column="2" Content="暂不" Click="OnCloseClick"
                             AutomationProperties.Name="暂不更新"
-                            Style="{StaticResource SecondaryButton}"
+                            Style="{StaticResource GhostButton}"
                             MinWidth="84" Margin="0,0,10,0"/>
                     <Button Grid.Column="3" Content="开始下载" Click="OnDownloadClick"
                             AutomationProperties.Name="开始下载更新"
-                            Style="{StaticResource PrimaryButton}"
+                            Style="{StaticResource GhostButton}"
                             MinWidth="96"/>
                 </Grid>
             </StackPanel>
