@@ -85,6 +85,19 @@ namespace GeZi
         /// <summary>滑动时长（ms）。200ms + EaseOut：跟手又不拖沓（Material 分段按钮同数量级）。</summary>
         private const int SlideMs = 200;
 
+        /// <summary>
+        /// 动画进行中的截止时刻（UTC）。此期间 <see cref="OnContainerSizeChanged"/> 直接忽略，
+        /// 不做"无动画吸附"。
+        ///
+        /// 【为什么】滑块自己的 Width 动画会让容器（auto 宽）跟着变 → 触发 SizeChanged →
+        /// 旧代码在这里 MoveThumb(animate:false) → **第一帧就把动画打断、直接落到终值**，
+        /// 用户看到的就是"选中态瞬间跳过去，没有滑动"。
+        /// 实测复现（tmp-links/SepSlideProbe）：点击后 thumb x/Width 一步到位，无中间帧。
+        /// 同理，分段控件旁边 UI 显隐（获取直链对话框的"正在切换到…"提示行）也会
+        /// 改变容器高度 → 同样踩这个坑。
+        /// </summary>
+        private static DateTime _animUntil = DateTime.MinValue;
+
         private static void OnIsEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var panel = d as FrameworkElement;
@@ -110,7 +123,10 @@ namespace GeZi
 
         private static void OnContainerSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            // 容器变宽/变窄（窗口缩放、字号变化）后重新吸附，不用动画
+            // 容器变宽/变窄（窗口缩放、字号变化）后重新吸附，不用动画。
+            // ⚠️ 但动画进行中必须跳过：滑块 Width 动画本身就会改变容器尺寸，
+            //    在这里重置会把 200ms 滑动在第 1 帧打成瞬移（见 _animUntil 注释）。
+            if (DateTime.UtcNow < _animUntil) return;
             MoveThumb(sender as FrameworkElement, animate: false);
         }
 
@@ -119,6 +135,8 @@ namespace GeZi
             var panel = sender as FrameworkElement;
             // 布局未完成（初始 IsChecked）时 ActualWidth=0，交给 Loaded 兜底
             if (panel == null || !panel.IsLoaded) return;
+            // 宽限 80ms：真正挡住的是动画头几帧内的 SizeChanged，不是整段动画
+            _animUntil = DateTime.UtcNow.AddMilliseconds(SlideMs + 80);
             MoveThumb(panel, animate: true);
         }
 

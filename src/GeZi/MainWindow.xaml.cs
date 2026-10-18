@@ -528,8 +528,26 @@ namespace GeZi
         // ---------------- 基础 ----------------
 
         /// <summary>待刷入 LogBox 的日志行（跨线程入队，UI 定时器出队）。</summary>
-        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _logQueue =
-            new System.Collections.Concurrent.ConcurrentQueue<string>();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<LogLine> _logQueue =
+            new System.Collections.Concurrent.ConcurrentQueue<LogLine>();
+
+        /// <summary>
+        /// 一行日志：文本 + 是否"专业级"。
+        /// 【2026-10-18 用户要求】日志默认只显示日常必要信息（下载/解析/报错的结果），
+        /// 过程细节（目录加载、缓存命中、连接分配、内部状态…）算"专业级"，
+        /// 只有点右上角「详细」后才显示。见 <see cref="LogDetail"/>。
+        /// </summary>
+        private sealed class LogLine
+        {
+            public string Text;
+            public bool Detail;
+        }
+
+        /// <summary>全量日志历史（UI 线程独占访问）。切「详细」模式时按它重建 LogBox。</summary>
+        private readonly List<LogLine> _logAll = new List<LogLine>();
+
+        /// <summary>true = 显示全部（含专业级）；false = 只显示日常级。默认 false。</summary>
+        private bool _logVerbose;
 
         /// <summary>日志攒批刷新器。见 <see cref="Log"/> 的注释。</summary>
         private System.Windows.Threading.DispatcherTimer _logFlushTimer;
@@ -567,12 +585,36 @@ namespace GeZi
         /// 参考 Python Flet 版：它用 `_process_q` 消息泵攒批刷 UI。
         ///
         /// 入队（ConcurrentQueue）本身线程安全，所以下载线程可直接调用。
+        ///
+        /// 【2026-10-18】日常级：与用户操作直接相关的结果/失败（登录、解析、入队、
+        /// 完成、报错）。默认显示；专业级见 <see cref="LogDetail"/>。
         /// </summary>
         private void Log(string msg)
         {
+            EnqueueLog(msg, detail: false);
+        }
+
+        /// <summary>
+        /// 专业级日志：过程细节与内部状态（目录加载/缓存命中、连接分配、转存清理、
+        /// 内部等待、界面小故障…）。只在「详细」打开时显示。
+        ///
+        /// 【为什么分开】用户原话：「没有点击详细之前日志是很简单的，只有一些必要的信息，
+        /// 日常使用必要的信息」。把过程性噪音挪到这里，默认视图只留结果。
+        /// </summary>
+        private void LogDetail(string msg)
+        {
+            EnqueueLog(msg, detail: true);
+        }
+
+        private void EnqueueLog(string msg, bool detail)
+        {
             try
             {
-                _logQueue.Enqueue(DateTime.Now.ToString("HH:mm:ss") + "  " + msg);
+                _logQueue.Enqueue(new LogLine
+                {
+                    Text = DateTime.Now.ToString("HH:mm:ss") + "  " + msg,
+                    Detail = detail,
+                });
             }
             catch { }
         }
@@ -580,7 +622,9 @@ namespace GeZi
         /// <summary>来自下载工作线程的日志。入队线程安全，无需再切 UI 线程。</summary>
         private void LogFromWorker(string msg)
         {
-            Log(msg);
+            // 下载内核的过程日志（换链、抢占、停滞…）整体算专业级 ——
+            // 日常视图只看任务最终结果（失败/取消走 OnTaskUpdate，是日常级）。
+            EnqueueLog(msg, detail: true);
         }
 
         /// <summary>LogBox 保留的最大行数（超出后从头砍）。</summary>
@@ -652,7 +696,8 @@ namespace GeZi
 
                 if (line == _lastProgressLog) return;   // 没变化就不重复打
                 _lastProgressLog = line;
-                Log(line);
+                // 每秒进度对日常视图是噪音（任务行已有进度条 + 速度），算专业级
+                LogDetail(line);
             }
             catch { }
         }
@@ -663,51 +708,80 @@ namespace GeZi
             if (_logQueue.IsEmpty)
                 return;
             var sb = new StringBuilder();
-            string line;
+            LogLine item;
             int n = 0;
             // 单次上限 500 条：万一积压太多，也不让一次刷新占住 UI 太久
-            while (n < 500 && _logQueue.TryDequeue(out line))
+            while (n < 500 && _logQueue.TryDequeue(out item))
             {
-                sb.Append(line).Append(Environment.NewLine);
+                _logAll.Add(item);   // 全量历史始终收（切「详细」要能补显）
+                // 日常模式跳过专业级行
+                if (_logVerbose || !item.Detail)
+                {
+                    sb.Append(item.Text).Append(Environment.NewLine);
+                }
                 n++;
             }
             if (sb.Length > 0)
             {
                 LogBox.AppendText(sb.ToString());
-                TrimLogBox();
+                TrimLogLines();
                 LogBox.ScrollToEnd();
             }
         }
 
         /// <summary>日志超过 <see cref="LogMaxLines"/> 时，从头部砍掉多余的整行。</summary>
-        private void TrimLogBox()
+        private void TrimLogLines()
         {
             try
             {
-                string text = LogBox.Text;
-                if (text.Length == 0) return;
-
-                // 先按行数粗判，避免每 200ms 都全量扫一遍字符串
-                int lines = 0;
-                for (int i = 0; i < text.Length; i++)
-                    if (text[i] == '\n') lines++;
-                if (lines <= LogMaxLines) return;
-
-                int cut = lines - LogMaxLines;
-                int idx = -1;
-                for (int k = 0; k < cut; k++)
-                {
-                    idx = text.IndexOf('\n', idx + 1);
-                    if (idx < 0) break;
-                }
-                if (idx >= 0 && idx + 1 < text.Length)
-                {
-                    // 只在开头提示一次，让用户知道上面被截了
-                    LogBox.Text = "…（更早的日志已省略，仅保留最近 " + LogMaxLines + " 行）"
-                                  + Environment.NewLine + text.Substring(idx + 1);
-                }
+                if (_logAll.Count <= LogMaxLines)
+                    return;
+                int cut = _logAll.Count - LogMaxLines;
+                _logAll.RemoveRange(0, cut);
+                // 行列表变了（当前模式可能还显示着被砍的行）→ 按当前模式重建
+                RebuildLogBox();
             }
             catch { }
+        }
+
+        /// <summary>按当前模式（<see cref="_logVerbose"/>）从全量历史重建 LogBox 文本。</summary>
+        private void RebuildLogBox()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                bool trimmed = false;
+                var start = 0;
+                if (_logAll.Count > LogMaxLines)
+                {
+                    start = _logAll.Count - LogMaxLines;
+                    trimmed = true;
+                }
+                for (int i = start; i < _logAll.Count; i++)
+                {
+                    var l = _logAll[i];
+                    if (_logVerbose || !l.Detail)
+                        sb.Append(l.Text).Append(Environment.NewLine);
+                }
+                LogBox.Text = (trimmed
+                    ? "…（更早的日志已省略，仅保留最近 " + LogMaxLines + " 行）" + Environment.NewLine
+                    : "") + sb.ToString();
+                LogBox.ScrollToEnd();
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 「详细」按钮：在「日常 / 全部」两种日志视图间切换。
+        /// 【2026-10-18 用户要求】默认只显示日常必要信息；点「详细」才显示专业级
+        /// （目录加载、缓存命中、连接分配、内部状态等过程细节）。
+        /// </summary>
+        private void OnToggleLogVerbose(object sender, RoutedEventArgs e)
+        {
+            _logVerbose = !_logVerbose;
+            if (LogDetailBtn != null)
+                LogDetailBtn.Content = _logVerbose ? "详细 · 开" : "详细";
+            RebuildLogBox();
         }
 
         /// <summary>
@@ -851,7 +925,7 @@ namespace GeZi
         {
             try
             {
-                Log("正在终止入队…");
+                LogDetail("正在终止入队…");
                 _enqueueCts?.Cancel();
                 // 立刻给用户反馈：按钮文案改「正在终止…」并**收回可点**
                 // （否则用户在流程退干净之前连点会反复触发 Cancel）。
@@ -899,7 +973,7 @@ namespace GeZi
             if (snap.Files.Count > 0)
             {
                 ApplyNav(snap);
-                Log("已切回上次的目录" + (snap.PathList.Count > 0
+                LogDetail("已切回上次的目录" + (snap.PathList.Count > 0
                         ? "：" + string.Join(" / ", snap.PathList)
                         : "（根目录）"));
                 return;
@@ -1060,7 +1134,7 @@ namespace GeZi
                 if (!looksLikeLink)
                 {
                     // 不是可识别的分享链接：只填不解析，给出明确提示
-                    Log("二维码识别为：" + text);
+                    LogDetail("二维码识别为：" + text);
                     if (info.IsKouling)
                     {
                         AppDialog.Show(this,
@@ -1084,12 +1158,12 @@ namespace GeZi
                 if (!string.IsNullOrEmpty(info.Passcode))
                     PassBox.Text = info.Passcode;
 
-                Log("二维码识别出分享链接，开始解析…");
+                LogDetail("二维码识别出分享链接，开始解析…");
                 OnParseClick(null, null);
             }
             catch (Exception ex)
             {
-                Log("处理识别结果失败: " + ex.Message);
+                LogDetail("处理识别结果失败: " + ex.Message);
             }
         }
 
@@ -1277,7 +1351,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("窗口消息钩子安装失败: " + ex.Message);
+                LogDetail("窗口消息钩子安装失败: " + ex.Message);
             }
         }
 
@@ -1316,13 +1390,13 @@ namespace GeZi
                 {
                     // 基本只会在句柄无效时发生；但既然失败了就说清楚 ——
                     // 让用户知道"复制链接没反应"不是链接的问题。
-                    Log("剪贴板监听开启失败（Win32 错误码 " + Marshal.GetLastWin32Error()
+                    LogDetail("剪贴板监听开启失败（Win32 错误码 " + Marshal.GetLastWin32Error()
                         + "），复制分享链接不会自动解析。");
                 }
             }
             catch (Exception ex)
             {
-                Log("剪贴板监听设置失败: " + ex.Message);
+                LogDetail("剪贴板监听设置失败: " + ex.Message);
             }
         }
 
@@ -1353,7 +1427,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("剪贴板设置保存失败: " + ex.Message);
+                LogDetail("剪贴板设置保存失败: " + ex.Message);
             }
         }
 
@@ -1550,7 +1624,7 @@ namespace GeZi
             //    留着它会"用错码"，解析失败时还完全看不出原因。
             PassBox.Text = passcode ?? "";
 
-            Log("剪贴板里发现夸克分享链接，自动解析…");
+            LogDetail("剪贴板里发现夸克分享链接，自动解析…");
             OnParseClick(null, null);
         }
 
@@ -1609,7 +1683,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("打开解析历史失败: " + ex.Message);
+                LogDetail("打开解析历史失败: " + ex.Message);
             }
         }
 
@@ -1853,7 +1927,7 @@ namespace GeZi
             if (!string.IsNullOrEmpty(it.StartFid) && it.StartFid != "0")
                 url += "/" + it.StartFid;
 
-            Log("从解析历史打开：「" + (it.Name ?? it.PwdId) + "」");
+            LogDetail("从解析历史打开：「" + (it.Name ?? it.PwdId) + "」");
             FillAndParse(url, it.Passcode);
         }
 
@@ -2121,7 +2195,7 @@ namespace GeZi
                 _curDir.NextPage++;
                 _curDir.HasMore = page.HasMore;
                 RevealNextBatch();
-                Log("继续加载：本页 " + page.Items.Count + " 项（已取 "
+                LogDetail("继续加载：本页 " + page.Items.Count + " 项（已取 "
                     + _curDir.Items.Count + " 项）");
             }
             catch (Exception ex)
@@ -2177,7 +2251,7 @@ namespace GeZi
                 if (_dirCache.TryGetValue(DirCacheKey(fid), out hit))
                 {
                     ApplyDirView(hit);
-                    Log("目录来自缓存: 共 " + hit.Items.Count + " 项（未重新请求）");
+                    LogDetail("目录来自缓存: 共 " + hit.Items.Count + " 项（未重新请求）");
                     return;
                 }
 
@@ -2193,7 +2267,7 @@ namespace GeZi
                 };
                 _dirCache[DirCacheKey(fid)] = entry;
                 ApplyDirView(entry);
-                Log("目录加载完成: 本页 " + entry.Items.Count + " 项"
+                LogDetail("目录加载完成: 本页 " + entry.Items.Count + " 项"
                     + (entry.HasMore ? "，下面还有（往下滑继续加载）" : ""));
             }
             catch (Exception ex)
@@ -2311,7 +2385,7 @@ namespace GeZi
                     {
                         if (ct.IsCancellationRequested) return;
                         d.DirSizeFailed = true;
-                        Log("计算文件夹大小失败（" + d.Name + "）：" + ex.Message);
+                        LogDetail("计算文件夹大小失败（" + d.Name + "）：" + ex.Message);
                     }
                 }
             }
@@ -2366,7 +2440,7 @@ namespace GeZi
         {
             if (_fidStack.Count == 0)
             {
-                Log("已在根目录");
+                LogDetail("已在根目录");
                 return;
             }
             // ⚠️ 重入检查必须放在**改导航状态之前**：否则连点时会把栈 pop 两次却不加载
@@ -2488,7 +2562,7 @@ namespace GeZi
             SetBusy(true);
             try
             {
-                Log("正在删除网盘文件 " + fids.Count + " 项…");
+                LogDetail("正在删除网盘文件 " + fids.Count + " 项…");
                 await _client.DeleteAsync(fids);
                 try { await _client.PurgeRecycleAsync(fids); } catch { }
                 Log("已从网盘删除 " + fids.Count + " 项。");
@@ -2659,7 +2733,7 @@ namespace GeZi
             _curFid = crumbs[level].Fid;
 
             UpdatePathText();
-            Log("已跳到目录：" + string.Join(" / ", _pathList));
+            LogDetail("已跳到目录：" + string.Join(" / ", _pathList));
             await LoadDirAsync(_curFid);
         }
 
@@ -2774,7 +2848,7 @@ namespace GeZi
                     return;
                 }
 
-                Log("共展开 " + files.Count + " 个文件，正在取直链…");
+                LogDetail("共展开 " + files.Count + " 个文件，正在取直链…");
                 var items = await GetDownloadItemsAsync(files);
                 if (items == null || items.Count == 0) { Log("未取到任何直链"); return; }
 
@@ -3185,7 +3259,7 @@ namespace GeZi
                 if (threads[i] != threads[0]) { uniform = false; break; }
             if (uniform)
             {
-                Log(string.Format("本批 {0} 个文件，每个 {1} 路并发。",
+                LogDetail(string.Format("本批 {0} 个文件，每个 {1} 路并发。",
                     threads.Length, threads[0]));
                 return;
             }
@@ -3196,7 +3270,7 @@ namespace GeZi
                 sb.Append(threads[i]);
             }
             if (threads.Length > 12) sb.Append("…");
-            Log(string.Format(
+            LogDetail(string.Format(
                 "已按文件大小分配连接数（总预算 {0}）：{1} —— 大文件多分、小文件少分，每文件不低于 {2} 路。",
                 DownloadConnBudget, sb, MinThreadsPerFile));
         }
@@ -3275,7 +3349,7 @@ namespace GeZi
                     Log("没有要下载的文件");
                     return;
                 }
-                Log("共展开 " + files.Count + " 个文件，正在取直链…");
+                LogDetail("共展开 " + files.Count + " 个文件，正在取直链…");
 
                 // ---- 文件数保护（对齐 Python 版 check_limit）----
                 // 必须在"取直链"之前拦下：一旦进入 GetDownloadItemsAsync，
@@ -3436,14 +3510,14 @@ namespace GeZi
                 // 免转存则不碰网盘，直接从分享取链 —— 省空间、也不留中转垃圾。
                 if (forceNoSave)
                 {
-                    Log("按你的选择走「免转存」路径：不写入网盘，直接从分享取链。");
+                    LogDetail("按你的选择走「免转存」路径：不写入网盘，直接从分享取链。");
                     return await NoSaveGetItemsAsync(files, ct);
                 }
 
                 bool loggedIn = !string.IsNullOrEmpty(_settings.Cookie);
                 if (loggedIn)
                 {
-                    Log("已登录，走「转存→取直链」路径（更稳定）");
+                    LogDetail("已登录，走「转存→取直链」路径（更稳定）");
                     try
                     {
                         return await SaveAndGetItemsAsync(files, ct);
@@ -3462,7 +3536,7 @@ namespace GeZi
                         return await NoSaveGetItemsAsync(files, ct);
                     }
                 }
-                Log("未登录，走「免转存」路径（游客可能受额度限制）");
+                LogDetail("未登录，走「免转存」路径（游客可能受额度限制）");
                 return await NoSaveGetItemsAsync(files, ct);
             }
             return await DriveGetItemsAsync(files, ct);
@@ -3502,7 +3576,7 @@ namespace GeZi
                         ShareRelDir = Path.Combine(shareDir, f.RelDir ?? ""),
                     });
                 else
-                    Log("跳过（无直链）: " + f.Name);
+                    LogDetail("跳过（无直链）: " + f.Name);
             }
             return items;
         }
@@ -3537,7 +3611,7 @@ namespace GeZi
                         Fid = f.Fid, FromShare = false,
                     });
                 else
-                    Log("无直链: " + f.Name);
+                    LogDetail("无直链: " + f.Name);
             }
             return items;
         }
@@ -3616,7 +3690,7 @@ namespace GeZi
                                 Fid = newFids[j], FromShare = false,
                             });
                         else
-                            Log("无直链: " + batch[j].Name);
+                            LogDetail("无直链: " + batch[j].Name);
                     }
                 }
             }
@@ -3659,7 +3733,7 @@ namespace GeZi
                 else miss.Add(t);
             }
             if (cached > 0)
-                Log(string.Format("{0} 个文件命中直链缓存（10 分钟内有效），跳过取链。", cached));
+                LogDetail(string.Format("{0} 个文件命中直链缓存（10 分钟内有效），跳过取链。", cached));
             pending = miss;
 
             for (int round = 0; round < delays.Length && pending.Count > 0; round++)
@@ -3667,7 +3741,7 @@ namespace GeZi
                 ct.ThrowIfCancellationRequested();
                 if (round > 0)
                 {
-                    Log(string.Format("{0} 个文件未返回直链，重试第 {1} 轮…", pending.Count, round));
+                    LogDetail(string.Format("{0} 个文件未返回直链，重试第 {1} 轮…", pending.Count, round));
                     await Task.Delay(delays[round], ct);
                 }
                 var next = new List<LinkTarget>();
@@ -3717,7 +3791,7 @@ namespace GeZi
             // 逐个单请求兜底：批量接口更容易被限流，剩少量文件时单独问成功率明显更高。
             if (pending.Count > 0 && pending.Count <= 30)
             {
-                Log(string.Format("对剩余 {0} 个文件逐个单独重试…", pending.Count));
+                LogDetail(string.Format("对剩余 {0} 个文件逐个单独重试…", pending.Count));
                 var still = new List<LinkTarget>();
                 foreach (var t in pending)
                 {
@@ -3754,7 +3828,7 @@ namespace GeZi
                     string r;
                     Log(string.Format("  - {0}  ->  {1}", t.Name, reason.TryGetValue(t.Fid, out r) ? r : "未知"));
                 }
-                Log("判断: 接口报错或 code 非 0 多为账号/权限/限流；"
+                LogDetail("判断: 接口报错或 code 非 0 多为账号/权限/限流；"
                     + "「无 download_url」多为会员额度或文件被风控；"
                     + "分享直链还可能是分享者已关闭直链，或超出游客可获取的大小限制。");
             }
@@ -3858,7 +3932,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("中转文件夹处理失败: " + ex.Message);
+                LogDetail("中转文件夹处理失败: " + ex.Message);
                 return null;
             }
         }
@@ -3885,7 +3959,7 @@ namespace GeZi
             {
                 // 兜底：即便将来又有别的路径 Dispose 了 scheduler，也不该让用户
                 // 看到"已释放该信号量"这种无信息量的英文异常名。
-                Log("下载被中断：下载器被重新初始化（请重新开始该任务，已下载部分会续传）。" + ex.Message);
+                LogDetail("下载被中断：下载器被重新初始化（请重新开始该任务，已下载部分会续传）。" + ex.Message);
             }
             catch (Exception ex)
             {
@@ -3895,7 +3969,7 @@ namespace GeZi
             {
                 _batchRunning = false;
             }
-            Log("本批下载结束");
+            LogDetail("本批下载结束");
 
             // 整批结束时在日志里汇总一次（原托盘气泡通知已随"后台功能"一起移除）。
             try
@@ -3938,7 +4012,7 @@ namespace GeZi
             }
             if (!_settings.AutoClean)
             {
-                Log("已保留网盘转存文件 " + fids.Count + " 个（可在设置里关闭自动清理）");
+                LogDetail("已保留网盘转存文件 " + fids.Count + " 个（可在设置里关闭自动清理）");
                 return;
             }
             if (_client == null)
@@ -3947,11 +4021,11 @@ namespace GeZi
             {
                 await _client.DeleteAsync(fids);
                 await _client.PurgeRecycleAsync(fids);
-                Log("已清理网盘转存文件 " + fids.Count + " 个");
+                LogDetail("已清理网盘转存文件 " + fids.Count + " 个");
             }
             catch (Exception ex)
             {
-                Log("清理转存文件失败（不影响下载）: " + ex.Message);
+                LogDetail("清理转存文件失败（不影响下载）: " + ex.Message);
             }
         }
 
@@ -5381,7 +5455,7 @@ namespace GeZi
             };
             t.Start();
 
-            Log("已启动分片自动清扫（阈值 " + PartsSweeper.DefaultMaxAgeDays + " 天）。扫描范围: " + rootSnapshot);
+            LogDetail("已启动分片自动清扫（阈值 " + PartsSweeper.DefaultMaxAgeDays + " 天）。扫描范围: " + rootSnapshot);
         }
 
         /// <summary>
@@ -5450,7 +5524,7 @@ namespace GeZi
                 // 顺手清掉"过期太久还没删掉"的僵尸记录（目标多半早就不存在了）
                 int stale = UpdateService.DropStalePendingDeletes(_settings, DateTime.Now);
                 if (stale > 0)
-                    Log("已清理 " + stale + " 条过期的网盘删除记录。");
+                    LogDetail("已清理 " + stale + " 条过期的网盘删除记录。");
 
                 if (due.Count == 0) return;
 
@@ -5472,13 +5546,13 @@ namespace GeZi
                     }
                     catch (Exception ex)
                     {
-                        Log("清理网盘更新包失败（" + t.Name + "）：" + ex.Message);
+                        LogDetail("清理网盘更新包失败（" + t.Name + "）：" + ex.Message);
                     }
                 }
                 if (ok > 0)
                 {
                     SettingsStore.Save(_settings);
-                    Log("已自动清理 " + ok + " 个转存的更新包（超过保留时长）。");
+                    LogDetail("已自动清理 " + ok + " 个转存的更新包（超过保留时长）。");
                 }
             }
             catch { }
@@ -5581,7 +5655,7 @@ namespace GeZi
                 catch (Exception ex) { Log("[更新] 创建下载目录失败: " + ex.Message); }
                 string dest = Path.Combine(workDir, manifest.FileName);
                 try { if (File.Exists(dest)) File.Delete(dest); }   // 确保全新下载
-                catch (Exception ex) { Log("[更新] 清理旧更新包失败（不影响下载）: " + ex.Message); }
+                catch (Exception ex) { LogDetail("[更新] 清理旧更新包失败（不影响下载）: " + ex.Message); }
 
                 _updateVersionText = "v" + manifest.Version;
                 _updateDestPath = dest;
@@ -5914,7 +5988,7 @@ namespace GeZi
                 return;
 
             foreach (var p in all)
-                Log("  - " + p.Name + "  [" + (p.Status ?? "") + "]");
+                LogDetail("  - " + p.Name + "  [" + (p.Status ?? "") + "]");
 
             var resumable = all.Where(p => p != null && p.CanResume).ToList();
             var notResumable = all.Where(p => p == null || !p.CanResume).ToList();
@@ -6204,7 +6278,7 @@ namespace GeZi
         {
             if (_client != null) return _client;
 
-            Log("续传需要登录态，正在等待自动登录完成…");
+            LogDetail("续传需要登录态，正在等待自动登录完成…");
             var t = _startupLoginTask;
             if (t != null)
             {
@@ -6213,7 +6287,7 @@ namespace GeZi
             }
             if (_client != null)
             {
-                Log("自动登录已完成，开始续传。");
+                LogDetail("自动登录已完成，开始续传。");
                 return _client;
             }
 
@@ -6222,12 +6296,12 @@ namespace GeZi
             {
                 try
                 {
-                    Log("自动登录尚未完成，已直接用保存的登录态开始续传。");
+                    LogDetail("自动登录尚未完成，已直接用保存的登录态开始续传。");
                     return new QuarkClient(_settings.Cookie);
                 }
                 catch (Exception ex)
                 {
-                    Log("用保存的登录态续传失败: " + ex.Message);
+                    LogDetail("用保存的登录态续传失败: " + ex.Message);
                 }
             }
             return null;
@@ -6424,7 +6498,7 @@ namespace GeZi
                 client, pwdId, passcode, startFid, shareRelDir, fid, ct).ConfigureAwait(false);
             if (fresh == null)
             {
-                Log("分享直链获取失败，自动重新解析分享也没有成功（分享可能已被取消、删除或改了提取码）。");
+                LogDetail("分享直链获取失败，自动重新解析分享也没有成功（分享可能已被取消、删除或改了提取码）。");
                 return null;
             }
 
@@ -6434,7 +6508,7 @@ namespace GeZi
             // ③ 用新凭据再取一次
             url = await TryShareDownloadAsync(client, fid, fresh.Item2, pwdId, fresh.Item1).ConfigureAwait(false);
             if (url != null)
-                Log("分享凭证已过期，已自动重新解析分享并拿到新直链。");
+                LogDetail("分享凭证已过期，已自动重新解析分享并拿到新直链。");
             return url;
         }
 
@@ -6454,7 +6528,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("获取分享直链失败: " + ex.Message);
+                LogDetail("获取分享直链失败: " + ex.Message);
                 return null;
             }
         }
@@ -6509,7 +6583,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("自动重新解析分享失败: " + ex.Message);
+                LogDetail("自动重新解析分享失败: " + ex.Message);
                 return null;
             }
         }
@@ -7099,7 +7173,7 @@ namespace GeZi
                 if (!Directory.Exists(dir))
                 {
                     // 不自动创建：仅提示，避免误建目录。
-                    Log("分片根目录不存在：" + dir);
+                    LogDetail("分片根目录不存在：" + dir);
                     AppDialog.Show(this,
                         "分片/缓存根目录还不存在。\n\n请先点「浏览…」选择一个目录，" +
                         "或留空使用默认（与目标文件同目录）。\n\n路径：\n" + dir,
@@ -7119,7 +7193,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("打开分片根目录失败: " + ex.Message);
+                LogDetail("打开分片根目录失败: " + ex.Message);
             }
         }
 
@@ -7185,7 +7259,7 @@ namespace GeZi
                 if (!Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
-                    Log("下载目录不存在，已创建: " + dir);
+                    LogDetail("下载目录不存在，已创建: " + dir);
                 }
                 // 走统一入口：先 shell，失败再显式启动 explorer。
                 // 两级都失败就**弹窗**给用户 —— 用户实测 explorer.exe 启动即崩
@@ -7202,7 +7276,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("打开下载目录失败: " + ex.Message);
+                LogDetail("打开下载目录失败: " + ex.Message);
             }
         }
 
@@ -7476,6 +7550,9 @@ namespace GeZi
 
             QrLoginBtn.IsEnabled = false;
             QrRefreshBtn.IsEnabled = false;
+            // 【2026-10-18 用户要求】「刷新」只在获取二维码之后出现 —— 点了「获取二维码」
+            // 就意味着进入了二维码场景，此时让它显示；收起二维码（过期/登录成功）时再隐藏。
+            QrRefreshBtn.Visibility = Visibility.Visible;
             SetQrStatus("正在获取二维码…", "#333");
 
             // ⚠️ 只给「取二维码」这一段加按钮加载态。
@@ -7498,6 +7575,8 @@ namespace GeZi
                     if (!ok)
                     {
                         SetQrStatus(err, "#C0392B");
+                        // 没拿到二维码 → 「刷新」收回（只有真获取过才出现）
+                        QrRefreshBtn.Visibility = Visibility.Collapsed;
                         return;
                     }
 
@@ -7724,6 +7803,8 @@ namespace GeZi
                 QrImageBox.Visibility = Visibility.Visible;
                 if (QrPlaceholderBox != null)
                     QrPlaceholderBox.Visibility = Visibility.Collapsed;
+                // 二维码拿到手，「刷新」才有意义（重取一张）
+                QrRefreshBtn.Visibility = Visibility.Visible;
             }
             catch (Exception ex)
             {
@@ -7741,6 +7822,8 @@ namespace GeZi
             // 收起二维码后把占位框放回来，保证左卡高度不跳。
             if (QrPlaceholderBox != null)
                 QrPlaceholderBox.Visibility = Visibility.Visible;
+            // 【2026-10-18 用户要求】没有二维码时「刷新」不露面（回到"未获取"状态）。
+            QrRefreshBtn.Visibility = Visibility.Collapsed;
         }
 
         private async void OnImportCookie(object sender, RoutedEventArgs e)
@@ -7856,6 +7939,48 @@ namespace GeZi
                 AppDialog.Show(this, "导出 Cookie 失败：\n\n" + ex.Message,
                     "导出失败", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+
+        /// <summary>
+        /// 【2026-10-18 用户要求】备选登录：拉起默认浏览器，在网页里扫码登录夸克网盘，
+        /// 再把浏览器里的 Cookie 拿回来粘贴导入。
+        ///
+        /// 【为什么需要它】应用内二维码登录走的是 OpenSSL 桥（pan.quark.cn 那个
+        /// 必须过 WAF 的请求），个别网络/系统环境下可能失败；浏览器登录是最通用的兜底。
+        /// 夸克网页版本身支持扫码登录，用户登录后从浏览器拿 Cookie 粘回来即可。
+        /// </summary>
+        private void OnAltLogin(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // UseShellExecute + URL = 交给 Windows 用默认浏览器打开
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://pan.quark.cn/",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                Log("打开浏览器失败：" + ex.Message);
+                AppDialog.Show(this,
+                    "没能打开默认浏览器。\n\n请手动访问 pan.quark.cn ，登录后在浏览器里"
+                    + "复制 Cookie，再粘回上方的「导入 Cookie」输入框。",
+                    "备选登录", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            Log("已打开浏览器（pan.quark.cn）进行备选登录。");
+            AppDialog.Show(this,
+                "已在默认浏览器里打开夸克网盘。\n\n"
+                + "接下来：\n"
+                + "1. 在浏览器里登录（网页版支持扫码）；\n"
+                + "2. 按 F12 打开开发者工具 →「网络 / Network」→ 点任意一个请求，\n"
+                + "   在请求头里找到 Cookie，整条复制；\n"
+                + "   （也可以先用浏览器扩展导出 Cookie 文件，回来点「从文件导入」）；\n"
+                + "3. 回到这里粘贴到上方输入框，点「导入并登录」。\n\n"
+                + "注意：Cookie 等同于账号登录凭证，请勿泄露给他人。",
+                "备选登录", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         /// <summary>
@@ -8021,13 +8146,13 @@ namespace GeZi
                     }
                     else if (info.HasValue && !string.IsNullOrEmpty(info.Value.Error))
                     {
-                        Log("取账号昵称/头像失败：" + info.Value.Error);
+                        LogDetail("取账号昵称/头像失败：" + info.Value.Error);
                     }
                 }
                 catch (Exception ex)
                 {
                     // 拿不到就用兜底值，绝不让它影响登录
-                    Log("取账号昵称/头像出错：" + ex.Message);
+                    LogDetail("取账号昵称/头像出错：" + ex.Message);
                 }
             }
             return (true, nick, client.AvatarUrl);
@@ -8300,7 +8425,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("托盘图标创建失败（不影响下载）：" + ex.Message);
+                LogDetail("托盘图标创建失败（不影响下载）：" + ex.Message);
             }
         }
 
@@ -8465,7 +8590,7 @@ namespace GeZi
             }
             catch (Exception ex)
             {
-                Log("打开「关于」窗口失败：" + ex.Message);
+                LogDetail("打开「关于」窗口失败：" + ex.Message);
             }
         }
 
@@ -8548,7 +8673,7 @@ namespace GeZi
             catch (Exception ex)
             {
                 // 拿不到就回退首字头像 —— 不打扰用户，但记一行日志便于排查
-                Log("账号头像加载失败，已回退为昵称首字：" + ex.GetType().Name + ": " + ex.Message);
+                LogDetail("账号头像加载失败，已回退为昵称首字：" + ex.GetType().Name + ": " + ex.Message);
                 img.Source = null;
                 img.Tag = null;
                 img.Visibility = Visibility.Collapsed;

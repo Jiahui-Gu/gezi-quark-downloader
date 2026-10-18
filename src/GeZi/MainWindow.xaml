@@ -1392,13 +1392,30 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="132"/>
                             </Grid.RowDefinitions>
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
-                                <TextBlock Text="运行日志" Style="{StaticResource SectionLabel}"
-                                           Margin="0"/>
-                                <TextBlock Text="下载 / 解析 / 报错都会打在这里" Margin="8,0,0,0"
-                                           FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextTertiaryBrush}"/>
-                            </StackPanel>
+                            <!-- 标题行：左标题 + 右「详细」开关 -->
+                            <!-- 【2026-10-18 用户要求】默认只显示日常必要信息（下载/解析/报错的
+                                 结果），点「详细」才显示专业级（目录加载、缓存命中、连接分配、
+                                 内部状态等过程细节）。按钮背景透明（GhostButton）。 -->
+                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="运行日志" Style="{StaticResource SectionLabel}"
+                                               Margin="0"/>
+                                    <TextBlock Text="下载 / 解析 / 报错都会打在这里" Margin="8,0,0,0"
+                                               FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                </StackPanel>
+                                <Button x:Name="LogDetailBtn" Grid.Column="1"
+                                        Content="详细"
+                                        Click="OnToggleLogVerbose"
+                                        Style="{StaticResource GhostButton}"
+                                        FontSize="11"
+                                        Padding="8,3"
+                                        ToolTip="切换日志详细程度：默认只显示日常必要信息，&#10;点此显示全部过程细节（目录加载、连接分配等）"/>
+                            </Grid>
                             <TextBox x:Name="LogBox" Grid.Row="1" Style="{StaticResource LogTextBox}"/>
                         </Grid>
                     </Grid>
@@ -1945,6 +1962,7 @@
                                                 <Button x:Name="QrRefreshBtn" Click="OnQrLogin"
                                                         Style="{StaticResource SecondaryButton}"
                                                         Margin="8,0,0,0"
+                                                        Visibility="Collapsed"
                                                         AutomationProperties.Name="刷新二维码">
                                                     <StackPanel Orientation="Horizontal">
                                                         <Path Data="{StaticResource IconRefresh}"
@@ -2115,6 +2133,26 @@
                                                               StrokeEndLineCap="Round"
                                                               StrokeLineJoin="Round"/>
                                                         <TextBlock Text="导出 Cookie 文件"
+                                                                   Margin="7,0,0,0"
+                                                                   VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <!-- 【2026-10-18 用户要求】备选登录：扫码不方便/不想用
+                                                     应用内二维码时，拉起默认浏览器在网页里扫码登录，
+                                                     再把浏览器里的 Cookie 拿回来导入。 -->
+                                                <Button x:Name="AltLoginBtn" Click="OnAltLogin"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Margin="8,0,0,0"
+                                                        ToolTip="打开默认浏览器，在网页里扫码登录夸克网盘，&#10;再把浏览器里的 Cookie 复制回来粘贴导入。">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Path Data="{StaticResource IconQr}"
+                                                              Stretch="Uniform" Width="14" Height="14"
+                                                              VerticalAlignment="Center"
+                                                              Stroke="{DynamicResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.8"
+                                                              StrokeStartLineCap="Round"
+                                                              StrokeEndLineCap="Round"/>
+                                                        <TextBlock Text="备选登录"
                                                                    Margin="7,0,0,0"
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
