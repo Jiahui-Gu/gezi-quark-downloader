@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -36,8 +33,7 @@ namespace GeZi
 
     /// <summary>
     /// 一条「解析过的分享」记录（按 <c>h</c> 唤出的历史面板用）。
-    ///
-    /// 【为什么不复用 HistoryRecord】那条是**下载**历史（记的是本地文件路径与大小），
+    /// 那条是**下载**历史（记的是本地文件路径与大小），
     /// 这条记的是**分享**（pwd_id / 提取码），两者字段没有交集，混在一起两边都要判空。
     /// </summary>
     [DataContract]
@@ -65,8 +61,7 @@ namespace GeZi
 
         /// <summary>
         /// 用户手动「置顶」的标记：置顶的始终排在最前，**不受后续解析的影响**。
-        ///
-        /// 【为什么不是"把时间改成现在"】那样只是把它挪到最前面一次，而且显示的时间
+        /// 那样只是把它挪到最前面一次，而且显示的时间
         /// 会变成谎话（明明是上周解析的，却写着"今天"）。
         /// </summary>
         [DataMember(Order = 7)] public bool Pinned { get; set; }
@@ -74,12 +69,10 @@ namespace GeZi
 
     /// <summary>
     /// 下载历史 + 未完成任务记录 + 解析历史的持久化。
-    ///
     /// 移植自 Python Flet 版的 `records`（历史，上限 200）与 `flet_pending`（未完成任务）。
     /// 两者原先都存在 core 的 state 里（同一个 state.json），这里合并成一个文件，
     /// 放在与配置同目录（`SettingsStore.FilePath` 的同级 `GeZi.state.json`），
     /// 保证便携（跟 exe 走）与可写回退（%LOCALAPPDATA%）行为一致。
-    ///
     /// JSON 用 `DataContractJsonSerializer`（.NET Framework 自带，零 NuGet）。
     /// ⚠️ 不能用 `JavaScriptSerializer`：它所在的 System.Web.Extensions 依赖 System.Web，
     /// 而 **WPF 项目引用 System.Web 会导致 XAML 编译器找不到程序集**（实测 MC1000）。
@@ -219,8 +212,7 @@ namespace GeZi
 
         /// <summary>
         /// 记一条解析历史。
-        ///
-        /// 【同一条分享只留一条】pwd_id 相同就把旧的删掉再插到**末尾**（= 最新）——
+        /// pwd_id 相同就把旧的删掉再插到**末尾**（= 最新）——
         /// 再解析一次同一条链接，只是让它回到列表最前面并更新名字/提取码/时间，
         /// 而不是堆出好几条一模一样的记录。
         /// ⚠️ 旧那条若被置顶过，要**把置顶状态带过来** —— 置顶是用户的显式选择，
@@ -325,13 +317,11 @@ namespace GeZi
 
     /// <summary>
     /// 未完成任务的跨重启记录。
-    ///
     /// 与 Python 的 flet_pending 对齐。字段经过一次扩充：早期版本只记 9 个字段，
     /// 不足以**重新取链**（续传必须重新申请直链，因为直链带时效签名）。
     /// 现在补齐了 <see cref="FromShare"/> / <see cref="Fid"/> / <see cref="Token"/> /
     /// <see cref="PwdId"/> / <see cref="Stoken"/> / <see cref="Passcode"/>，
     /// 使启动时可以**不依赖原界面上下文**地重走"取链 → 续传"。
-    ///
     /// 新增字段一律用 <c>Order &gt; 9</c>，且旧文件没有这些字段时反序列化为默认值
     /// （DataContractJsonSerializer 允许缺字段），保证向后兼容。
     /// </summary>
@@ -364,7 +354,7 @@ namespace GeZi
 
         /// <summary>
         /// 分享链接的进入目录 fid（带 fid 的分享链接才有意义，普通分享是 "0"）。
-        /// 【2026-10-17】自动重解析分享时的**起点**：从它开始逐级展开找目标文件。
+        /// 自动重解析分享时的**起点**：从它开始逐级展开找目标文件。
         /// </summary>
         [DataMember(Order = 15)] public string StartFid { get; set; }
 

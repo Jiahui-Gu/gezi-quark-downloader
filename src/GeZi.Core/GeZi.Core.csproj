@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
@@ -8,9 +8,9 @@
     <RootNamespace>GeZi.Core</RootNamespace>
     <Product>鸽子下载</Product>
     <AssemblyTitle>鸽子下载</AssemblyTitle>
-    <Version>2.3.0</Version>
+    <Version>2.3.1</Version>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <!-- 【2026-10-04】PathMap：别让编译机的绝对路径（含用户名）进产物。
+    <!-- PathMap：别让编译机的绝对路径（含用户名）进产物。
          不加 → `C:\Users\<用户名>\Desktop\GeZi\src\...\GeZi.Core.pdb` 被写进 dll
          → 打包发给别人时泄漏本机用户名/目录（本轮实测发现）。详见 GeZi.csproj 里的说明。 -->
     <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
@@ -28,11 +28,11 @@
     <!--
       ★ 二维码解码：ZXing.Net（Apache-2.0）
       ==================================================================
-      【为什么需要】夸克分享有时只给一张二维码图片、不给文本链接，
+      夸克分享有时只给一张二维码图片、不给文本链接，
       用户需要把图里的链接抠出来。解码要处理透视校正 + Reed-Solomon 纠错，
       自己写成本远高于编码（QrEncoder 那种），所以用成熟库。
 
-      【为什么不是 PackageReference】本项目约定「零 NuGet、离线可构建」。
+      本项目约定「零 NuGet、离线可构建」。
       因此把 net48 版 zxing.dll（532KB，单文件零依赖）固化进 lib/ZXing/，
       用普通 Reference 引用 —— 任何机器 clone 下来直接 build，不需联网还原。
       详见 lib/ZXing/README.md（含版本 / 许可 / 重新获取方式）。
@@ -41,7 +41,7 @@
          （SkiaSharp / Windows.Compatibility 那些只对 .NET 5+ 必要）。
       ⚠️ Private=true 确保 zxing.dll 被复制到输出目录（跟 GeZi.Core.dll 同级）。
       ⚠️ 这里的文件名**刻意用小写 zxing.dll**（与 <AssemblyName>ZXing</AssemblyName> 的大小写不同）：
-         GeZi.exe 通过 ProjectReference 拿到它时，MSBuild 会按程序集名规范化成小写 —— 
+         GeZi.exe 通过 ProjectReference 拿到它时，MSBuild 会按程序集名规范化成小写 ——
          源码这边跟着写小写，最终产物名才在各平台/打包工具下**完全一致**，
          不会出现"源码是大写、输出是小写"这种大小写不敏感文件系统上才看不出来的坑。
     -->

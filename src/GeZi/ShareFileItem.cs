@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -65,8 +62,7 @@ namespace GeZi
 
         /// <summary>
         /// 列表右侧显示的大小文案。
-        ///
-        /// 【2026-10-03】原来文件夹直接显示接口给的 <c>Size</c>，而夸克对目录**恒返回 0**
+        /// 原来文件夹直接显示接口给的 <c>Size</c>，而夸克对目录**恒返回 0**
         /// → 所有文件夹都是「0 B」（用户反馈「文件夹右边显示文件大小一直是 0 B」）。
         /// 现在文件夹改显示后台递归求和的结果；没算出来时显示「计算中…」而不是 0 B。
         /// </summary>
@@ -94,7 +90,7 @@ namespace GeZi
 
         private static string FormatSize(long n)
         {
-            // 🚨 【2026-10-06 修】同 Util.FormatSize：原来 1024 进制却标 "KB/MB/GB"，
+            // 🚨 同 Util.FormatSize：原来 1024 进制却标 "KB/MB/GB"，
             // 与夸克分享页（1000 进制）对不上，用户以为文件变小了。统一改 1000 进制。
             double v = n;
             string[] units = { "B", "KB", "MB", "GB", "TB" };

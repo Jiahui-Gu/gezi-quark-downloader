@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -43,13 +40,11 @@ namespace GeZi
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 【2026-10-14】Ketch 式「连接车道」
-        //
+        // Ketch 式「连接车道」
         // 参考 Ketch 的招牌设计：把**每条连接**可视化成一条"活的车道"。
         // 我们这里按比例映射 —— 256 并发不可能真画 256 格，所以固定 20 格，
         // 用"填充了几格"表达**并发吃满了没有**（这才是用户真正想看的：
         // 是服务端限速、还是客户端没把连接发出去）。
-        //
         // 数据来源：MainWindow.OnDiagnostics 从 DiagnosticsSnapshot 填充
         //（ActiveConnections / WorkerCount 都是内核已经采集好的，无需改下载器）。
         // ─────────────────────────────────────────────────────────────
@@ -108,7 +103,7 @@ namespace GeZi
 
         /// <summary>车道文字："12/16 连接"。未开始（无并发上限）时为空串。</summary>
         /// <remarks>
-        /// 【2026-10-15 兜底 + 自诊断】上限没拿到时（内核要等分片规划完才写 workerCountBox，
+        /// 上限没拿到时（内核要等分片规划完才写 workerCountBox，
         /// 刚起步的前几秒确实会是 0），**不要**把整段文字吞掉 —— 有活跃连接就先显示出来。
         /// 这同时是个探针：若长期只看到「12 连接」而永远变不成「12/16 连接」，
         /// 说明是 WorkerCount 没送到（内核侧），而不是任务匹配失败（UI 侧），一眼可辨。
@@ -126,7 +121,7 @@ namespace GeZi
         /// 这个任务现在能不能「播放」—— 决定任务行右边那个「播放」按钮显不显示。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-13】共写模式已物理删除，落盘方式唯一「独立分片 + 边合并」：
+        /// 共写模式已物理删除，落盘方式唯一「独立分片 + 边合并」：
         /// 目标文件不预分配、从 0 连续增长 → 播放器看到的是"被截断但内容连续"的文件，
         /// 这正是能正常边下边播的情况。因此下载中即可播放，无需再按写入方式判断。
         /// </remarks>
@@ -185,16 +180,14 @@ namespace GeZi
         /// 但下载器内部还在收尾（worker 要跑完手上那一次读）。核心层在此期间仍会报 Downloading。
         /// </summary>
         /// <remarks>
-        /// 【为什么需要这个标志】暂停是**闸门式**的：`PauseToken.WaitIfPausedAsync` 让 worker
+        /// 暂停是**闸门式**的：`PauseToken.WaitIfPausedAsync` 让 worker
         /// 在每次读完之后才阻塞，所以在途的请求要跑完。而核心层的进度上报
         /// `JobProgressAdapter` **永远报 `Downloading`**（见 DownloadScheduler），
         /// 于是 UI 刚设好的 `Paused` 会被下一帧进度覆盖掉 ——
         /// 表现就是用户看到的「图标先变成三角、随后又变回两个竖杠」。
-        ///
         /// 所以：置位后，<c>OnJobUpdate</c> 会**忽略核心报来的 Downloading**，
         /// 并且**冻结速度**（不收核心上报的残余速度）。
-        ///
-        /// 【2026-10-15 晚 用户要求】暂停**即时**生效：不再有「暂停中…」这个渐降中间态，
+        /// 暂停**即时**生效：不再有「暂停中…」这个渐降中间态，
         /// 一按就是「已暂停 / 0 B/s」（速度由 <c>MainWindow.PauseTask</c> 立刻置 0）。
         /// </remarks>
         private bool _pauseRequested;
@@ -216,7 +209,7 @@ namespace GeZi
             get => _done;
             set
             {
-                // 只有【值真的变化】才刷新时间戳。
+                // 只有才刷新时间戳。
                 // 进度回调每 500ms 就来一次，若无条件刷新，LastProgressUtc 永远是"刚刚"，
                 // 保活那边的"无进展超时"就永远判不出来（卡死的任务会被当成还在跑）。
                 if (value != _done)
@@ -230,7 +223,6 @@ namespace GeZi
 
         /// <summary>
         /// 最近一次**进度真的前进**的时刻（UTC）。
-        ///
         /// 供 <see cref="SleepGuard"/> 的「无进展超时」判定使用：
         /// 任务卡死时（worker 卡在掐不断的调用里、`Task.WhenAll` 永不返回）
         /// 状态会**永远停在 Downloading**，仅看状态无法区分"在下载"和"卡死了"，
@@ -258,7 +250,7 @@ namespace GeZi
                         // 用户会以为程序卡死（实测反馈「就显示 0 kb 不动」）。
                         return string.IsNullOrEmpty(_phase) ? "下载中" : _phase;
                     case JobState.Paused:
-                        // 【2026-10-15 晚 用户要求】暂停**即时**生效：取消「暂停中…」这个中间态。
+                        // 暂停**即时**生效：取消「暂停中…」这个中间态。
                         // 原设计是"在途请求跑完、速度渐降到 0 才叫已暂停"，但用户看到速度
                         // 从 20MB/s 慢慢往下滑，第一反应是"暂停没生效、还在下"。
                         // 现在速度由 PauseTask 一按就置 0，这里直接给确定文案。
@@ -285,8 +277,7 @@ namespace GeZi
 
         /// <summary>
         /// 百分比文本。
-        ///
-        /// 🚨 【2026-10-06 修】**必须截断，不能四舍五入** ——
+        /// 🚨 **必须截断，不能四舍五入** ——
         /// 原来直接 `ToString("F1")`，于是 99.95% 会被舍入成「**100.0%**」：
         /// 用户看到 100% 却还在跑、文件也没下完（实测反馈：「明明9gb只下了8.99gb却显示100%」）。
         /// 改成先向下取整到 0.1 再格式化 ⇒ 只有**真正** 100% 才会显示 100.0%。
@@ -311,14 +302,14 @@ namespace GeZi
         {
             get
             {
-                // 【2026-10-15 晚 用户要求】暂停时明确显示「0 B/s」：
+                // 暂停时明确显示「0 B/s」：
                 // 用户要的是"一按暂停、速度就是 0"这个确定感。原来暂停期间还会把在途请求的
                 // 残余速度显示出来（渐降到 0），看起来像"暂停没生效"。
                 if (State == JobState.Paused)
                     return "0 B/s";
                 if (State != JobState.Downloading)
                     return "";       // 完成/失败/取消：不留残余速度
-                // 【2026-10-16】阈值用 < 1 而不是 <= 0：_speed 是 double，
+                // 阈值用 < 1 而不是 <= 0：_speed 是 double，
                 // 真实速度掉到 0.5 B/s 时 (long)_speed == 0，会显示成"0 B/s" ——
                 // 用户看到的就是"速度归零"的假象。真实速度 < 1 B/s 与"还没测出来"
                 // 在观感上没区别，一律显示"…"更诚实。

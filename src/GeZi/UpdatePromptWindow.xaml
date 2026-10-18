@@ -1,4 +1,4 @@
-<Window x:Class="GeZi.UpdatePromptWindow"
+﻿<Window x:Class="GeZi.UpdatePromptWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
@@ -18,7 +18,7 @@
 
     <!--
         「更新详情」窗口（2026-10-18 新一代）：用户点「检查更新」发现新版本后弹出。
-        【和旧版的变化】不再由程序下载/安装更新包（旧那套绑在夸克网盘转存上，已整套退役）——
+        不再由程序下载/安装更新包（旧那套绑在夸克网盘转存上，已整套退役）——
         本窗口负责展示版本对比 + GitHub Release 更新说明，「前往下载」直接打开
         Release 页交给浏览器。
         ⚠️ 跟关于/主窗一样走 WindowChrome（非分层窗口 → 文字清晰），圆角交给 DWM。

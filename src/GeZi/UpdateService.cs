@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -23,18 +20,14 @@ namespace GeZi
 {
     /// <summary>
     /// 「检查更新」的 UI 层编排。
-    ///
-    /// 【职责】把 Core 的 <see cref="GitHubReleaseChecker"/>（只查 GitHub Releases）接进界面：
+    /// 把 Core 的 <see cref="GitHubReleaseChecker"/>（只查 GitHub Releases）接进界面：
     /// 记录检查时间、判定"算不算有更新"、记住用户忽略过哪个版本。
-    ///
-    /// 【为什么不弹窗】需求明确要求**不打断用户**：启动时只做后台检查，
+    /// 需求明确要求**不打断用户**：启动时只做后台检查，
     /// 有新版本就点亮红点 + 弹一次气泡，用户不点就当没发生过。
     /// 真正的窗口只在用户**主动点**「检查更新」之后才出现。
-    ///
-    /// 【网络失败怎么办】启动时那次检查**吞掉所有异常并静默返回** ——
+    /// 启动时那次检查**吞掉所有异常并静默返回** ——
     /// GitHub 访问不通、接口改版、断网，都不该让用户看到一个"更新检查失败"的弹窗。
     /// 用户**手动点**「检查更新」时才把错误如实告诉他（那时他是真的想知道）。
-    ///
     /// ⚠️ <b>线程约定</b>：除 <see cref="CheckNowAsync"/> 外，会改写 <c>AppSettings</c> 的
     /// 方法一律<b>只能在 UI 线程调用</b>（与设置页的 Save 同一条线程，避免并发写盘）。
     /// 启动检查本来就是从 <c>Dispatcher.BeginInvoke</c> 里发起的，await 之后仍在 UI 线程。
@@ -79,8 +72,7 @@ namespace GeZi
 
         /// <summary>
         /// 由主窗口在启动时注入的配置对象。
-        ///
-        /// 【为什么要注入一份而不是到处传参】「关于」窗口是临时 <c>new</c> 出来的，
+        /// 「关于」窗口是临时 <c>new</c> 出来的，
         /// 让它反向去拿主窗口的字段很别扭；这里由主窗口挂一次，各处（关于页/更新流程）
         /// 直接读同一个引用即可，落盘仍统一走 <c>SettingsStore.Save</c>。
         /// </summary>
@@ -179,8 +171,7 @@ namespace GeZi
             try
             {
                 // 不需要登录、不写网盘 —— GitHub Releases 是公开只读接口。
-                //
-                // 🚨 【这里**不能**加 ConfigureAwait(false)】
+                // 🚨
                 //    加了的后果（旧版实测踩到）：await 之后回到**线程池线程**，
                 //    于是下面的 Apply / onNewUpdate 也在非 UI 线程执行 ——
                 //    写日志、弹气泡（NotifyToast 是 Window）都会抛异常，

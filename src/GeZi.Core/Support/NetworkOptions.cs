@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -21,17 +18,14 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 出站连接的网络开关（进程级，静态）。
-    ///
-    /// 【为什么需要它】程序默认**强制直连** —— <see cref="QuarkSession"/> 与
+    /// 程序默认**强制直连** —— <see cref="QuarkSession"/> 与
     /// <c>SegmentedDownloader</c> 构造 <see cref="System.Net.Http.HttpClientHandler"/> 时
     /// 显式写了 <c>Proxy = null, UseProxy = false</c>。这么做的理由见各处的注释
     /// （本机代理软件常把夸克接口劫持到 127.0.0.1；代理会改变 TLS ClientHello 指纹，
     /// 而 pan.quark.cn 的 WAF 对指纹敏感）。
-    ///
     /// 但**强制直连**对一部分用户是致命的：公司网络 / 只能经代理出口的环境里，
     /// 直连根本出不去，程序完全不可用。所以这里提供一个**显式开关**，
     /// 由设置页控制（<c>AppSettings.UseSystemProxy</c>）。
-    ///
     /// ⚠️ 默认 **false = 直连**，与旧版本行为完全一致（零回归）。
     /// ⚠️ 开关只影响**此后新建**的 HttpClientHandler；已发起的请求不受影响，
     ///    所以改完设置后要新建任务 / 重新登录才会走新路径。

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -26,13 +23,11 @@ namespace GeZi.Core.Update
 {
     /// <summary>
     /// 查 GitHub Releases 的「最新发布」（2026-10-18 新一代检查更新）。
-    ///
-    /// 【为什么是 GitHub Releases】项目已开源（github.com/huaotem-bot/gezi-quark-downloader），
+    /// 项目已开源（github.com/huaotem-bot/gezi-quark-downloader），
     /// Release 天然带 tag_name（版本号）、body（更新说明）、html_url（下载页），
     /// 不依赖夸克登录态、不写用户网盘、无中转清理 —— 旧那套网盘更新源整套退役。
-    ///
-    /// 【UA 为什么必须带】GitHub API 对没有 User-Agent 的请求直接 403。
-    /// 【超时为什么只有 10 秒】启动检查要快；国内访问 api.github.com 偶发不通，
+    /// GitHub API 对没有 User-Agent 的请求直接 403。
+    /// 启动检查要快；国内访问 api.github.com 偶发不通，
     /// 失败时启动检查静默跳过（手动检查才如实报错），10 秒足够区分"慢"和"不通"。
     /// </summary>
     public sealed class GitHubReleaseChecker

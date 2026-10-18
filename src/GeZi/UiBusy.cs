@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -25,13 +22,11 @@ namespace GeZi
 {
     /// <summary>
     /// 按钮「加载中」态的公共实现。
-    ///
-    /// 【为什么需要】用户反馈：「他们需要加载时间或者是会切换到另一个东西，
+    /// 用户反馈：「他们需要加载时间或者是会切换到另一个东西，
     /// 每次点击它们的时候都要有一个加载过程，主要是为了让用户看到他在加载」。
     /// 本质是消除"点击 → 界面响应"之间那段静默期 —— 没有反馈时，用户无法区分
     /// 「程序在忙」和「程序没反应」，于是会重复点击（取直链连点 = 重复发网络请求、
     /// 导出连点 = 桌面多出几个 txt）。有反馈时，同样的耗时就变成"它在干活，我等一下"。
-    ///
     /// 放在这里而不是塞进 MainWindow：验证宿主（tmp-links）要链入同一份源码去
     /// 离屏渲染加载态，才能逐像素确认"转圈真的画出来了、按钮宽度没有塌"。
     /// </summary>

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -35,17 +32,14 @@ namespace GeZi
 
     /// <summary>
     /// 主题切换器（2026-10-04 新增）。
-    ///
-    /// 【原理】整个主题系统只有两个色源：<c>Resources/Colors.Light.xaml</c> 与
+    /// 整个主题系统只有两个色源：<c>Resources/Colors.Light.xaml</c> 与
     /// <c>Resources/Colors.Dark.xaml</c>（键名逐一对齐）。切换时**只把这一层字典换掉**：
     /// <c>Brushes.xaml</c> 里每个画刷的 <c>Color</c> 都是 <c>DynamicResource</c>，
     /// 会在字典替换后自动重解析 —— 于是界面里 **273 处**引用全部跟着变，
     /// 不需要重建任何画刷、也不需要重启。
-    ///
-    /// 【为什么不用「重写 Application.Resources」的粗暴做法】那会连 Icons/Styles 一起重建，
+    /// 那会连 Icons/Styles 一起重建，
     /// 已附着在这些资源上的控件（尤其 <c>Style</c>）可能拿不到新实例；
     /// 只换 Color 层是最小改动面。
-    ///
     /// ⚠️ <c>Application.Current.Resources.MergedDictionaries</c> 的**顺序不能乱**：
     /// Brushes 必须排在 Colors **之后**（它引用 Colors 的键）。
     /// 所以这里是**原位替换**，不是删除后追加。
@@ -133,8 +127,7 @@ namespace GeZi
         /// <summary>
         /// 把 MergedDictionaries 里那个 Colors 字典的 Source 换成目标主题。
         /// 用**原位替换**保证它在 Brushes 之前（Brushes 依赖它的键）。
-        ///
-        /// 🚨🚨 【2026-10-04 实测踩坑 —— 这是深色模式能不能用的关键】
+        /// 🚨🚨
         /// 只换 Colors 字典是**不够的**！实测（`tmp-links` 渲染宿主 + 像素采样）：
         ///   - 换完 Colors 后 `TryFindResource("AppBgColor")` 确实返回新值 #FF1A1D23 ✅
         ///   - 但 `TryFindResource("AppBgBrush").Color` **仍是旧的 #FFF5F6FA** ❌

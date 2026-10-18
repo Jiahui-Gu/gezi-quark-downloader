@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -25,17 +22,14 @@ namespace GeZi
 {
     /// <summary>
     /// 应用内自绘的「气泡通知」（取代 <c>NotifyIcon.ShowBalloonTip</c>）。
-    ///
-    /// 【为什么不用系统气泡】用户反馈「这个提示的图标为什么是个黑疙瘩」——
+    /// 用户反馈「这个提示的图标为什么是个黑疙瘩」——
     /// Win10/11 会把 `ShowBalloonTip` 转成系统 toast，而 toast 的图标取自
     /// **进程的 AppUserModelID**（也就是 exe 的图标 app.ico），**不是**
     /// NotifyIcon 的 hIcon。app.ico 是"浅底 + 深色鸽子线条"，缩到 16~20px
     /// 就成了一团黑。用户要的是**托盘那个图标**（蓝色下载箭头）。
-    ///
     /// 而 toast 图标没法用 WinForms 的 NotifyIcon 控制（要 NIIF_USER + hBalloonIcon
     /// 手写 Shell_NotifyIcon，且 Win10 未必认）。所以干脆自绘一个：
     /// 图标、配色、字体全跟应用一致，还能顺手做得比系统 toast 好看。
-    ///
     /// 行为：右下角（任务栏之上）弹出，6 秒后自动消失；鼠标移上去暂停计时，
     /// 点一下就关。同一时刻只留一个。
     /// </summary>

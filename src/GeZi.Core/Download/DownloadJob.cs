@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -45,7 +42,7 @@ namespace GeZi.Core.Download
         public Func<CancellationToken, Task<string>> LinkRefresher { get; set; }
 
         /// <summary>
-        /// 【免转存专用】为 true 时，失败文案**不再承诺"可续传"**。
+        /// 为 true 时，失败文案**不再承诺"可续传"**。
         /// 免转存的续传取链依赖分享 stoken，而续传**不会重新换 stoken**（只在解析分享时取一次），
         /// stoken 过期就永远取不到新链 → 提示必须改成"需重新解析分享"。
         /// 由 UI 层按 <c>Pending.FromShare</c> 设置（FromShare == true ⟺ 免转存）。
@@ -55,7 +52,6 @@ namespace GeZi.Core.Download
         /// <summary>
         /// 续传上下文（可选）。由 UI 层在创建任务时填好，用于把该任务写进
         /// 「未完成任务」持久化记录，使程序重启后能**不依赖界面上下文**地重取直链续传。
-        ///
         /// 为什么放在 Job 上而不是让 UI 自己拼：UI 在写 pending 时只有 <c>TaskItem</c>，
         /// 而这些字段（fid/token/分享上下文/相对目录）在下载链路里就只存在于创建那一刻，
         /// 挂在 Job 上最不容易漏传。
@@ -79,7 +75,6 @@ namespace GeZi.Core.Download
 
     /// <summary>
     /// 一个下载任务的「续传上下文」—— 让任务能在程序重启后被重新取链并续下。
-    ///
     /// <para>
     /// 除 <see cref="Dest"/> 外的字段都用于**重新申请直链**（旧链带时效签名，必已失效）。
     /// 分享模式下缺 <see cref="Token"/> / <see cref="PwdId"/> / <see cref="Stoken"/>
@@ -103,7 +98,7 @@ namespace GeZi.Core.Download
         /// <summary>相对目录（含尾部分隔符时也算合法），用于重建目标路径。</summary>
         public string RelDir { get; set; }
         /// <summary>分享进入目录 fid（带 fid 的分享链接才有意义，普通分享是 "0"）。
-        /// 【2026-10-17】自动重解析分享时的起点。</summary>
+        /// 自动重解析分享时的起点。</summary>
         public string StartFid { get; set; }
         /// <summary>
         /// 文件在分享内的完整相对目录（相对 <see cref="StartFid"/>）。

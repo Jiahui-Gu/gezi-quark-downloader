@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -31,12 +28,10 @@ namespace GeZi
 {
     /// <summary>
     /// 「识别二维码」对话框（2026-10-04 新增）。
-    ///
-    /// 【为什么需要】夸克分享有时只给一张二维码图片、不给文本链接（用户原话：
+    /// 夸克分享有时只给一张二维码图片、不给文本链接（用户原话：
     /// 「有些时候夸克的分享链接不是一点点形式而是二维码」）。原来只能手动
     /// 把图存下来、再找第三方工具扫，很断。这里做进软件里。
-    ///
-    /// 【三种取图方式】按"顺手程度"排：
+    /// 按"顺手程度"排：
     ///   1. Ctrl+V 直接粘贴剪贴板里的截图 ← 默认，最快（截图后不用存盘）
     ///   2. 「选择图片…」从磁盘挑
     ///   3. 直接把图片文件拖到窗口上
@@ -67,7 +62,7 @@ namespace GeZi
 
             Title = "识别二维码";
             ResizeMode = ResizeMode.NoResize;
-            // 【2026-10-17 用户要求】520×560 → 440×440：
+            // 520×560 → 440×440：
             //   原来预览卡是 Star 行拉伸占满整个窗口（白框巨大），
             //   现在预览卡固定 220 高、居中，窗口跟着收小。
             DialogChrome.StyleWindow(this, 440, 440);
@@ -108,13 +103,13 @@ namespace GeZi
             Grid.SetRow(title, 0);
             root.Children.Add(title);
 
-            // 【2026-10-14 用户要求】原本这里有一段三行的操作说明文字
+            // 原本这里有一段三行的操作说明文字
             //（"把夸克分享二维码图片识别成链接。支持三种方式：…"），已**删除**。
             // 理由：三种方式在界面上本就一目了然（拖放区有提示、下方有「选择图片…」按钮），
             // 再堆三行文字是"加噪音"。Row 1 保留为空 Auto 行（高度 0）。
 
             // 预览区：一个虚线框感的卡片，里面放拖放提示或已选图片
-            // 【2026-10-17 用户要求】空态时中间显示二维码图标（IconQr 是描边几何，只能 Stroke）：
+            // 空态时中间显示二维码图标（IconQr 是描边几何，只能 Stroke）：
             var qrIcon = new System.Windows.Shapes.Path
             {
                 Data = TryFindResource("IconQr") as System.Windows.Media.Geometry,
@@ -169,7 +164,7 @@ namespace GeZi
             _imgPreviewBox = preview;
 
             var previewCard = DialogChrome.Card(previewHost);
-            // 【2026-10-17】固定高度 + 居中，不再吃 Star 行撑满窗口（原来 560 高的窗口大半是这块白）
+            // 固定高度 + 居中，不再吃 Star 行撑满窗口（原来 560 高的窗口大半是这块白）
             previewCard.Height = 220;
             previewCard.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetRow(previewCard, 2);

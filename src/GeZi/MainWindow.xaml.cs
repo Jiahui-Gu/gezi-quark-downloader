@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -62,8 +59,7 @@ namespace GeZi
         private readonly ObservableCollection<TaskItem> _tasks = new ObservableCollection<TaskItem>();
 
         // ─────────────────────────────────────────────────────────────
-        // 【2026-10-14 UI 重构】任务分类过滤（参考 Motrix 的任务列表分类）
-        //
+        // 任务分类过滤（参考 Motrix 的任务列表分类）
         // 4 个分类**共用同一个 _tasks 集合**，只切换 ICollectionView 的过滤器 ——
         // 这样任务状态变化时不需要重建列表，也不会出现"4 份列表副本状态不同步"。
         // 分类：全部 / 进行中（Queued+Downloading+Paused）/ 失败（Failed+Cancelled）/ 已完成
@@ -89,7 +85,7 @@ namespace GeZi
         /// 一个模式的导航快照。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03】用户反馈：「解析完链接之后点击我的网盘再返回这里，发现还需要重新解析，
+        /// 用户反馈：「解析完链接之后点击我的网盘再返回这里，发现还需要重新解析，
         /// 没有显示解析后的文件」。根因是 <see cref="OnModeChanged"/> **无条件**调 ResetNav()，
         /// 把 _files/_fidStack/_pathList 全清了，切回来时分享状态已经没了。
         /// 现在两种模式各自留一份快照，来回切换时**原样恢复**（连列表内容都不重新请求）。
@@ -102,7 +98,7 @@ namespace GeZi
             public List<string> PathList = new List<string>();
             public string PwdId;
             public string Stoken;
-            public string StartFid;   // 【2026-10-17】分享进入目录（切模式再切回来不能丢）
+            public string StartFid;   // 分享进入目录（切模式再切回来不能丢）
         }
 
         /// <summary>「分享」模式与「我的网盘」模式各自的导航快照。</summary>
@@ -137,9 +133,9 @@ namespace GeZi
         private string _pwdId;
         private string _stoken;
         /// <summary>当前分享的进入目录 fid（普通分享 "0"，带 fid 的链接指向子目录）。
-        /// 【2026-10-17】自动重解析分享时从这里开始逐级展开。</summary>
+        /// 自动重解析分享时从这里开始逐级展开。</summary>
         private string _startFid = "0";
-        /// <summary>当前分享的提取码。【2026-10-17】下载器回调跑在线程池线程，
+        /// <summary>当前分享的提取码。下载器回调跑在线程池线程，
         /// 不能读 PassBox.Text，重解析分享（换 stoken）只能从字段拿。</summary>
         private string _passcode = "";
         private string _curFid = "0";
@@ -150,13 +146,11 @@ namespace GeZi
         private readonly LinkCache _linkCache = new LinkCache();
 
         // ---------------- 「入队」可终止（2026-10-11） ----------------
-        //
-        // 【背景】用户反馈：「点击下载后一直卡在『入队中』」。
+        // 用户反馈：「点击下载后一直卡在『入队中』」。
         // 「入队」这一步其实是串起来的多个网络动作（递归展开目录 → 转存/取链，
         // 转存还要轮询任务状态最长 300 秒），全过程没有任何取消入口 ——
         // 一旦某一步卡住 / 接口变慢，界面就永远停在「入队中」，用户只能干等甚至杀进程。
-        //
-        // 【做法】入队期间把「下载」按钮就地变成**可点**的「入队中（点此终止）」，
+        // 入队期间把「下载」按钮就地变成**可点**的「入队中（点此终止）」，
         // 再点一次即触发下面的取消源；流程各处插入检查点，逐步退回。
         // ⚠️ 取消是「立刻响应」级别：正在飞的那一个 HTTP 请求会等它自己返回（通常几秒），
         // 但后续步骤不会再开始 —— 该粒度足以解决"卡住/等太久"的问题，且不动网络层。
@@ -171,8 +165,7 @@ namespace GeZi
 
         /// <summary>
         /// 剪贴板监听注册在哪个窗口句柄上（IntPtr.Zero = 没注册）。
-        ///
-        /// 【为什么记句柄而不是记一个 bool】注册是**绑在原生句柄上**的，
+        /// 注册是**绑在原生句柄上**的，
         /// 而窗口隐藏→恢复之间句柄有可能被重建（见 <see cref="AttachWindowHooks"/>）。
         /// 只记"已注册/未注册"，句柄一换就会误判成"已注册"而不再重挂。
         /// </summary>
@@ -186,8 +179,7 @@ namespace GeZi
 
         /// <summary>
         /// 上一次因剪贴板自动解析处理过的分享 ID。
-        ///
-        /// 【为什么需要去重】一次"复制"并不保证只来一条 <c>WM_CLIPBOARDUPDATE</c> ——
+        /// 一次"复制"并不保证只来一条 <c>WM_CLIPBOARDUPDATE</c> ——
         /// 有些程序（浏览器扩展、剪贴板管理器）会把同一份内容分多次写剪贴板，
         /// 于是通知会连发好几条。不去重的话每次都要重发换 stoken + 拉目录两个请求，
         /// 白等一次，还有被夸克风控盯上的风险。
@@ -196,7 +188,6 @@ namespace GeZi
 
         /// <summary>
         /// 从剪贴板文本里圈出候选 URL 的正则。
-        ///
         /// 只负责"把看起来像 URL 的片段切出来"，**不判断是不是夸克** ——
         /// 域名那一步交给 <see cref="IsQuarkHost"/>。排除集与「粘贴进链接框」时用的
         /// 保持同一份（<see cref="OnLinkBoxPasting"/>），免得两处对"URL 到哪结束"的
@@ -216,13 +207,11 @@ namespace GeZi
 
         // ---------------- 单次处理文件数保护 ----------------
         // 沿用早期原型定下的 MAX_FILES / CONFIRM_THRESHOLD。
-        //
         // 为什么要有这道阀：一次误操作（比如选中一个几万文件的分享目录、或"全选"）
         // 会连带触发几万次取链请求 + 几万个下载任务的目录创建，轻则把自己账号
         // 送进服务端风控，重则把目标盘写爆。Python 版对此是"硬拒 + 超量确认"两道，
         // 这里保持同样语义，不做自动截断 —— 静默丢掉用户选的文件比直接报错更糟。
-        //
-        // 【单一事实来源】上限与确认阈值都只在这里定义一处，
+        // 上限与确认阈值都只在这里定义一处，
         // 不要再在别处写死 1000，否则改一处漏一处就会出不一致的行为。
         private const int MaxFiles = 1000;          // 单次处理文件数上限（硬拒）
         private const int ConfirmThreshold = 100;   // 超过该数量时先弹确认（软提醒）
@@ -257,7 +246,6 @@ namespace GeZi
             Tabs.SelectionChanged += OnTabsSelectionChanged;
 
             // 窗口句柄一（重）建好，就把「跨进程激活消息钩子 + 剪贴板监听」挂上去。
-            //
             // ⚠️ 用 SourceInitialized 而不是 Loaded：它正是"HWND 刚刚存在"的时刻
             //    （项目里 ScanQrWindow 给窗口加圆角也是用这个事件），而且**只要新建了
             //    句柄就会再触发一次** —— 窗口隐藏到托盘、再恢复时如果句柄被重建，
@@ -278,9 +266,9 @@ namespace GeZi
             _tasks.CollectionChanged += (s, e) =>
             {
                 UpdateEmptyStates();
-                // 【2026-10-14】任务增删后同步分类 Tab 的计数（"共 N 条"）
+                // 任务增删后同步分类 Tab 的计数（"共 N 条"）
                 UpdateTaskFilterCounts();
-                // 【2026-10-03】任务被移出列表时必须同步「未完成任务」记录，
+                // 任务被移出列表时必须同步「未完成任务」记录，
                 // 否则删掉的任务下次启动还会被当成可续传任务弹出来。
                 // 放在这里而不是各个删除点，是为了覆盖所有移除路径。
                 // SyncPending 内部有签名节流，集合频繁变化也不会反复写盘。
@@ -299,14 +287,11 @@ namespace GeZi
             _logFlushTimer.Start();
 
             // ---- 保活：下载期间阻止系统空闲睡眠 ----
-            //
-            // 【为什么用独立定时器，而不是挂在 OnJobUpdate 上】
             // 任务**卡死**时（worker 卡在掐不断的调用里 → `Task.WhenAll` 永不返回）
             // 状态会永远停在 Downloading，而进度回调也可能就此停摆 ——
             // 挂在回调上等于**永不复查**，电脑会整夜不睡。
             // 独立定时器每 30 秒复查一次，卡死也能在"无进展超时"之后释放保活。
-            //
-            // 【为什么不做成开关】用户明确要求「不需要单独按钮」→ 自动跟随任务状态。
+            // 用户明确要求「不需要单独按钮」→ 自动跟随任务状态。
             _sleepGuardTimer = new System.Windows.Threading.DispatcherTimer(
                 TimeSpan.FromSeconds(SleepGuardTickSec),
                 System.Windows.Threading.DispatcherPriority.Background,
@@ -317,8 +302,7 @@ namespace GeZi
             SleepGuard.Log = Log;
 
             // 「总」进度日志：把所有任务**汇总成一行**，每 10 秒最多一条。
-            //
-            // 【为什么要它】原来核心层是**逐任务**每 5 秒打一行
+            // 原来核心层是**逐任务**每 5 秒打一行
             // 「运行中: 0 B/s，活跃连接 49/49，分片进度 0/49，命中 IP …」——
             // 11 个任务就是每分钟 130+ 行，把"开始/完成/失败"这些真正有用的行全冲掉了
             // （用户：「日志里全是这玩意根本没有用，普通用户也不会看」）。
@@ -373,7 +357,7 @@ namespace GeZi
             _scheduler.Diagnostics = OnDiagnostics;
             LoadSettingsToUi();
 
-            // 【2026-10-11】检查更新：把配置交给 UpdateService。
+            // 检查更新：把配置交给 UpdateService。
             // 同时用**上次落盘的版本号**恢复红点状态 —— 红点必须跨会话保持，
             // 否则用户重启一次、红点就没了（而本次可能因节流根本没去查）。
             UpdateService.Attach(_settings);
@@ -405,7 +389,7 @@ namespace GeZi
                     try { ShowPendingOnStartup(); } catch { }
                 }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                // 【2026-10-11 新增 / 2026-10-18 改为 GitHub Releases】启动检查更新。
+                // 启动检查更新。
                 // 同样推到 ApplicationIdle：先让主窗画出来，后台的事晚一点无所谓。
                 // ⚠️ 全程静默 —— 网络不通/接口改版都不弹窗（理由见 UpdateService 的注释）。
                 Dispatcher.BeginInvoke(new Action(async () =>
@@ -426,7 +410,7 @@ namespace GeZi
                 //    而 WPF 窗口句柄到 Loaded 才存在。
                 InitTray();
 
-                // 【2026-10-08】「再点一次 exe 把窗口拉起来」的消息钩子、以及
+                // 「再点一次 exe 把窗口拉起来」的消息钩子、以及
                 // 「剪贴板自动解析」的监听，都不在这里挂了 —— 它俩都绑在窗口句柄上，
                 // 统一交给 AttachWindowHooks（订阅在构造函数里，走 SourceInitialized）。
             };
@@ -442,21 +426,20 @@ namespace GeZi
                 Log("就绪。未登录：可用「分享链接」模式下载公开分享，或到「登录」页扫码。");
             }
 
-            // 【2026-10-02 修复】首屏必须主动刷一次空状态。
+            // 首屏必须主动刷一次空状态。
             // 两个空状态（文件列表、任务列表）在 XAML 里初始 Visibility=Collapsed，
             // 只靠 LoadDirAsync/集合变化去点亮。而启动时若未登录、又没粘贴链接，
             // LoadDirAsync 根本不会跑 → 列表区里两个状态都不显示，只剩一片灰底
             // （用户截图反馈的"这里空这么一大块"）。
             UpdateEmptyStates();
 
-            // 【2026-10-03 修复】合并后的「暂停全部/恢复全部」按钮，Content 是代码里
+            // 合并后的「暂停全部/恢复全部」按钮，Content 是代码里
             // 生成的（XAML 只留了一个空 Button）。不在这里刷一次的话，启动后它就是个
             // **空白方块**（用户截图反馈"这里怎么回事儿"）。
             UpdatePauseAllButton(force: true);
         }
 
         // ---------------- 窗口圆角 ----------------
-        //
         // WPF 自己没法给顶层窗口加圆角（除非开 AllowsTransparency，那会关掉硬件加速、
         // 影响最大化行为，对一个持续刷新的下载界面不划算）。
         // Windows 11 的 DWM 提供了原生圆角，一次调用即可，且由系统裁剪内容、不留锯齿。
@@ -476,7 +459,6 @@ namespace GeZi
         ///   · <see cref="App.WmActivateMain"/>：另一个实例请我把窗口拉起来；
         ///   · <see cref="NativeMethods.WM_CLIPBOARDUPDATE"/>：剪贴板内容变了
         ///     （只在设置里开着「剪贴板自动解析」时才注册，见 <see cref="ApplyClipboardListener"/>）。
-        ///
         /// 为什么让**收到消息的旧进程**自己激活，而不是让新进程去 SetForegroundWindow：
         /// Windows 的前台锁定不允许后台进程抢焦点，新进程调用往往只让任务栏闪一下。
         /// 旧进程是被"用户操作"触发的，激活才有效。
@@ -531,7 +513,7 @@ namespace GeZi
 
         /// <summary>
         /// 一行日志：文本 + 是否"专业级"。
-        /// 【2026-10-18 用户要求】日志默认只显示日常必要信息（下载/解析/报错的结果），
+        /// 日志默认只显示日常必要信息（下载/解析/报错的结果），
         /// 过程细节（目录加载、缓存命中、连接分配、内部状态…）算"专业级"，
         /// 只有点右上角「详细」后才显示。见 <see cref="LogDetail"/>。
         /// </summary>
@@ -560,7 +542,6 @@ namespace GeZi
         /// 「无进展超时」（分钟）：任务处于 Downloading/Queued 但这么久没有前进，
         /// 就认定它**卡死**了，不再为它保活（让电脑照睡，下次启动会由
         /// 「未完成的任务」对话框提醒用户）。
-        ///
         /// 为什么是 5 分钟：核心层已有 45 秒的停滞看门狗，但那条走的是"任务失败"路径；
         /// 这里兜的是**看门狗也掐不断**的卡死（worker 卡在不响应令牌的调用里）。
         /// 合并阶段虽然 `Done` 不增长，但有 `Phase`（"正在合并分片"）兜底，不会被误判。
@@ -575,16 +556,13 @@ namespace GeZi
 
         /// <summary>
         /// 日志**入队**，不直接写控件 —— 由 <see cref="_logFlushTimer"/> 攒批刷入 LogBox。
-        ///
         /// 为什么要攒批：原实现是每条日志一次
         /// `LogBox.AppendText(...) + ScrollToEnd()`，而 ScrollToEnd 会触发布局重算；
         /// 且每条都要切一次 UI 线程。512 并发时日志量不小，等于持续往**单线程的 UI**
         /// 上灌小任务 —— 界面就会卡。
         /// 参考 Python Flet 版：它用 `_process_q` 消息泵攒批刷 UI。
-        ///
         /// 入队（ConcurrentQueue）本身线程安全，所以下载线程可直接调用。
-        ///
-        /// 【2026-10-18】日常级：与用户操作直接相关的结果/失败（登录、解析、入队、
+        /// 日常级：与用户操作直接相关的结果/失败（登录、解析、入队、
         /// 完成、报错）。默认显示；专业级见 <see cref="LogDetail"/>。
         /// </summary>
         private void Log(string msg)
@@ -595,8 +573,7 @@ namespace GeZi
         /// <summary>
         /// 专业级日志：过程细节与内部状态（目录加载/缓存命中、连接分配、转存清理、
         /// 内部等待、界面小故障…）。只在「详细」打开时显示。
-        ///
-        /// 【为什么分开】用户原话：「没有点击详细之前日志是很简单的，只有一些必要的信息，
+        /// 用户原话：「没有点击详细之前日志是很简单的，只有一些必要的信息，
         /// 日常使用必要的信息」。把过程性噪音挪到这里，默认视图只留结果。
         /// </summary>
         private void LogDetail(string msg)
@@ -627,7 +604,7 @@ namespace GeZi
 
         /// <summary>LogBox 保留的最大行数（超出后从头砍）。</summary>
         /// <remarks>
-        /// 【2026-10-03 新增】加了"后台驻留"之后这条变得必要：以前关闭=退出，
+        /// 加了"后台驻留"之后这条变得必要：以前关闭=退出，
         /// 日志最多活一次会话；现在窗口一收就能挂好几天，日志会**无限增长**，
         /// 既吃内存又让 TextBox 越来越卡（每次 AppendText 都要重排）。
         /// 2000 行足够回溯一次下载的完整过程，再多也没人翻。
@@ -660,12 +637,10 @@ namespace GeZi
 
         /// <summary>
         /// 把所有在跑的任务**汇总成一行**写进日志。
-        ///
         /// 取代原来核心层那种「每个任务每 5 秒一行」的刷屏日志 ——
         /// 普通用户只关心"一共多快、还剩多少"，逐任务的连接数/分片数/命中 IP
         /// 是排查用的，需要时把 <see cref="GeZi.Core.Download.SegmentedDownloader.PerTaskDiagLog"/>
         /// 打开即可，诊断面板本来也一直有。
-        ///
         /// 去重：内容与上一条完全相同就不打（空闲/卡住时不会一直刷）。
         /// </summary>
         private void LogAggregateProgress()
@@ -771,7 +746,7 @@ namespace GeZi
 
         /// <summary>
         /// 「详细」按钮：在「日常 / 全部」两种日志视图间切换。
-        /// 【2026-10-18 用户要求】默认只显示日常必要信息；点「详细」才显示专业级
+        /// 默认只显示日常必要信息；点「详细」才显示专业级
         /// （目录加载、缓存命中、连接分配、内部状态等过程细节）。
         /// </summary>
         private void OnToggleLogVerbose(object sender, RoutedEventArgs e)
@@ -803,8 +778,7 @@ namespace GeZi
         }
 
         // ---------------- 按钮「加载中」态 ----------------
-        //
-        // 【为什么需要】用户反馈：「他们需要加载时间或者是会切换到另一个东西，
+        // 用户反馈：「他们需要加载时间或者是会切换到另一个东西，
         // 每次点击它们的时候都要有一个加载过程，主要是为了让用户看到他在加载」。
         // 本质是消除"点击 → 界面响应"之间那段静默期 —— 没有反馈时，用户无法区分
         // 「程序在忙」和「程序没反应」，于是会重复点击（取直链连点 = 重复发网络请求、
@@ -1041,7 +1015,7 @@ namespace GeZi
         /// 换账号（登录成功 / 登出）时把**"网盘侧"的缓存与快照作废**。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-11 修 bug】用户反馈：「登录了新账号，但从下载页切回我的网盘，
+        /// 用户反馈：「登录了新账号，但从下载页切回我的网盘，
         /// 显示的还是旧账号的网盘内容」。
         /// 根因是换账号时只清了直链缓存（<see cref="LinkCache"/>），没清这两样：
         ///   ① 目录缓存 <c>_dirCache</c> / <c>_dirSizeCache</c> —— fid 是**账号内的编号**，
@@ -1049,7 +1023,6 @@ namespace GeZi
         ///   ② 网盘导航快照 <c>_driveNav</c> —— 最要命：<see cref="OnModeChanged"/>
         ///      见到快照非空会**直接把旧列表铺开、连请求都不发**
         ///      （那是为"切回来不丢状态"特意做的），于是旧账号的文件原样重现。
-        ///
         /// ⚠️ **刻意不动分享侧状态**（<c>_shareNav</c> / <c>_pwdId</c> / <c>_stoken</c>）：
         /// 分享（pwd_id + stoken + 每条的 fid_token）是**账号无关**的，匿名也能列目录/取链，
         /// 其 stoken 与 token 又是成组存放的、切换账号后依旧自洽。
@@ -1087,8 +1060,7 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-04 新增】「识别二维码」——夸克分享有时只给二维码图片、不给链接。
-        ///
+        /// 「识别二维码」——夸克分享有时只给二维码图片、不给链接。
         /// 打开扫码窗口，用户用「Ctrl+V 粘贴截图 / 选文件 / 拖拽」任一方式给图，
         /// 解出的文本会走 <see cref="ApplyScannedText"/> 自动填进链接框。
         /// </summary>
@@ -1110,8 +1082,7 @@ namespace GeZi
 
         /// <summary>
         /// 把识别出来的文本落到界面上。
-        ///
-        /// 【为什么不直接调 OnParseClick】识别结果不保证是链接（可能是提取码文案、口令、
+        /// 识别结果不保证是链接（可能是提取码文案、口令、
         /// 甚至一张无关的码）。所以这里先判断：像链接就填进去并自动解析，不像就原样填进
         /// 链接框、让用户自己看一眼再决定 —— 悄悄丢弃或强行解析都不合适。
         /// </summary>
@@ -1166,15 +1137,13 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【粘贴时自动精简】用户常把夸克分享的**整段文案**粘进来，形如：
+        /// 用户常把夸克分享的**整段文案**粘进来，形如：
         /// 「我用夸克网盘给你分享了「xxx.pdf」，点击链接或复制整段内容，打开「夸克APP」即可获取。
         ///   链接：https://pan.quark.cn/s/20ef19d26112  提取码：abcd」
-        ///
         /// 🚨 为什么必须拦一下：`LinkBox` 是**单行、42px、横向滚动条 Disabled** 的输入框，
         /// 整段文案（近百字符）塞进去后**只能看到开头那截**，链接被挤出可视区域 ——
         /// 用户会以为"链接不见了"（真实反馈）。
         /// 其实解析本身没问题（`ShareUrlParser` 能正确提取），是**看不见**造成的误会。
-        ///
         /// 所以粘贴时直接把内容替换成「裸链接」，并把文案里带的提取码顺手填进 `PassBox`。
         /// 找不到分享链接时**原样粘贴**，绝不吞掉用户的内容。
         /// </summary>
@@ -1255,7 +1224,7 @@ namespace GeZi
             if (!string.IsNullOrEmpty(info.Passcode) && PassBox.Text.Trim() != info.Passcode)
                 PassBox.Text = info.Passcode;
             _pwdId = info.PwdId;
-            // 【2026-10-17】提取码留下字段副本：下载器回调（线程池线程）不能读 PassBox，
+            // 提取码留下字段副本：下载器回调（线程池线程）不能读 PassBox，
             // 而自动重解析分享（换新 stoken）必须带上它。
             _passcode = passcode;
             _linkCache.Clear();   // 换分享后旧 fid 的直链不再适用
@@ -1286,7 +1255,7 @@ namespace GeZi
                 await LoadDirAsync(_curFid);
                 Log("解析成功。双击文件夹进入子目录；选中文件后点「下载选中」即可下载"
                     + "（多选用 Shift / Ctrl+点击，或右键该行）。");
-                // 【v2.6 移植】记入解析历史（原文案是「单击进入」，我们保留双击版）
+                // 记入解析历史（原文案是「单击进入」，我们保留双击版）
                 RecordShareHistory(info.PwdId, passcode, info.StartFid);
                 NotifyIfHidden("已解析剪贴板里的分享链接",
                     _files.Count > 0
@@ -1306,10 +1275,8 @@ namespace GeZi
         }
 
         // ---------------- 剪贴板自动解析（2026-10-08） ----------------
-        //
         // 需求：在**任何程序**里复制到夸克分享链接，本程序直接解析好，不用再切回窗口粘贴。
         //   默认开；设置页「窗口与后台 → 剪贴板」可关，关掉时**根本不注册**监听（零开销）。
-        //
         // 实现路线见 NativeMethods：AddClipboardFormatListener + WM_CLIPBOARDUPDATE，
         // 既不用轮询，也不插队进 `SetClipboardViewer` 那条"链"。
         // 通知由系统投递到本窗口的消息队列 → 下面这些回调**都在 UI 线程**上跑。
@@ -1318,10 +1285,8 @@ namespace GeZi
         /// 把两件**绑在窗口句柄上**的事挂到当前句柄上：
         ///   ① 跨进程激活消息钩子（再点一次 exe 时由本进程自己把窗口拉起来）；
         ///   ② 剪贴板监听（按设置，见 <see cref="ApplyClipboardListener"/>）。
-        ///
         /// 由 <c>SourceInitialized</c> 触发（订阅在构造函数里），**幂等**：同一个句柄只挂一次。
-        ///
-        /// 【为什么不干脆在 Loaded 里挂一次了事】`HwndSource.AddHook` 和
+        /// `HwndSource.AddHook` 和
         /// `AddClipboardFormatListener` 都是**绑在原生窗口句柄**上的。窗口在
         /// "隐藏到托盘 → 恢复" 的过程中句柄会不会被 WPF 重建，各版本/资料说法不一，
         /// 赌不起：句柄一旦被换掉，两个注册就都**静默失效** —— 表现为"恢复窗口后
@@ -1400,7 +1365,6 @@ namespace GeZi
 
         /// <summary>
         /// 设置页「剪贴板」开关。
-        ///
         /// 走独立处理器而不是 <see cref="OnSettingChanged"/>（同 <see cref="OnThemeChanged"/>
         /// 的理由）：这个开关只影响"要不要注册一条系统通知"，与并发数/下载目录无关，
         /// 走 ApplySettings() 会顺带 RecreateScheduler() 去重建下载调度器 ——
@@ -1431,11 +1395,9 @@ namespace GeZi
 
         /// <summary>
         /// 设置页「跟随系统代理」开关（2026-10-11 新增）。
-        ///
         /// 走独立处理器而不是 <see cref="OnSettingChanged"/>（同 <see cref="OnClipboardAutoParseChanged"/>
         /// 的理由）：这个开关只写一个核心层静态标志，不需要重建下载调度器 ——
         /// 为它重建调度器反而会打断在途任务。
-        ///
         /// ⚠️ 静态开关只影响**此后新建**的连接：已发起的请求不会改道，
         ///    所以日志里要跟用户讲清楚"重新开始下载 / 重新登录后生效"。
         /// </summary>
@@ -1506,14 +1468,12 @@ namespace GeZi
 
         /// <summary>
         /// 从一段文本里找出**夸克网盘**的分享链接；找不到返回 null。
-        ///
         /// 🚨 这里必须比「粘贴进链接框」（<see cref="OnLinkBoxPasting"/>）严得多：
         ///    · 粘贴是用户在**本程序里**的明确动作，识别宽松些最多是顺手填个框；
         ///    · 剪贴板监听是**后台自己发起**的，认错就会把用户正在复制的别的东西
         ///      （比如别的网盘恰好也叫 /s/ 的链接）当夸克链接去请求、还把他的界面切走。
         /// 所以域名必须真的是夸克的，`/s/` 只是必要条件。
-        ///
-        /// 【顺带解决了"自己写剪贴板"的死循环】本程序有唯一一处 Clipboard.SetText
+        /// 本程序有唯一一处 Clipboard.SetText
         /// （诊断面板「复制诊断文本」），写的是制表符分隔的文件名 —— 不含夸克域名，
         /// 因此不会触发自己，不需要额外的"自写抑制"标记。
         /// </summary>
@@ -1565,8 +1525,7 @@ namespace GeZi
 
         /// <summary>
         /// 尽力读一次剪贴板文本：不是文本、或实在抢不到剪贴板时返回 null。
-        ///
-        /// 【为什么要重试】剪贴板是**全局独占**的：写入方还没释放时
+        /// 剪贴板是**全局独占**的：写入方还没释放时
         /// <see cref="Clipboard.GetText"/> 会抛 COMException(CLIPBRD_E_CANT_OPEN)。
         /// `WM_CLIPBOARDUPDATE` 是"写完之后"才投递的，正常第一次就能读到；
         /// 但 Office 之流会自己多持有几毫秒，所以留一个很短的退避重试。
@@ -1641,15 +1600,13 @@ namespace GeZi
         }
 
         // ---------------- 解析历史面板（2026-10-09） ----------------
-        //
         // 数据在 HistoryStore（GeZi.state.json 里的 Shares），这里只管画与开关。
         // 布局照选定稿：整窗压暗 + **居中**卡片，列表按 今天 / 昨天 / 更早 分组，
         // 一行 = 文件夹图标 + 名称 + 「时间 · 分享 ID · 提取码」，悬停整行高亮。
 
         /// <summary>
         /// 窗口级按键。**目前只处理 Esc**（关闭解析历史面板）。
-        ///
-        /// 🚨 【2026-10-10】第三方分支那一整套快捷键（1/2/3 切页、h 开历史、a/d/x/g 等）
+        /// 🚨 第三方分支那一整套快捷键（1/2/3 切页、h 开历史、a/d/x/g 等）
         /// 我们**不采纳**，所以这里刻意不做任何单键分发 —— 只保留
         /// 「面板开着时 Esc 关闭」这一条**必要**行为：面板自己的文案就写着
         /// 「按 Esc、或点面板外的空白处关闭」，不实现就是骗用户。
@@ -1686,7 +1643,7 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-14 用户要求】解析历史面板右上角的关闭叉号。
+        /// 解析历史面板右上角的关闭叉号。
         /// 复用既有的 HideHistoryPanel（与 Esc、点遮罩走同一条路径）。
         /// </summary>
         private void OnHistoryCloseClick(object sender, RoutedEventArgs e)
@@ -1949,8 +1906,7 @@ namespace GeZi
 
         /// <summary>
         /// 进入文件夹（**双击**文件夹行触发，见 <see cref="OnFileListDoubleClick"/>）。
-        ///
-        /// 【为什么是 async void】它由点击事件直接触发，没有调用方要等结果 ——
+        /// 它由点击事件直接触发，没有调用方要等结果 ——
         /// 与 <see cref="OnParseClick"/> 等既有处理器同一形态。目录请求失败已在
         /// <see cref="LoadDirAsync"/> 内部消化（打日志），不会漏到这里。
         /// </summary>
@@ -1970,8 +1926,7 @@ namespace GeZi
 
         /// <summary>
         /// 双击文件夹进入子目录。
-        ///
-        /// 🚨 【2026-10-10】这是**原版行为**：第三方分支 v2.4 把它改成了「单击直接进入」
+        /// 🚨 这是**原版行为**：第三方分支 v2.4 把它改成了「单击直接进入」
         /// 并删掉了本处理器，我们**不采纳**那个改动 —— 单击保持"选中"，双击才进目录。
         /// （该分支里"面包屑路径条可点击跳转"是独立功能，那个我们**采纳了**。）
         /// </summary>
@@ -1988,8 +1943,7 @@ namespace GeZi
         ///   · **Shift+点击 = 离散多选**（只切换点中的这一项），**不做连选**；
         ///   · **Ctrl+点击 = 只选中这一个**；
         ///   · 单击 = WPF 默认行为（选中）；**进目录请双击**（见 <see cref="OnFileListDoubleClick"/>）。
-        ///
-        /// 【Shift 为什么必须自己写】WPF 的 `SelectionMode="Extended"` 里：
+        /// WPF 的 `SelectionMode="Extended"` 里：
         ///   · Ctrl+点击  = 切换单项（离散多选）
         ///   · **Shift+点击 = 连选**：把"锚点项"到当前项**整段**都选上
         /// 用户要的是「可以使用 shift 多选，但**不是连选**」——
@@ -2027,8 +1981,7 @@ namespace GeZi
             }
 
             // ③ 不按修饰键、点是文件 = WPF 默认行为（选中）。
-            //
-            // 🚨 【2026-10-10 本地改动】原版（第三方分支 v2.4）这里是「单击文件夹 = 直接进入」，
+            // 🚨 原版（第三方分支 v2.4）这里是「单击文件夹 = 直接进入」，
             //    我们**不要**这个行为 —— 用户明确要求保留「双击进入」，单击只做选中。
             //    所以这里直接落到 ④，不做任何拦截。
             // ④ 单击 / 其它情况：完全走 WPF 默认行为（选中）
@@ -2053,8 +2006,7 @@ namespace GeZi
         }
 
         // ---------------- 目录分页 / 缓存（2026-10-09） ----------------
-        //
-        // 【要解决的问题】一个分享目录可能有几千项，原来的做法有三处叠加的卡：
+        // 一个分享目录可能有几千项，原来的做法有三处叠加的卡：
         //   ① LoadDirAsync 走 ShareDetailAsync / ListDirAsync —— 那是"从第 1 页循环到
         //      第 200 页、把整个目录攒完才返回"，点进去要等十几秒才有东西；
         //   ② 攒完再一次性 Add 几千条进 _files，而集合每变一次都会走 UpdateEmptyStates
@@ -2210,7 +2162,7 @@ namespace GeZi
         /// <summary>列表底部那行提示：还有没加载完的就说清楚。</summary>
         private void UpdateDirMoreHint()
         {
-            // 【2026-10-17 用户要求】删除「已显示 N 项 · 下面还有，下滑继续加载」这行提示。
+            // 删除「已显示 N 项 · 下面还有，下滑继续加载」这行提示。
             // 分页加载逻辑本身保留（滚到底自动续），只是不再显示这行文字。
             if (FileMoreHint != null) FileMoreHint.Visibility = Visibility.Collapsed;
         }
@@ -2236,7 +2188,7 @@ namespace GeZi
         private async Task LoadDirAsync(string fid)
         {
             SetBusy(true);
-            // 【纯皮肤】置位加载态并立刻刷新一次 —— 让"正在加载…"在请求发出前
+            // 置位加载态并立刻刷新一次 —— 让"正在加载…"在请求发出前
             // 就出现，而不是等 SetBusy 的按钮禁用生效后才补上（会闪一下空状态）。
             _loadingDir = true;
             UpdateEmptyStates();
@@ -2329,8 +2281,7 @@ namespace GeZi
 
         /// <summary>
         /// 把要算大小的目录**追加**进队列（已在缓存里的直接填上）。
-        ///
-        /// 【为什么改成队列】原来是"每调一次就取消上一轮、只算这次给的目录"，
+        /// 原来是"每调一次就取消上一轮、只算这次给的目录"，
         /// 而分页之后目录是**一批批露出来**的 —— 那样每露一批就会把上一批没算完的丢掉。
         /// </summary>
         private void QueueDirSizeScan(IList<ShareFileItem> dirs)
@@ -2458,7 +2409,7 @@ namespace GeZi
             }
         }
 
-        // 【2026-10-10】第三方分支 v2.4 曾删掉「双击进入」处理器、改成单击直接进入；
+        // 第三方分支 v2.4 曾删掉「双击进入」处理器、改成单击直接进入；
         // 我们**不采纳**那个改动 —— OnFileListDoubleClick 已恢复（见上方），单击只做选中。
 
         /// <summary>
@@ -2489,7 +2440,7 @@ namespace GeZi
         /// 「免转存下载」：**不往自己网盘写中转文件**，直接从分享取链下载。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03 新增】用户要求：「右键解析后的文件应该会有免转存下载选项」。
+        /// 用户要求：「右键解析后的文件应该会有免转存下载选项」。
         /// 原来这个能力是**隐式**的 —— 登录状态下默认走「转存→取直链」（更稳定，但会
         /// 往你网盘写一份、占用空间、还会留下中转垃圾），只有未登录或网盘容量不足时
         /// 才自动降级为免转存。现在给它一个显式入口。
@@ -2525,7 +2476,7 @@ namespace GeZi
             FileList.SelectAll();
         }
 
-        // 【2026-10-03 删除】原「创建分享链接」入口（右键菜单项 + OnCreateShareSelected）
+        // 原「创建分享链接」入口（右键菜单项 + OnCreateShareSelected）
         // 已按用户要求移除（用户反馈「创建分享链接按钮没有用」）。
         // 同时 `QuarkClient.CreateShareAsync` 也一并删掉了 —— 它当时被"留着当 API 封装"，
         // 但 app 里**没有任何调用点**，属于纯死代码（用户要求"把不需要的死的代码找到并删除"）。
@@ -2534,7 +2485,6 @@ namespace GeZi
 
         /// <summary>
         /// 「删除网盘文件」：把选中的文件/文件夹从**夸克网盘**删除（进回收站后再清空）。
-        ///
         /// 移植自 Python Flet 版 `_delete_cloud_selected`。
         /// 限制为「我的网盘」模式：分享模式里的 fid 属于分享者，删不得；
         /// 若用户是在分享模式下转存后又想删中转文件，请用设置里的自动清理或网盘端操作。
@@ -2579,8 +2529,7 @@ namespace GeZi
         }
 
         // ---------------- 目录路径条（面包屑，2026-10-08 改为可点击） ----------------
-        //
-        // 【为什么不直接用 _pathList 画】显示要的是"根 → 当前"这条链上**每一层叫什么、
+        // 显示要的是"根 → 当前"这条链上**每一层叫什么、
         // 对应哪个 fid**，而导航状态是分开存的：名字在 _pathList、祖先的 fid 在
         // _fidStack（栈顶 = 上一层）。所以先换算成「层 → {名字, fid}」，再画成
         // 可点的小节 —— 见 BuildCrumbs。
@@ -2598,16 +2547,14 @@ namespace GeZi
 
         /// <summary>
         /// 把当前导航状态换算成面包屑（根 → 当前）。
-        ///
-        /// 【fid 是怎么推出来的】进子目录时 `_fidStack.Push(上一层 fid)` +
+        /// 进子目录时 `_fidStack.Push(上一层 fid)` +
         /// `_pathList.Add(目录名)`，于是：
         ///   · `_fidStack.ToList()` 是"栈顶在前" = [上一层, 上上层, …, 根]；
         ///   · **反转它** = [根, …, 上一层]，正好与 `_pathList` **逐项对齐**
         ///     （两者永远等长：进一层各加一项）。
         /// 所以第 0 段「根目录」用 chain[0]（没进过子目录时就是 "0"），
         /// `_pathList[i]` 这一层用 chain[i+1]，最后一段（当前层）用 `_curFid`。
-        ///
-        /// 【分享链接带 StartFid 的情况】解析时 ResetNav 清掉了栈，只有 _curFid 指向
+        /// 解析时 ResetNav 清掉了栈，只有 _curFid 指向
         /// 子目录 → 面包屑就只剩「根目录」一节，而它的 fid 是进入点；
         /// 点不了（本来就是当前层），要出去用「上一级」。
         /// </summary>
@@ -2738,7 +2685,7 @@ namespace GeZi
         // ---------------- 下载 ----------------
 
         /// <summary>
-        /// 【2026-10-17 用户要求】未登录时使用「必须登录」的功能（下载 / 获取直链等），
+        /// 未登录时使用「必须登录」的功能（下载 / 获取直链等），
         /// **明确弹框提示**并切到登录页。
         /// 原来这些入口只往日志里写一行「请先登录或解析分享」—— 日志在界面下方不起眼，
         /// 用户点了没反应，只会以为程序坏了。
@@ -2763,7 +2710,7 @@ namespace GeZi
         {
             if (!RequireLogin("下载")) return;
             // 下载前要先递归展开目录 + 取直链（网络）→ 按钮就地变成"入队中…"
-            // 【2026-10-11】入队期间按钮保持可点：再点一次 = 终止（见 BeginEnqueue）。
+            // 入队期间按钮保持可点：再点一次 = 终止（见 BeginEnqueue）。
             long t0 = BusyClock();
             if (!BeginEnqueue(DownloadSelBtn)) return;
             try
@@ -2805,8 +2752,7 @@ namespace GeZi
         /// <summary>
         /// 「获取直链」—— 取到链接后弹出对话框，**上方**给出三种导出格式按钮：
         /// aria2c 命令 / curl 命令 / 纯直链；点任一个即按该格式导出（写文件 + 剪贴板）。
-        ///
-        /// <para>【2026-10-02 改版】</para>
+        /// <para></para>
         /// <list type="bullet">
         /// <item>原来这个窗口把每条「文件名 Tab 链接」平铺在一个大列表里，用户反馈
         ///   「右边显示了好多直链太乱了不要显示」——现在窗口**不再显示链接文本**，
@@ -2815,7 +2761,6 @@ namespace GeZi
         ///   把这个能力合并进本窗口的「上方三个按钮」。</item>
         /// <item>列表右键菜单里的「导出直链」项也一并删除，避免两条入口语义打架。</item>
         /// </list>
-        ///
         /// <para>注意：取链只做一次，三个格式按钮共用同一份结果 —— 点哪个都能立刻导出，
         /// 不需要重新取链（直链带时效签名，重复取链反而变慢）。</para>
         /// </summary>
@@ -2880,7 +2825,6 @@ namespace GeZi
         /// 直链导出对话框：**上方**文件管理器式页签（三种直链种类，只负责"选"），
         /// **中间**待导出文件清单（只有文件名，不显示链接文本），
         /// **下方**「导出直链 / 下载文件 / 关闭」。
-        ///
         /// <para>布局要点（历轮用户反馈累积）：
         /// ① 种类选择器在**最上面**（用户原话「这三个按钮放在上方」）；
         /// ② 不列出 URL（用户原话「显示了好多直链太乱了不要显示」）；
@@ -2912,7 +2856,7 @@ namespace GeZi
             // ===== 说明：压成一行，说清"页签只选种类、导出靠下方按钮" =====
             // 这一行同时兼作**切换页签时的加载指示区**：切换期间整行原地换成
             // 「转圈 + 正在切换到 xxx…」，切完再换回说明文字（两者尺寸接近，不会跳）。
-            // 【2026-10-17 用户要求】文案改为「获取直链后可导出为 …（后三者自带 UA 与 Cookie）」，
+            // 文案改为「获取直链后可导出为 …（后三者自带 UA 与 Cookie）」，
             // 括号部分用警示红（与下载页底部那行提示同一套语义色）。
             var head = new TextBlock
             {
@@ -2953,7 +2897,7 @@ namespace GeZi
             root.Children.Add(hintHost);
 
             // ===== 直链种类：分段控件 + 滑块指示器 =====
-            // 【2026-10-17 用户要求】原来的「文件夹页签」改为与全站一致的分段控件，
+            // 原来的「文件夹页签」改为与全站一致的分段控件，
             // 选中态由一个白底滑块在四项之间平滑滑动表达（SegmentedSlider 附加行为）。
             // ⚠️ 原来「选中页签与下方列表连体」的文件夹观感随之取消 —— 滑块本身
             //    已经足够表达选中态，再叠一条连体边反而脏。
@@ -2987,7 +2931,7 @@ namespace GeZi
                 GroupName = "LinkFormat",
                 Margin = new Thickness(2, 0, 0, 0),
             };
-            // 【用户要求】「后两者自带 UA 与 Cookie，把它的颜色改红」。
+            // 「后两者自带 UA 与 Cookie，把它的颜色改红」。
             // curl / aria2c / Motrix 界面 三种格式会把**登录凭证（UA + Cookie）**一起写进导出文件，
             // 属于敏感内容 → 用警示红标出来，和下载页那行提示保持同一套语义色。
             // ⚠️ 这里用的是**本地值**：WPF 里本地值优先级高于样式触发器，
@@ -3042,7 +2986,7 @@ namespace GeZi
             };
 
             // ===== 切换种类时的加载指示 =====
-            // 【用户要求】「切换导出直链种类的那一个要加」加载过程。
+            // 「切换导出直链种类的那一个要加」加载过程。
             // ⚠️ 说实话：切种类本身**是瞬时的**（只改 chosen 这一个变量，零耗时），
             //    所以这里的加载态不是"真在加载"，而是**给用户一个"点到了、切过去了"的确认** ——
             //    否则点完页签除了高亮变一下，界面没有任何别的动静，容易让人怀疑没生效。
@@ -3113,7 +3057,7 @@ namespace GeZi
             root.Children.Add(contentArea);
 
             // ===== 底部按钮：等宽 =====
-            // 【2026-10-02】「复制全部连接按钮改成导出直链」（按页签选中的种类导出）
+            // 「复制全部连接按钮改成导出直链」（按页签选中的种类导出）
             //              「把下载这些文件改成下载文件」
             var copyAll = DialogChrome.PrimaryButton("导出直链");
             var dlBtn = DialogChrome.SecondaryButton("下载文件");
@@ -3166,8 +3110,8 @@ namespace GeZi
 
             string text = LinkExporter.Build(list, QuarkConstants.DlUa,
                 _client.CookieStr, QuarkConstants.Referer, format,
-                // 【仅 Motrix 格式用】必须是绝对路径：Motrix 是独立进程，
-                // 它把 "." 解析成【它自己的工作目录】（实测落到了 D:\motrix\ 安装目录），
+                // 必须是绝对路径：Motrix 是独立进程，
+                // 它把 "." 解析成（实测落到了 D:\motrix\ 安装目录），
                 // 不是用户执行命令时所在的目录。curl/aria2c 没这问题（用户自己在 shell 里跑）。
                 absoluteSaveDir: _settings.OutDir);
             if (string.IsNullOrEmpty(text))
@@ -3217,15 +3161,12 @@ namespace GeZi
         }
 
         // ---------------- 连接数按文件大小比例分配 ----------------
-        //
-        // 【背景】Python Flet 版有「智能调度」：实际线程数 = min(下载线程数, 总连接预算 / 本批任务数)
+        // Python Flet 版有「智能调度」：实际线程数 = min(下载线程数, 总连接预算 / 本批任务数)
         // —— 也就是**多个文件平分**总预算。C# 版当初删掉「全局连接预算」设置项时，
         // 连"多文件共享总预算"这件事一起没了，变成每个任务都开满自己的线程数
         // （用户把单文件并发拉到 512、同时跑 3 个 = 1536 条连接，而夸克是按账号限总连接数的）。
-        //
-        // 【用户要求】「不要平均分配了，改成比例分配，按文件大小，文件越大分配越多，
+        // 「不要平均分配了，改成比例分配，按文件大小，文件越大分配越多，
         // 文件越小分配越少，但有最低下限，不然别让小文件根本下不了了」。
-        //
         // 具体算法在 GeZi.Core.Download.ThreadAllocator（纯函数，可单独测试）。
 
         /// <summary>总连接预算。见 <see cref="GeZi.Core.Download.ThreadAllocator.DefaultBudget"/>。</summary>
@@ -3307,7 +3248,7 @@ namespace GeZi
                         PwdId = _pwdId, Stoken = _stoken, Passcode = item.Passcode,
                         Fid = item.Fid, Token = item.Token, FromShare = item.FromShare,
                         RelDir = item.RelDir ?? "", Dest = dest, Size = item.Size,
-                        // 【2026-10-17】自动重解析分享的上下文（stoken 过期时换新凭证用）
+                        // 自动重解析分享的上下文（stoken 过期时换新凭证用）
                         StartFid = item.StartFid, ShareRelDir = item.ShareRelDir,
                     },
                 });
@@ -3427,7 +3368,7 @@ namespace GeZi
                             Fid = item.Fid, Token = item.Token,
                             FromShare = item.FromShare, RelDir = item.RelDir ?? "",
                             Dest = dest, Size = item.Size,
-                            // 【2026-10-17】自动重解析分享的上下文（stoken 过期时换新凭证用）
+                            // 自动重解析分享的上下文（stoken 过期时换新凭证用）
                             StartFid = item.StartFid, ShareRelDir = item.ShareRelDir,
                         },
                     });
@@ -3503,7 +3444,7 @@ namespace GeZi
         {
             if (ShareMode)
             {
-                // 【2026-10-03】用户要求给「免转存下载」一个显式入口。
+                // 用户要求给「免转存下载」一个显式入口。
                 // 默认（登录状态下）走「转存→取直链」，会往用户网盘写一份；
                 // 免转存则不碰网盘，直接从分享取链 —— 省空间、也不留中转垃圾。
                 if (forceNoSave)
@@ -3553,7 +3494,7 @@ namespace GeZi
             CancellationToken ct = default(CancellationToken))
         {
             ct.ThrowIfCancellationRequested();
-            // 【2026-10-17】重解析分享所需的上下文。
+            // 重解析分享所需的上下文。
             // ⚠️ 必须在**任何 await 之前**取快照：下载准备期间用户可能双击进别的目录，
             // _pathList 会变（提取码同理，下载器回调更不能回头读 PassBox）。
             string shareDir = CurrentShareRelDir();
@@ -3582,7 +3523,7 @@ namespace GeZi
         /// <summary>
         /// 当前浏览目录在分享内的完整相对路径（相对分享进入点 <see cref="_startFid"/>）。
         /// 数据来源是导航栈里的 <see cref="_pathList"/>（进一层加一个目录名）。
-        /// 【2026-10-17】供自动重解析分享逐级下钻用；调用方必须在 await 前取快照。
+        /// 供自动重解析分享逐级下钻用；调用方必须在 await 前取快照。
         /// </summary>
         private string CurrentShareRelDir()
         {
@@ -3705,7 +3646,6 @@ namespace GeZi
 
         /// <summary>
         /// 批量取直链 + 多轮重试。对应原版 fetch_links / fetch_share_links。
-        ///
         /// 相比早先的实现，补了原版有、C# 之前缺的两点：
         ///  1. **失败原因不再被吞掉**。以前是 `catch { links = new List&lt;DownloadLink&gt;(); }`，
         ///     用户只看到「跳过（无直链）」，无从判断是会员额度、风控还是分享被关。
@@ -3868,7 +3808,7 @@ namespace GeZi
             List<DownloadLink> links;
             if (item.FromShare)
             {
-                // 【2026-10-17】stoken 过期时自动重解析分享：换新 stoken + 新
+                // stoken 过期时自动重解析分享：换新 stoken + 新
                 // share_fid_token 再取链。写回 _stoken / item.Token ——
                 // 当前会话后续取链都用新值（下载器回调在线程池线程，不能读 PassBox，
                 // 所以提取码从 item 字段拿）。
@@ -3938,7 +3878,7 @@ namespace GeZi
         private async void RunJobs(List<DownloadJob> jobs)
         {
             var progress = new Progress<JobUpdate>(OnJobUpdate);
-            // 【关键】把 scheduler 抓到局部变量再 await。
+            // 把 scheduler 抓到局部变量再 await。
             // 直接写 await _scheduler.RunAllAsync(...) 的话，await 期间若 _scheduler
             // 被替换（见 RecreateScheduler），语义就变成"用可能已变化的字段"，
             // 且和已经开始的这批不是同一个对象 —— 限流账目会错乱。
@@ -4053,7 +3993,7 @@ namespace GeZi
             if (u.Progress != null)
             {
                 item.Percent = u.Progress.Percent;
-                // 【2026-10-15 晚】暂停期间**冻结速度**：核心层仍会上报在途请求的残余速度
+                // 暂停期间**冻结速度**：核心层仍会上报在途请求的残余速度
                 // （闸门式暂停，见 TaskItem.PauseRequested 注释），照收就会把刚置的 0
                 // 又拉回一个非零值 → 界面又变成"速度慢慢降"。用户要求暂停即时生效 → 不收。
                 // 进度（Percent/Done）照常更新：那是真实已下载字节，且暂停后本来就不再增长。
@@ -4090,7 +4030,6 @@ namespace GeZi
         /// <summary>
         /// 把当前"未完成"的任务（排队/下载/暂停）写进持久化记录，
         /// 已完成的从记录里移除。供下次启动提示"有 N 个未完成任务"。
-        ///
         /// 节流：只有"未完成任务的名字 + 状态"组合变了才真正写盘 ——
         /// OnJobUpdate 每 500ms 就来一次，无条件写盘等于持续小额 IO。
         /// </summary>
@@ -4119,7 +4058,7 @@ namespace GeZi
                             Token = pi?.Token,
                             FromShare = pi?.FromShare ?? false,
                             Size = t.Total,
-                            StreamPlay = true,      // 【2026-10-13】共写模式已删除，恒可边下边播
+                            StreamPlay = true,      // 共写模式已删除，恒可边下边播
                             StreamPlayMode = true,
                             Status = t.StatusText,
                             // ---- 续传所需（重启后重取链）----
@@ -4127,7 +4066,7 @@ namespace GeZi
                             Stoken = pi?.Stoken,
                             Passcode = pi?.Passcode,
                             RelDir = pi?.RelDir,
-                            // 【2026-10-17】自动重解析分享的上下文（stoken 过期自愈用）
+                            // 自动重解析分享的上下文（stoken 过期自愈用）
                             StartFid = pi?.StartFid,
                             ShareRelDir = pi?.ShareRelDir,
                         });
@@ -4148,7 +4087,7 @@ namespace GeZi
         /// 工具栏那个合并后的「暂停全部 / 恢复全部」按钮 —— 按当前任务状态决定做什么。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03】用户反馈「暂停全部和恢复全部可以弄成一个按钮」。原来两个独立按钮
+        /// 用户反馈「暂停全部和恢复全部可以弄成一个按钮」。原来两个独立按钮
         /// 在任何时刻都只有一个是"有意义"的（没在下载时点「暂停全部」什么也不会发生），
         /// 合并成一个会自己换文案/图标的按钮更省地方也更清楚。
         /// </remarks>
@@ -4223,20 +4162,16 @@ namespace GeZi
 
         /// <summary>
         /// 复查「保活」：有任务在**活跃地**下载就阻止系统空闲睡眠，否则释放。
-        ///
-        /// 【为什么需要】用户反馈「中午开着任务后关显示器离开了，下午再看任务全部停了」——
+        /// 用户反馈「中午开着任务后关显示器离开了，下午再看任务全部停了」——
         /// 系统按空闲计划睡眠会掐断所有连接，任务自然全灭。
-        ///
-        /// 【活跃的判据】状态是 Downloading/Queued，**且**满足下面任一条：
+        /// 状态是 Downloading/Queued，**且**满足下面任一条：
         ///   · 最近 <see cref="SleepGuardStaleMinutes"/> 分钟内进度**真的前进过**；
         ///   · 正在合并分片（<see cref="TaskItem.Phase"/> 非空）——
         ///     合并期间 `Done` 不再增长，但它确实在干活，**不能当卡死**。
-        ///
-        /// 【为什么要"无进展超时"这一条】任务**卡死**时（worker 卡在掐不断的调用里、
+        /// 任务**卡死**时（worker 卡在掐不断的调用里、
         /// `Task.WhenAll` 永不返回）状态会永远停在 Downloading。只看状态就会一直保活、
         /// 电脑整夜不睡。加了超时后卡死也能正常睡 —— 未完成的任务下次启动会由
         /// 「未完成的任务」对话框提醒用户（`SyncPending` 收 Downloading 状态）。
-        ///
         /// ⚠️ 必须在 UI 线程调用（<see cref="SleepGuard"/> 是线程级的）。
         /// </summary>
         private void RefreshSleepGuard()
@@ -4301,10 +4236,8 @@ namespace GeZi
         }
 
         // ---------------- 任务列表右键菜单（单任务操作） ----------------
-        //
         // 移植自 Python Flet 版的 _pause_single / _resume_single / _cancel_single /
         // _task_del_local / _file_menu_popup（右键菜单）。
-        //
         // 为什么必须有：此前 C# 只有「全部暂停/恢复/取消」，一个跑得慢的任务
         // 会拖住整批，用户没法单独处理它 —— 这是下载工具的基本操作。
 
@@ -4317,7 +4250,7 @@ namespace GeZi
             var lbi = FindListBoxItem(e.OriginalSource as DependencyObject);
             if (lbi == null) return;
 
-            // ⚠️ 【2026-10-03 修】原来无条件 `TaskList.SelectedItem = ...` ——
+            // ⚠️ 原来无条件 `TaskList.SelectedItem = ...` ——
             //    这句会**把整个选择替换成这一个**，于是"Shift 离散多选之后再右键"
             //    多选立刻被清掉，菜单里的暂停/删除只作用到一个文件
             //    （用户反馈：「根本无法完成多选的情况下右键使用功能」）。
@@ -4338,8 +4271,7 @@ namespace GeZi
 
         /// <summary>
         /// 从右键菜单的动作里取出**要操作的全部任务**。
-        ///
-        /// 【2026-10-03】原来只取 `SelectedItem`（一个）—— 于是"Shift 离散多选之后
+        /// 原来只取 `SelectedItem`（一个）—— 于是"Shift 离散多选之后
         /// 右键暂停/删除"只会作用于其中一个（用户反馈）。现在把选中的全取出来；
         /// 没选中任何行时回退到菜单项自己的 Tag（行内按钮那条路径）。
         /// </summary>
@@ -4394,7 +4326,7 @@ namespace GeZi
                 //    没有这个标志的话下一帧就会把 Paused 覆盖掉（图标会来回跳）。
                 t.PauseRequested = true;
                 t.State = JobState.Paused;
-                // 【2026-10-15 晚 用户要求「暂停要立刻生效」】立刻把速度归零。
+                // 立刻把速度归零。
                 // 闸门式暂停的语义是"worker 跑完手上那一次读才阻塞"，所以在途请求还会回来
                 // 一点数据、核心层会继续上报 EWMA 渐降的速度；UI 若照单全收，用户看到的就是
                 // 「按了暂停、速度从 20MB/s 慢慢滑到 0」，以为没生效。
@@ -4441,7 +4373,7 @@ namespace GeZi
                 // 与 CancelAll 同理：立即置「取消中」，否则窗口期内它看着还是
                 // 「下载中」，用户点「清空已完成」清不掉会以为按钮坏了。
                 t.State = JobState.Cancelling;
-                // 【2026-10-03 用户反馈】「丢弃这些任务选择不进行续传的时候不会删除
+                // 「丢弃这些任务选择不进行续传的时候不会删除
                 //  取消续传的文件的分片和对应的其他文件」。
                 //  实测根因**不在"丢弃"那一步**（那条路径本来就删）：而是**被取消的任务
                 //  根本进不了「未完成的任务」列表** —— SyncPending() 只收
@@ -4462,15 +4394,13 @@ namespace GeZi
 
         /// <summary>
         /// 取消任务后清理它的本地残留：分片目录 / 续传元数据 / 未下完的目标文件。
-        ///
-        /// <para>【为什么要后台 + 重试】</para>
+        /// <para></para>
         /// <para>
         /// 取消是**异步**的：<c>CancelJob()</c> 只是发个信号，下载器可能还要几百毫秒
         /// 才放手 —— 正在写的分片文件此刻还占着句柄，立刻删会 IOException。
         /// 所以放到后台线程，每轮"先删再查"，直到目标消失或重试用尽。
         /// </para>
-        ///
-        /// <para>【为什么不用 TryDeletePath 的静默吞异常】</para>
+        /// <para></para>
         /// <para>
         /// 用户报的正是"删没删不知道"。这里把结果写进日志：成功报释放了多少，
         /// 失败也明说（并提示下次启动的自动清扫会兜底），不再静默。
@@ -4588,7 +4518,7 @@ namespace GeZi
         private void RemoveTaskRecord(TaskItem t)
         {
             if (t == null) return;
-            // ⚠️ 【2026-10-03 修】原来这里**漏了 Paused**：暂停中的任务被移除记录后，
+            // ⚠️ 原来这里**漏了 Paused**：暂停中的任务被移除记录后，
             // 它的 Job 仍然挂在调度器里（worker 阻塞在 PauseToken 的闸门上），
             // 于是 RunAllAsync 永远不返回 → `_batchRunning` 一直是 true
             // → 用户退出时永远弹「还有下载任务正在运行」，而且它还会留在
@@ -4613,7 +4543,6 @@ namespace GeZi
 
         /// <summary>
         /// 「删除本地文件」：清掉目标文件 + 分片目录 + .qmeta。
-        ///
         /// 与 Python 版 `_task_del_local` 对齐。关键细节：
         ///  - 先取消后台任务，否则 worker 还在写，删了又会重新创建；
         ///  - 文件被外部程序（播放器、资源管理器预览）占用时，用 MoveFileEx
@@ -4621,11 +4550,9 @@ namespace GeZi
         /// </summary>
         /// <summary>
         /// 「删除本地文件」= **不要这个任务了**：先取消下载，再删掉本地文件与分片。
-        ///
-        /// 【2026-10-03 用户明确】「在任务中一个任务正在下载中当我选择删除本地文件，
+        /// 「在任务中一个任务正在下载中当我选择删除本地文件，
         /// 就相当于我不要这个任务了，所以会进行取消下载并完成删除本地文件。
         /// 日志上只会显示已成功删除本地文件XXX」。
-        ///
         /// ⚠️ 取消条件里**必须包含 Paused**：暂停中的任务 Job 仍挂在调度器上
         /// （worker 阻塞在 PauseToken 闸门），只把任务从列表移走而不取消，
         /// `RunAllAsync` 就永不返回 → `_batchRunning` 一直 true
@@ -4673,7 +4600,7 @@ namespace GeZi
 
         private void DeleteLocalFiles(string dest, string name)
         {
-            // 【2026-10-17】单轮删除存在竞态：CancelJob() 只是发信号，
+            // 单轮删除存在竞态：CancelJob() 只是发信号，
             // worker 可能还在退避重试/ReadAsync 中没退出 —— 删完文件它又把
             // 分片文件、目标文件"复活"了（任务已从列表移除，下载器 finally
             // 的清理也已跑完或不会跑）→ 残留永久留下，重开显示"可续传"。
@@ -4714,12 +4641,10 @@ namespace GeZi
             delayed = 0;
 
             // 分片目录 + 续传元数据的清理。
-            //
-            // 【曾经的 Bug】这里原来写死 `dest + ".qparts"` / `dest + ".qmeta"`，
+            // 这里原来写死 `dest + ".qparts"` / `dest + ".qmeta"`，
             // **完全没有考虑「默认分片位置」设置** —— 一旦用户在设置页把分片根目录
             // 指到别处（或事后改过），分片实际落在 `{root}\{slug}_{fnv8}\parts`，
             // 而删除逻辑还在删目标旁边的 `.qparts`，于是"分片根本没删掉"。
-            //
             // 现在改为复用下载器**同一份**路径推导（SegmentedDownloader.ResolvePaths），
             // 并把「当前 + 历史用过的」全部根目录都覆盖到 —— 用户反复改过设置时，
             // 散落在多个旧根目录下的残片也能一次清干净。
@@ -4763,8 +4688,7 @@ namespace GeZi
 
         /// <summary>
         /// 把用户手输的目录规范化：去空白/去首尾引号，并统一分隔符。
-        ///
-        /// <para>【为什么必须做】用户可以在设置页**手输**下载目录，很容易输成
+        /// <para>用户可以在设置页**手输**下载目录，很容易输成
         /// `C:/Users/<用户名>/Downloads`（正斜杠）。而 `Path.Combine` 拼文件名时用的是 `\`，
         /// 于是得到 `C:/Users/<用户名>/Downloads\xxx.mp4` 这种**混合斜杠**路径。
         /// Windows 自己认，但**外部程序不一定认** —— VLC 就会把 `C:/…` 当成 URL
@@ -4779,12 +4703,10 @@ namespace GeZi
 
         /// <summary>
         /// 「打开」：交给**系统默认程序**处理。
-        ///
         /// ⚠️ 这不是"在 GeZi 里播放" —— 内嵌播放会受 WPF MediaElement 限制
         /// （底层是 Windows Media Player，不支持 mkv/flv）。
         /// 交给系统则**没有格式限制**：装了 VLC 就用 VLC，只装系统自带的就用
         /// 「电影和电视」，都没装则弹「选择打开方式」。
-        ///
         /// 边下边播时，只要目标文件已按序增长到可播位置，这里就能直接看。
         /// </summary>
         private void OnOpenTaskFile(object sender, RoutedEventArgs e)
@@ -4806,7 +4728,7 @@ namespace GeZi
                 return;
             }
 
-            // 【2026-10-04 用户反馈】「在软件内点播放无法播放这个文件，但从下载目录里
+            // 「在软件内点播放无法播放这个文件，但从下载目录里
             //  右键用播放器打开又能看」。
             //  实测：文件本身是**完好的**（987.72MB 全盘扫描无空洞），VLC 也能正常打开。
             //  真正的原因是**点的时机太早** —— 「独立分片（边下边播）」模式的目标文件
@@ -4830,7 +4752,7 @@ namespace GeZi
             }
 
             // 还没下完就点播放：给一句准确的说明，免得用户以为是文件坏了。
-            // 【2026-10-04 实测结论】这不是"GeZi 打不开"—— 即使用写句柄把文件锁住，
+            // 这不是"GeZi 打不开"—— 即使用写句柄把文件锁住，
             // VLC 照样能打开（实测 0 条错误日志），GeZi 的调用链也是对的。
             // 真正的原因是**文件只有按顺序拼好的那一段前缀**：
             //   · 前面几片还没到齐时，文件可能只有几十 KB；
@@ -4910,7 +4832,7 @@ namespace GeZi
                 Orientation = System.Windows.Controls.Orientation.Horizontal,
                 Margin = new Thickness(0, 8, 0, 12),
             };
-            // 【2026-10-17 用户要求】三个按钮「AI 味太浓」→ 改成透明背景的幽灵按钮。
+            // 三个按钮「模板感太浓」→ 改成透明背景的幽灵按钮。
             // 只保留文字 + 悬停反馈；「清空记录」是破坏性操作，用**红字**而不是红底
             // （红底实心块在这一排里视觉重量过重，且和旁边的白底描边不在一个体系）。
             var ghostStyle = TryFindResource("GhostButton") as Style;
@@ -5030,7 +4952,7 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-14 UI 重构】分类 Tab 切换。只改过滤器 + Refresh，
+        /// 分类 Tab 切换。只改过滤器 + Refresh，
         /// 不重建集合 —— 保证滚动位置、选中项、绑定都不受影响。
         /// </summary>
         private void OnTaskFilterChanged(object sender, RoutedEventArgs e)
@@ -5081,21 +5003,17 @@ namespace GeZi
         private void OnDiagnostics(DiagnosticsSnapshot snap)
         {
             if (snap == null) return;
-            // 【2026-10-15】必须先封送到 UI 线程，否则后面整段都是白干。
-            //
+            // 必须先封送到 UI 线程，否则后面整段都是白干。
             // `Diagnostics` 是裸 `Action<T>`：SegmentedDownloader 在**自己的主循环线程**里
             // 直接调用它（每 5 秒一次）。这和进度回调不一样 —— 那个走 `IProgress<T>`，
             // WPF 的 `Progress<T>` 会自动捕获 SynchronizationContext 并封送回 UI 线程。
-            //
             // 而下面要写 TaskItem 的属性（ActiveConnections / WorkerCount），setter 会触发
             // PropertyChanged → WPF 绑定引擎 → **只有创建绑定目标的那个线程（UI 线程）能碰它**。
             // 在下载线程里调就抛「调用线程无法访问此对象」，然后被本方法外层 try 的
             // `catch { }` 静默吞掉 ⇒ 任务行的「连接车道」永远不更新。
-            //
             // 用户实测症状（2026-10-15）：内核日志和**诊断面板**都有「活跃/总连接」数字，
             // 唯独任务行那条空着 —— 因为 `_diagLatest` 是 ConcurrentDictionary、写在异常之前，
             // 只有"写 TaskItem"这一跳断掉。速度/进度一直正常，正因为它们走 IProgress。
-            //
             // ⚠️ 这是 `3cfd4ae`（Ketch 式「连接车道」）引入时就带着的缺陷：在它之前
             //    OnDiagnostics 只写线程安全的字典，从不碰任何 UI 对象。
             if (!Dispatcher.CheckAccess())
@@ -5107,10 +5025,9 @@ namespace GeZi
             {
                 string key = string.IsNullOrEmpty(snap.Name) ? "(未命名)" : snap.Name;
                 _diagLatest[key] = snap;
-                
-                // 【2026-10-14】把连接数喂给任务行，驱动 Ketch 式「连接车道」。
-                //
-                // 【2026-10-15 修复】匹配键必须用**目标文件完整路径**，不能用文件名。
+
+                // 把连接数喂给任务行，驱动 Ketch 式「连接车道」。
+                // 匹配键必须用**目标文件完整路径**，不能用文件名。
                 //   旧写法 `t.Name == snap.Name` 拿的是"网盘原始文件名"对"落盘文件名"，
                 //   而落盘名经过 SanitizeFileName + UniquePath 加工，经常不等：
                 //     · 同名文件已存在 → 加 ` (1)` 后缀（实测用户 32 条历史里有 2 条如此）
@@ -5147,7 +5064,6 @@ namespace GeZi
 
         /// <summary>
         /// 打开独立诊断面板（移植并强化 Python Flet 版的诊断输出）。
-        ///
         /// <para>以前只有日志文本框，指标混在几百行日志里，要"看出来"得靠肉眼逐行扫。
         /// 面板把这些指标整理成表格并每 2 秒刷新 —— 一眼就能判断
         /// "是服务端限速还是客户端没发满连接"。</para>
@@ -5243,7 +5159,7 @@ namespace GeZi
             Grid.SetRow(gridCard, 2);
             root.Children.Add(gridCard);
 
-            // 【2026-10-17 用户要求】三个按钮「AI 味太重」→ 透明幽灵按钮
+            // 三个按钮「模板感太重」→ 透明幽灵按钮
             var diagGhost = TryFindResource("GhostButton") as Style;
             var copyBtn = new Button { Content = "复制诊断文本", Style = diagGhost };
             var clearBtn = new Button { Content = "清空", Style = diagGhost };
@@ -5333,15 +5249,13 @@ namespace GeZi
 
         /// <summary>
         /// 启动时在**后台线程**清扫过期分片残留（移植自 Python Flet 版的 `_sweep_stale_parts`）。
-        ///
-        /// <para>【为什么要做】</para>
+        /// <para></para>
         /// <para>
         /// 用户取消下载、改分片目录、或程序被强杀时，分片文件会留在磁盘上。
         /// 此前 C# 版**没有任何自动回收机制** —— 残留只增不减，用户会明显感到
         /// "磁盘越用越少"却找不到元凶（分片目录默认还是隐藏的）。
         /// </para>
-        ///
-        /// <para>【判定与安全】</para>
+        /// <para></para>
         /// <list type="bullet">
         /// <item>只看**文件 mtime**：正在下载的分片 mtime 持续刷新，永远不会被误删；</item>
         /// <item>扫的是 <see cref="AllPartsRoots"/> —— **当前生效 + 历史上用过的**全部根目录，
@@ -5349,8 +5263,7 @@ namespace GeZi
         /// <item>删不掉（被占用/权限不足）就跳过，绝不因此影响下载；</item>
         /// <item>全程 try/catch，任何异常都只记日志。</item>
         /// </list>
-        ///
-        /// <para>【已知副作用（有意为之）】</para>
+        /// <para></para>
         /// <para>
         /// 中断/暂停超过 <see cref="PartsSweeper.DefaultMaxAgeDays"/> 天的下载，
         /// 其分片会在下次启动被清掉，该任务无法续传（需从 0 重下）。
@@ -5398,23 +5311,20 @@ namespace GeZi
 
         /// <summary>
         /// 启动时读取未完成任务记录，让用户决定**逐条/批量续传**，而不是只提示一句。
-        ///
-        /// <para>【为什么改了原来的做法】</para>
+        /// <para></para>
         /// <para>
         /// 原实现只弹「有 N 个未完成任务，是否打开下载目录？」—— 用户点「是」也只是
         /// 打开文件夹，要真正继续还得自己重新走一遍解析/选文件的流程，很别扭。
         /// Python Flet 版在这里是**逐条询问 + 支持一键全部继续**，体验明显更好。
         /// </para>
-        ///
-        /// <para>【续传怎么做到的】</para>
+        /// <para></para>
         /// <para>
         /// 直链带时效签名，重启后必然失效，所以必须**重新取链**。为此
         /// <see cref="PendingTask"/> 补齐了 fid / token / 分享上下文（见其注释），
         /// 使这里可以脱离界面上下文重走「取链 → 入队」。分片与 .qmeta 都在原地，
         /// 下载器会自动接着下，不会重下已完成的部分。
         /// </para>
-        ///
-        /// <para>【安全阀】</para>
+        /// <para></para>
         /// <para>
         /// 批量续传会一次性打出若干取链请求 —— 与"一次误选几万个文件"是同类风险。
         /// 因此数量超过 <see cref="ConfirmThreshold"/> 时先让用户确认；
@@ -5425,8 +5335,7 @@ namespace GeZi
 
         /// <summary>
         /// 启动检查确认有新版本后的回调（UI 线程）。
-        ///
-        /// 【按需求：不弹窗打断】只做两件"不抢焦点"的事：托盘气泡 + 日志行。
+        /// 只做两件"不抢焦点"的事：托盘气泡 + 日志行。
         /// 真正的窗口等用户去「关于」页点「检查更新」才出现。
         /// ⚠️ 图标传 null：NotifyToast 会把它隐藏（实测过它处理 null）——
         ///    这里刻意**不用**系统气泡（ShowBalloonTip 在 Win10/11 会变成黑疙瘩图标）。
@@ -5485,7 +5394,7 @@ namespace GeZi
             Grid.SetRow(head, 1);
             root.Children.Add(head);
 
-            // 【2026-10-03 用户反馈】「续传界面的文件前面有个对勾太误导人了，
+            // 「续传界面的文件前面有个对勾太误导人了，
             //  让人以为已经自动勾选了」。
             //  原来是在 Display 字符串前面拼了一个 "✓"（表示"可续传"），可它长得
             //  就像"已勾选"；再加上 ListBox 的选中蓝底，整行看起来就是"已经选好了"，
@@ -5527,7 +5436,7 @@ namespace GeZi
 
             dlg.Content = root;
 
-            // 【用户反馈】「没勾任何文件时『继续下载』是灰的，用不了」。
+            // 「没勾任何文件时『继续下载』是灰的，用不了」。
             // 这个禁用态本身是对的（一个都没勾时点它没有任何意义），
             // 真正的问题是上面那个假对勾让人以为已经勾好了 —— 现在换成真复选框，
             // 并让按钮状态**实时跟着勾选走**：勾一个立刻变亮，全取消立刻变灰。
@@ -5566,8 +5475,7 @@ namespace GeZi
             {
                 // 丢弃 = 清 pending + 清该任务的全部本地残留
                 //（分片目录 / 续传元数据 / **未下完的目标文件**；网盘上的文件保留）。
-                //
-                // 【2026-10-03 用户反馈】「丢弃这些任务的时候不会删除分片和对应的其他文件」。
+                // 「丢弃这些任务的时候不会删除分片和对应的其他文件」。
                 //  这里补两处：
                 //   ① 原来只删分片目录与 .qmeta，**没删目标文件** —— 而共写模式的目标文件
                 //      是预分配的满尺寸文件（可能是几百 MB 的空洞文件），留着最占地方；
@@ -5648,8 +5556,7 @@ namespace GeZi
 
         /// <summary>
         /// 续传列表的行模板：**真正的复选框** + 文件名（+ 大小 / 不可续传的说明）。
-        ///
-        /// <para>【为什么不用 DisplayMemberPath】</para>
+        /// <para></para>
         /// <para>
         /// 原来用 <c>DisplayMemberPath = "Display"</c>，只能在文字里拼一个 "✓" 冒充勾选态，
         /// 用户明确反馈「文件前面有个对勾太误导人了，让人以为已经自动勾选了」。
@@ -5695,7 +5602,7 @@ namespace GeZi
             {
                 Task = t;
                 // 一行要能一眼看出"这是哪个文件、多大、能不能接着下"。
-                // 【用户反馈 2026-10-03】原来这里在文件名前面拼了一个 "✓"/"✕"，
+                // 原来这里在文件名前面拼了一个 "✓"/"✕"，
                 // 那是"能不能续传"的标记，却长得就像"已经勾选" —— 用户以为文件被
                 // 自动勾上了，于是点了「继续下载」却发现按钮是灰的。
                 // 现在前缀去掉：能不能续传看**复选框是否可用**（不可续传的复选框置灰），
@@ -5726,17 +5633,14 @@ namespace GeZi
 
         /// <summary>
         /// 批量续传：为每个任务重新取链并入队下载。
-        ///
         /// <para>取链按 <see cref="PendingTask.FromShare"/> 分流，复用与首次下载相同的接口。
         /// 任一任务取链失败不影响其他任务（逐条 try/catch 并记日志）。</para>
         /// </summary>
         /// <summary>
         /// 续传前确保拿到一个可用的客户端。
-        ///
-        /// <para>【为什么要它】启动时的自动登录是异步的，而续传框弹得很早
+        /// <para>启动时的自动登录是异步的，而续传框弹得很早
         /// （Idle 优先级），用户可能先点了「继续下载」。此时全局客户端还没赋值，
         /// 旧代码会直接放弃续传 —— 用户只觉得"点了没反应"。</para>
-        ///
         /// <para>顺序：① 已有客户端直接用；② 等启动时那次自动登录（最多 15 秒）；
         /// ③ 还不行就用保存的 Cookie 现建一个（取直链只需要 Cookie，
         /// 昵称/头像的校验可以后补）；④ 都没有才返回 null。</para>
@@ -5776,7 +5680,7 @@ namespace GeZi
 
         private async Task ResumePendingBatchAsync(List<PendingTask> tasks)
         {
-            // 【2026-10-04 用户反馈】「弹出续传窗口时我点继续下载，但左下角的账号卡
+            // 「弹出续传窗口时我点继续下载，但左下角的账号卡
             //  还没显示登录，这时会怎么样？」
             // 查证：续传框是在 Idle 优先级弹的，而自动登录（ValidateAsync + 走 Python 桥
             // 取昵称/头像）是**异步**的，很可能还没跑完 —— 此时客户端字段仍是 null，
@@ -5815,7 +5719,7 @@ namespace GeZi
                         {
                             // 分享模式：先用记录里的 pwd_id/stoken/token 重取（GetShareDownloadAsync
                             // 的参数是显式传入的，不依赖客户端的"当前分享"状态）。
-                            // 【2026-10-17】stoken 一般几小时~几天就过期，过期后这一路必失败。
+                            // stoken 一般几小时~几天就过期，过期后这一路必失败。
                             // 交给 GetShareLinkWithReResolveAsync：旧凭证失败就自动重解析分享
                             // （换新 stoken + 新 share_fid_token）再试 —— 用户点一次续传即自愈。
                             url = await GetShareLinkWithReResolveAsync(
@@ -5858,7 +5762,7 @@ namespace GeZi
                                 PwdId = p.PwdId, Stoken = p.Stoken, Passcode = p.Passcode,
                                 Fid = p.Fid, Token = p.Token, FromShare = p.FromShare,
                                 RelDir = p.RelDir ?? "", Dest = dest, Size = p.Size,
-                                // 【2026-10-17】自动重解析分享的上下文（stoken 过期自愈用）。
+                                // 自动重解析分享的上下文（stoken 过期自愈用）。
                                 // 上面取链若触发过重解析，p.Stoken/p.Token 已是新值。
                                 StartFid = p.StartFid, ShareRelDir = p.ShareRelDir,
                             },
@@ -5902,7 +5806,7 @@ namespace GeZi
             {
                 if (p.FromShare)
                 {
-                    // 【2026-10-17】与续传入队同理：旧 stoken 过期就自动重解析分享换新凭证。
+                    // 与续传入队同理：旧 stoken 过期就自动重解析分享换新凭证。
                     // 写回 p.Stoken/p.Token —— job.Pending 是引用：本次换链立即用上新值，
                     // 之后落盘的 PendingTask（保存时从 pi 序列化）也是新值。
                     return await GetShareLinkWithReResolveAsync(
@@ -5927,8 +5831,7 @@ namespace GeZi
         /// 免转存取链：先用手头的（可能已过期的）stoken / share_fid_token 试一次；
         /// 失败就**自动重解析分享** —— 重新申请 stoken、沿 ShareRelDir 逐级展开定位
         /// 目标文件拿到新的 share_fid_token，再取一次链。
-        ///
-        /// 【为什么】免转存续传原先只认"保存下来的旧 stoken"，它一般几小时~几天就过期，
+        /// 免转存续传原先只认"保存下来的旧 stoken"，它一般几小时~几天就过期，
         /// 过期后 <see cref="QuarkClient.GetShareDownloadAsync"/> 一律失败：
         /// 点续传 → 该任务被跳过；下载中换链 → 任务中止。用户只能手动重新解析分享。
         /// 现在改成点一次续传/换链即自愈（分享被取消/改密码仍救不回，如实返回 null
@@ -6080,7 +5983,6 @@ namespace GeZi
             return null;
         }
 
-
         // ---------------- 播放器探测（边下边播用） ----------------
 
         /// <summary>刷新设置页的播放器状态文案（同步版，供启动阶段调用）。</summary>
@@ -6226,7 +6128,7 @@ namespace GeZi
                 ConcurrentBox.Text = _settings.ConcurrentTasks.ToString();
                 OutDirBox.Text = _settings.OutDir;
                 AutoCleanCheck.IsChecked = _settings.AutoClean;
-                // 【2026-10-17 用户要求】"默认留空的是哪一个目录，直接打上去"
+                // "默认留空的是哪一个目录，直接打上去"
                 // 原语义「留空 = 与目标文件同目录」没有单一目录，用户看不到分片会去哪。
                 // 现在：留空就落到**下载目录**，并且同步写进设置 —— 保证"看到的就是生效的"。
                 if (!string.IsNullOrWhiteSpace(_settings.PartsRoot))
@@ -6266,17 +6168,14 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-02 改造】设置改为**即时生效**，不再有「保存设置」按钮。
-        ///
+        /// 设置改为**即时生效**，不再有「保存设置」按钮。
         /// 各控件的触发时机（见 MainWindow.xaml 的事件绑定）：
         ///   · ComboBox  → SelectionChanged（选中即生效）
         ///   · CheckBox  → Click（勾选即生效）
         ///   · TextBox   → LostFocus（移开焦点才生效）+ KeyDown 回车立刻生效
-        ///
         /// 为什么文本框不用 TextChanged：每敲一个字符都会 RecreateScheduler()，
         /// 正在下载时反复重建调度器代价很大，而且中间态（如 "1" → "12"）会被
         /// 当成有效值落盘。用 LostFocus 是最稳的折中。
-        ///
         /// _applyingSettings 是重入保护：LoadSettingsToUi() 里给控件赋值同样会
         /// 触发 SelectionChanged/Click，若不挡住会在启动时把默认值写回覆盖用户配置。
         /// </summary>
@@ -6313,18 +6212,15 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-17 用户指正后重做】主题切换 = 「双快照 + 圆形揭示」。
-        ///
+        /// 主题切换 = 「双快照 + 圆形揭示」。
         /// 旧实现（已废弃）：动画期间只放大一个**纯色圆**，底层 UI 一直是旧主题 ——
         /// 用户看到的只是"一块颜色在放大"，而不是新界面被揭开。
-        ///
         /// 新实现（Material You 的做法）：
         ///   ① 切换前先抓一张**旧 UI 快照**；
         ///   ② 立刻换肤 + UpdateLayout，再抓一张**新 UI 快照**；
         ///   ③ 覆盖层叠两张图：底 = 旧快照，上 = 新快照（EllipseGeometry 裁剪）；
         ///   ④ 动画只改裁剪圆半径，从点击点向外扩展 ——
         ///      每一帧露出来的都是**已经完成切换的新 UI**。
-        ///
         /// ⚠️ ①②③ 全在同一个 UI 线程消息里同步执行（中间没有 await），
         ///    WPF 不会渲染中间态，用户看不到"直接跳变"。
         /// ⚠️ 换肤后的收尾（存配置 / 日志 / 提示文案）放在动画 Completed 里，
@@ -6425,7 +6321,6 @@ namespace GeZi
                     return;
                 }
 
-                // 【2026-10-17 用户反馈「开始扩散还是太晚」→ **不再等滑块**，点击就扩散。
                 // 2026-10-18 用户又反馈「切换时整个界面特别模糊」→ 旧快照改回全分辨率
                 // （0.6 倍快照铺满全窗必然糊）。现在唯一的前置耗时是抓旧图（全分辨率 ≈ 100ms）；
                 // 抓完立刻换肤 + 上圆形 Clip，滑块与扩散**同时进行** ——
@@ -6467,7 +6362,7 @@ namespace GeZi
 
                 if (ThemeSystemRadio.IsChecked == true)
                 {
-                    // 【2026-10-17 用户要求】去掉括号里的「（当前系统为浅色）」——
+                    // 去掉括号里的「（当前系统为浅色）」——
                     // 选了「跟随系统」后当前是什么色，界面本身就是答案，这句是噪音。
                     ThemeHintText.Text = "跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。";
                 }
@@ -6613,10 +6508,8 @@ namespace GeZi
 
         /// <summary>
         /// 在资源管理器中打开「分片/缓存根目录」。
-        ///
-        /// 【2026-10-04 用户要求】原来这一行只有「浏览…」，用户希望像「下载目录」那样
+        /// 原来这一行只有「浏览…」，用户希望像「下载目录」那样
         /// 也能一键打开所在目录。
-        ///
         /// 与 <see cref="OnOpenOutDir"/> 的差异（刻意如此）：
         ///   - 留空时的语义是"与目标文件同目录"，没有单一目录可开 ——
         ///     此时**回退到下载目录**（目标文件默认就下在那里），而不是报错。
@@ -6666,17 +6559,13 @@ namespace GeZi
 
         /// <summary>
         /// 应用设置变更。
-        ///
-        /// 【不要在有下载在跑时 Dispose 重建 scheduler】
         /// 曾经的实现是无条件 Dispose + new。但保存设置（改并发/连接预算）时
         /// 下载往往正在跑：Dispose 会把内部 SemaphoreSlim 一起释放，
         /// 而此刻 RunOneAsync 正持有它 —— 接下来的 sem.Release() 就抛
         /// ObjectDisposedException("已释放该信号量")，任务被中断且提示莫名其妙。
-        ///
         /// 更隐蔽的后果：RunJobs 读的是字段 _scheduler，旧对象被 Dispose 后
         /// 新对象上位，于是"正在跑的那批"用旧限流、"新点的"用新限流 ——
         /// 两个 scheduler 并存，ConcurrentTasks 限流直接失效。
-        ///
         /// 现在的策略：
         ///   - 空闲时：正常重建（新并发数立即生效）
         ///   - 下载中：只更新 SettingsStore，并提示"并发数将在下次下载生效"。
@@ -6749,7 +6638,7 @@ namespace GeZi
 
         // ---------------- 登录 ----------------
 
-        // 【2026-10-17】原来的 OnLoginClick（只是 Tabs.SelectedIndex = 3）已随「登录」按钮一起删除：
+        // 原来的 OnLoginClick（只是 Tabs.SelectedIndex = 3）已随「登录」按钮一起删除：
         // 那个按钮和左侧「获取二维码」、下方「导入 Cookie」重复，用户反馈「没有任何作用」。
 
         /// <summary>
@@ -6758,7 +6647,7 @@ namespace GeZi
         /// </summary>
         private void OnOpenAccounts(object sender, RoutedEventArgs e)
         {
-            // 【2026-10-17 用户要求】未登录且**一个已保存账号都没有**时，
+            // 未登录且**一个已保存账号都没有**时，
             // 直接取二维码并提示扫码（而不是弹一个空列表让人更困惑）。
             if (_client == null)
             {
@@ -6839,7 +6728,7 @@ namespace GeZi
             rebuild();
 
             var scanBtn = DialogChrome.PrimaryButton("扫码登录新账号");
-            // 【2026-10-03】「退出登录」按钮已按用户要求删除 ——
+            // 「退出登录」按钮已按用户要求删除 ——
             // 用户原话：「这里退出登录有啥用啊，也不能一键切回。直接删掉这个功能，
             //           想退出的人直接删账号就行了根本不用点这一个」。
             // 所以退出登录只剩**一条**路径：在账号列表里删掉当前账号
@@ -6871,7 +6760,7 @@ namespace GeZi
         private Border BuildAccountRow(AccountProfile acc, string curKey, string curCookie,
             Window owner, Action rebuild)
         {
-            // 【2026-10-03 修】原来只拿整串 Cookie 比字符串，而运行时 Cookie 会被
+            // 原来只拿整串 Cookie 比字符串，而运行时 Cookie 会被
             // 重建/刷新（顺序、条目都会变）→ 永远比不中 → 当前账号的「切换」按钮
             // 居然还是可点的（用户反馈：「当我正在登录对应的账号的时候它的切换应该是不可使用的」）。
             // 现在优先比 Key（夸克返回的 uid，稳定），Cookie 只作兜底。
@@ -6945,7 +6834,7 @@ namespace GeZi
             {
                 string tip = "将删除本机保存的账号「" + acc.DisplayName + "」的登录信息，" +
                              "之后要切回它需要重新扫码登录。";
-                // 【2026-10-03】用户反馈「删除时是否真会把对应的 cookie 完全删除，
+                // 用户反馈「删除时是否真会把对应的 cookie 完全删除，
                 // 旧版 Python Flet 版就删了但是账号还存在」—— 确实是那个问题：
                 // 删档案只删了 accounts/{key}.xml，但**当前账号的 Cookie 还留在
                 // GeZi.config.xml 里**，所以程序看起来还是登录状态。
@@ -7000,7 +6889,7 @@ namespace GeZi
 
         private async void OnQrLogin(object sender, RoutedEventArgs e)
         {
-            // 【2026-10-17】「刷新」按钮又加回来了（用户要求）：它和「获取二维码」共用本方法，
+            // 「刷新」按钮又加回来了（用户要求）：它和「获取二维码」共用本方法，
             // 点哪个都是重新取一张。区别只是语义 —— 获取=第一次，刷新=重取。
             var src = sender as Button;
 
@@ -7017,7 +6906,7 @@ namespace GeZi
 
             QrLoginBtn.IsEnabled = false;
             QrRefreshBtn.IsEnabled = false;
-            // 【2026-10-18 用户要求】「刷新」只在获取二维码之后出现 —— 点了「获取二维码」
+            // 「刷新」只在获取二维码之后出现 —— 点了「获取二维码」
             // 就意味着进入了二维码场景，此时让它显示；收起二维码（过期/登录成功）时再隐藏。
             QrRefreshBtn.Visibility = Visibility.Visible;
             SetQrStatus("正在获取二维码…", "#333");
@@ -7133,7 +7022,6 @@ namespace GeZi
 
         /// <summary>
         /// 更新状态提示文本（含颜色与图标），并确保提示框可见。
-        ///
         /// colorHex 仍是调用方给的十六进制色（保持原有调用点不动），但**图标**按语义挑：
         /// 不再无脑用黄三角 —— 「正在等待扫码」是正常流程，配警告图标会让人以为出错了。
         /// </summary>
@@ -7151,8 +7039,7 @@ namespace GeZi
 
         /// <summary>
         /// 把 <see cref="SetQrStatus"/> 传入的色值字符串解析成**跟随主题**的画刷。
-        ///
-        /// 【为什么不能直接用那个色值】调用方写的是硬编码十六进制（`#333` / `#C0392B`…），
+        /// 调用方写的是硬编码十六进制（`#333` / `#C0392B`…），
         /// 其中 `#333`（近黑）在**深色主题下会完全看不见** —— 而这是登录页的状态提示，
         /// 用户看不到就不知道"到底在等什么"。所以这里把"色值"当作**语义标签**，
         /// 原样映射到主题令牌：
@@ -7289,7 +7176,7 @@ namespace GeZi
             // 收起二维码后把占位框放回来，保证左卡高度不跳。
             if (QrPlaceholderBox != null)
                 QrPlaceholderBox.Visibility = Visibility.Visible;
-            // 【2026-10-18 用户要求】没有二维码时「刷新」不露面（回到"未获取"状态）。
+            // 没有二维码时「刷新」不露面（回到"未获取"状态）。
             QrRefreshBtn.Visibility = Visibility.Collapsed;
         }
 
@@ -7318,7 +7205,7 @@ namespace GeZi
         /// 从**文件**导入 Cookie 并登录。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03 新增】用户反馈「为什么没有导入 cookie 文件进行登录的功能」——
+        /// 用户反馈「为什么没有导入 cookie 文件进行登录的功能」——
         /// 原来只能把 Cookie 文本粘进输入框，而浏览器扩展导出的是**文件**。
         /// 支持 .json（Cookie-Editor / EditThisCookie 的导出格式）与 .txt（原始 Cookie 串），
         /// 解析交给 <see cref="GeZi.Core.Support.CookieText"/>。
@@ -7409,10 +7296,9 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 【2026-10-18 用户要求】备选登录：拉起默认浏览器，在网页里扫码登录夸克网盘，
+        /// 备选登录：拉起默认浏览器，在网页里扫码登录夸克网盘，
         /// 再把浏览器里的 Cookie 拿回来粘贴导入。
-        ///
-        /// 【为什么需要它】应用内二维码登录走的是 OpenSSL 桥（pan.quark.cn 那个
+        /// 应用内二维码登录走的是 OpenSSL 桥（pan.quark.cn 那个
         /// 必须过 WAF 的请求），个别网络/系统环境下可能失败；浏览器登录是最通用的兜底。
         /// 夸克网页版本身支持扫码登录，用户登录后从浏览器拿 Cookie 粘回来即可。
         /// </summary>
@@ -7454,7 +7340,7 @@ namespace GeZi
         /// 退出登录：清掉内存里的客户端 + 配置里保存的 Cookie/昵称/头像。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03】登录页那个「登出」按钮已按用户要求删掉，但这个能力没丢 ——
+        /// 登录页那个「登出」按钮已按用户要求删掉，但这个能力没丢 ——
         /// 它被挪进了「切换账号」窗口（那里才是账号管理的地方），
         /// 并且**删除当前账号时也会走这里**（否则只删档案、Cookie 还在配置里，
         /// 表现为"删了但账号还存在"，正是用户反馈的旧版问题）。
@@ -7464,7 +7350,7 @@ namespace GeZi
             try { _client?.StopKeepAlive(); } catch { }
             _client?.Dispose();
             _client = null;
-            // 【2026-10-11】登出同样是"换账号"：直链 / 目录缓存 / 导航快照都要作废，
+            // 登出同样是"换账号"：直链 / 目录缓存 / 导航快照都要作废，
             // 否则下次登录别的账号会看到上一个账号的网盘内容（见 InvalidateAccountCaches）。
             InvalidateAccountCaches();
             _settings.Cookie = "";
@@ -7473,7 +7359,7 @@ namespace GeZi
             _settings.CurrentAccountKey = "";
             SettingsStore.Save(_settings);
             UpdateAccountCard(null, 0, 0);
-            // 【2026-10-17 二次修改】登出后**不再隐藏**「切换账号」——
+            // 登出后**不再隐藏**「切换账号」——
             // 它现在同时是"未登录时的登录入口"（有已保存账号就叫「选择账号」）。
             // 可见性与文案统一由 SyncLoginPageState 控制（UpdateAccountCard 内部会调到）。
             // 若正停在「我的网盘」模式，把文件列表清空 —— 已登出，那些内容不再属于任何人。
@@ -7544,7 +7430,7 @@ namespace GeZi
                     // （登录成功 → 显示「切换账号」），这里不再单独设。
                     Log("登录成功: " + nick);
 
-                    // 【2026-10-11】若此刻正停在「我的网盘」模式，缓存/快照刚被清空，
+                    // 若此刻正停在「我的网盘」模式，缓存/快照刚被清空，
                     // 界面还挂着旧账号的文件列表 → 立刻重置并加载**新账号**的根目录，
                     // 否则用户会在切页时看到旧内容（正是本次要修的 bug）。
                     if (!ShareMode)
@@ -7571,7 +7457,6 @@ namespace GeZi
 
         /// <summary>
         /// 账号卡上那个小刷新按钮：**重新校验登录态 + 拉最新昵称/头像/容量**。
-        ///
         /// 与定时刷容量的区别：定时那条只刷容量（省请求），这个按钮是用户主动点的，
         /// 所以连登录态一起重新校验 —— 万一登录其实已经失效，点一下就能看出来。
         /// </summary>
@@ -7583,11 +7468,9 @@ namespace GeZi
 
         /// <summary>
         /// 取**真实**的账号昵称与头像（登录时、手动刷新时共用这一份）。
-        ///
-        /// 【为什么必须共用】`ValidateAsync` 里的昵称**永远**是兜底的"已登录用户" ——
+        /// `ValidateAsync` 里的昵称**永远**是兜底的"已登录用户" ——
         /// account/info 挂在 `pan.quark.cn`，.NET 的 SChannel 必然被 WAF RST（见上面长注释）。
         /// 真名和头像只能借 Python 桥（OpenSSL 3.5.7 能过）。
-        ///
         /// ⚠️ **踩过的坑**：手动刷新那一版只调了 `ValidateAsync`、没走 Python 桥，
         /// 于是把好名字覆盖成了"已登录用户"（用户实测：「点了右上角刷新之后我的名字没了」）。
         /// 所以刷新与登录**必须走同一个方法**。
@@ -7671,7 +7554,6 @@ namespace GeZi
 
         /// <summary>
         /// 登录已失效的统一提示（心跳发现 / 手动刷新发现 都走这里）。
-        ///
         /// 三件事一起做，缺一不可：
         ///   ① 账号卡变成"登录已过期"的红色状态（否则界面还显示着已登录，用户不知道）；
         ///   ② 弹一条托盘通知（用户可能正把窗口收在托盘里）；
@@ -7710,7 +7592,6 @@ namespace GeZi
 
         /// <summary>
         /// 定时刷容量（默认 5 分钟，与保活心跳同频）。
-        ///
         /// 原来容量**只在启动那一次拉取**，所以下载完一批文件后卡片上的
         /// "已用 / 总量"还是启动时的数字（用户问「账号状态多久刷新一次」时发现的）。
         /// 这里补上定时刷新；隐藏到托盘时也照刷（一个很轻的接口）。
@@ -7742,11 +7623,9 @@ namespace GeZi
         }
 
         // ---------------- 窗口关闭 / 托盘驻留 ----------------
-        //
-        // 【历史】2026-10-02 曾整套删掉"关闭到托盘"：那时点 × 就隐藏，但**没有可发现的
+        // 2026-10-02 曾整套删掉"关闭到托盘"：那时点 × 就隐藏，但**没有可发现的
         // 退出入口**，用户以为关了其实还在跑，再点 exe 又因为找不到可见窗口而"什么都不弹"。
-        //
-        // 【2026-10-03 恢复】用户要求加回后台功能 + 小窗，并明确了行为：
+        // 用户要求加回后台功能 + 小窗，并明确了行为：
         //   「第一次时会询问用户，然后可以选择最小化托盘或者是直接关闭程序，
         //     并且在这个弹窗的右下角可以勾选此后不再提示，在设置中可以修改」。
         // 所以现在的语义是：`AppSettings.OnCloseButton` 决定 ——
@@ -7905,7 +7784,6 @@ namespace GeZi
 
         /// <summary>
         /// 主题切换后重画托盘图标（2026-10-04 新增）。
-        ///
         /// 订阅在 <see cref="InitTray"/> 里（此时 _tray 才存在），退出时在
         /// <see cref="ExitApp"/> 前面的 Dispose 路径里已经 Dispatcher 掉了 —— 但为了
         /// 不留悬挂引用，OnExit 之前若窗口已关，事件仍持有 this；这里用弱式保护：
@@ -7999,8 +7877,7 @@ namespace GeZi
         // ============================================================
         // 侧栏导航 ↔ 内容区 双向同步
         // ============================================================
-        //
-        // 【为什么是双向】上一轮把侧栏放在 TabControl 的 ControlTemplate 里，
+        // 上一轮把侧栏放在 TabControl 的 ControlTemplate 里，
         // 结果模板内的 x:Name 不是类字段，账号卡根本访问不到（CS0103）。
         // 这一轮把侧栏搬成 MainWindow 里的独立 ListBox，于是需要两处同步：
         //   · 用户点侧栏 ListBox  → 要把 Tabs.SelectedIndex 跟过去
@@ -8008,7 +7885,6 @@ namespace GeZi
         //                         → 要把 NavList.SelectedIndex 跟过来
         // 判等是防死循环的关键：不加判等，两边会互相触发 SelectionChanged
         // 形成无限递归（WPF 里表现为栈溢出崩掉，或界面卡死）。
-        //
         // 用 SelectionChanged 事件而不是 SelectedIndex 依赖属性回调：
         // 事件在属性值真的变化时才触发，语义更贴合，也不引入额外的绑定开销。
 
@@ -8082,10 +7958,9 @@ namespace GeZi
         /// 异步把账号头像图加载到 <paramref name="img"/>；拿不到就保持"昵称首字"回退显示。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03】用户要求「我登录账号后希望能够显示账号的名称还有账号图片」。
+        /// 用户要求「我登录账号后希望能够显示账号的名称还有账号图片」。
         /// 名称本来就在显示（侧栏账号卡 + 登录页都会显示昵称）；头像原来只有
         /// "昵称首字 + 散列底色"的占位，这里补上真实头像。
-        ///
         /// ⚠️ 头像 URL 是**探测**出来的（夸克没公开字段名，Python 版也从没用过），
         ///    可能为空、也可能过期 —— 所以**任何失败都必须静默回退**，
         ///    绝不能让"拿不到头像"这件事冒出错误提示或影响登录。
@@ -8134,7 +8009,7 @@ namespace GeZi
                 img.Tag = url;      // 记住已加载的 URL，避免重复下载
                 img.Visibility = Visibility.Visible;
                 if (fallback != null) fallback.Visibility = Visibility.Collapsed;
-                // 【2026-10-03】成功**不写日志** —— 用户要求「这两个就不要在日志中显示了，
+                // 成功**不写日志** —— 用户要求「这两个就不要在日志中显示了，
                 // 他们俩失败时才显示失败」。下面 catch 里的失败日志保留。
             }
             catch (Exception ex)
@@ -8148,18 +8023,15 @@ namespace GeZi
             }
         }
 
-        //
-        // 【为什么要收拢成一个方法】原来"账号/容量"散在 5 处直接给
+        // 原来"账号/容量"散在 5 处直接给
         // AccountText.Text / CapacityText.Text 赋值，措辞还各不相同
         // （"已登录: 已登录用户" / "未登录（Cookie 无效）"）。字面量拼在
         // 调用点，想统一改个措辞就要翻五处，极易漏改。现在全部走这一个入口。
-        //
         // nick 为 null / 空 = 未登录态。
 
         /// <summary>
         /// 刷新左下角账号卡。
-        ///
-        /// 【为什么容量区不再 Collapsed】卡片高度必须**两种状态一致**，
+        /// 卡片高度必须**两种状态一致**，
         /// 否则登录/登出时整张卡会明显跳高跳矮（用户截图反馈过）。
         /// 现在未登录也保留容量条的位置，只是画成 0 值的灰色空槽。
         /// </summary>
@@ -8210,14 +8082,11 @@ namespace GeZi
                     CapacityBar.Value = pct;
 
                     // 状态色编码（绿 → 琥珀 → 红）。
-                    //
-                    // 【2026-10-03 用户问「剩余容量小于 1G 会变红吗」——原来**不会**，
                     //  只看占用率。但纯百分比对两种极端都不合理：
                     //   · 10TB 账号用掉 99.99%（剩 1GB）→ 其实已经快满了，红是对的；
                     //   · 5GB 账号用掉 82%（剩 0.9GB）→ 只剩不到 1G 了却是琥珀，不合理。
                     //  所以补一条**绝对阈值**：剩余不足 1GB 也直接判红。】
-                    //
-                    // 【2026-10-03 再补】用户问「夸克容量能超过默认值，比如 20G/10.4G，
+                    // 用户问「夸克容量能超过默认值，比如 20G/10.4G，
                     //  这时进度条什么颜色？我希望保持红色」。
                     //  pct 已被上面 Clamp 到 100（所以进度条是**满格**而不是溢出/归零），
                     //  但 free = total - used 会变成负数 → freeTooLow 自然为真 → 红。
@@ -8274,7 +8143,7 @@ namespace GeZi
                     LoginAvatarImage.Visibility = Visibility.Collapsed;
                     LoginAvatarText.Visibility = Visibility.Visible;
                     LoginWhoText.Text = "未登录";
-                    // 【2026-10-17 用户反馈】"我有两个账号，删掉正在登录的那个之后
+                    // "我有两个账号，删掉正在登录的那个之后
                     // 就再也没有登录入口了 —— 明明另一个账号还在。"
                     // 根因：未登录时把「切换账号」按钮整个隐藏了，而它同时也是账号选择入口。
                     // 现在未登录也显示，并按"有没有已保存账号"换文案/行为：
@@ -8320,8 +8189,7 @@ namespace GeZi
         /// <summary>
         /// 同步两个列表的「空状态插画」可见性。
         /// 纯皮肤逻辑：集合没内容（或筛选后全被过滤掉）时显示提示，否则隐藏。
-        ///
-        /// 【2026-10-02 改造】现在还会参考"是否正在加载"：
+        /// 现在还会参考"是否正在加载"：
         /// 加载中显示"正在加载…"，加载完且为空才显示"还没有内容"。
         /// 不加这个判断的话，加载的几百毫秒里会闪出"还没有内容"，误导用户。
         /// </summary>
@@ -8363,8 +8231,7 @@ namespace GeZi
 
         /// <summary>
         /// 合并版 <see cref="UpdateEmptyStates"/>：置个标记，攒到本轮 UI 空闲时才算一次。
-        ///
-        /// 【为什么要合并】往列表里铺目录时集合会连着变很多次，而 UpdateEmptyStates
+        /// 往列表里铺目录时集合会连着变很多次，而 UpdateEmptyStates
         /// 要数一遍可见条数（有筛选词时是整表枚举）—— 一次铺几千条就是 O(n²)，
         /// 界面直接卡死（几千项目录的用户实测反馈）。合并之后一批变化只算一次。
         /// </summary>

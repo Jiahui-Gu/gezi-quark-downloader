@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -24,22 +21,18 @@ namespace GeZi.Core.Api
 {
     /// <summary>
     /// 专打 **<c>pan.quark.cn</c>** 的那几件事（2026-10-11 新增，取代原来的 Python 桥）。
-    ///
-    /// 【为什么需要单独一个桥】`pan.quark.cn` 的前置 ALB 按 **TLS ClientHello 指纹**过滤，
+    /// `pan.quark.cn` 的前置 ALB 按 **TLS ClientHello 指纹**过滤，
     /// .NET 的 SChannel 会被直接 RST —— 而：
     ///   · **扫码登录的"换登录态"**（<c>account/info?st=&lt;ticket&gt;</c>）只挂在这个域上，
     ///     `__pus` / `__puus` 只有它能下发（实测：可达域 uop 在真票据下也只给 `_UP_*`，那是游客态）；
     ///   · **账号昵称 / 头像** 也只在这个域上。
     /// 所以这两个功能必须走一条"能过那道墙"的通道。
-    ///
-    /// 【通道是什么】<see cref="OpenSslTls"/> —— 直接 P/Invoke 项目固化的 **OpenSSL 3.5.7**
+    /// <see cref="OpenSslTls"/> —— 直接 P/Invoke 项目固化的 **OpenSSL 3.5.7**
     /// （<c>lib/OpenSSL/</c>）。实测只有它能过（SChannel ❌ / OpenSSL 3.0.18 ❌ / BouncyCastle ❌）。
-    ///
-    /// 【为什么不再用 CPython】老实现是"起一个内置 CPython 子进程跑 quark_cookie_helper.py"。
+    /// 老实现是"起一个内置 CPython 子进程跑 quark_cookie_helper.py"。
     /// 代价：包体积 +11MB，而且带着「解释器 + 脚本 + 子进程」这组特征 —— 实测被杀软
     /// （BitDefender 系）报成 `Gen:Variant.Yogi`。改成 P/Invoke 后 **TLS 指纹完全一致**，
     /// 但不再需要解释器/脚本/子进程。
-    ///
     /// ⚠️ 本类**只负责这两件事**；业务接口一律走 <see cref="QuarkClient"/>（HttpClient/SChannel）。
     /// </summary>
     public static class PanAccountBridge
@@ -156,8 +149,6 @@ namespace GeZi.Core.Api
         /// <summary>
         /// 用 service_ticket 换取登录 Cookie。通道不可用时返回 <c>null</c>
         /// （调用方据此回退到纯 .NET 实现，虽然那条路拿不到登录态）。
-        ///
-        /// 【步骤与老 helper 脚本完全一致】
         ///   ① `pan.quark.cn/account/info?st=&lt;ticket&gt;&lw=scan` —— 下发 `__pus` 等；
         ///   ② 依次请求 <see cref="EnrichUrls"/> 补全 `__puus` 等；
         ///   ③ 汇总所有 `*.quark.cn` 域的 Cookie，检查关键登录态。

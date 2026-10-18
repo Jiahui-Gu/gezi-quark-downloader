@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -26,12 +23,10 @@ namespace GeZi
 {
     /// <summary>
     /// 悬浮小窗：主窗收起后仍能看到下载进度。
-    ///
-    /// 【数据来源】直接把主窗那份 <see cref="ObservableCollection{TaskItem}"/> 挂到
+    /// 直接把主窗那份 <see cref="ObservableCollection{TaskItem}"/> 挂到
     /// ItemsControl 上，**不复制、不重算、不另开定时器**。
     /// 这样小窗本身几乎不占资源，也不会和主窗的统计"对不上"。
-    ///
-    /// 【刷新节奏】全局统计（总速度/总进度/剩余）依赖集合内容，用一个小 DispatcherTimer
+    /// 全局统计（总速度/总进度/剩余）依赖集合内容，用一个小 DispatcherTimer
     /// 每秒重算一次 —— 只做加法，不做 IO。TaskItem 自身的速度/进度是绑定的，会自动更新。
     /// </summary>
     public partial class MiniWindow : Window
@@ -78,7 +73,6 @@ namespace GeZi
 
         /// <summary>
         /// 重算三个总量：总速度 / 总进度 / 剩余**文件数**。
-        ///
         /// ⚠️ 2026-10-03 用户要求简化：**不再逐任务列进度条**（任务一多就一长条，
         /// 而且跟主窗重复），只留这一行总量；「剩余」也不再标时间（估出来的时间
         /// 又长又跳，11 个任务时甚至出现过负数），改成**还剩几个文件**，一眼就懂。

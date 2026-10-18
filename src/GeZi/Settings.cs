@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -30,8 +27,7 @@ namespace GeZi
         /// </summary>
         /// <summary>
         /// 单文件并发连接数。
-        ///
-        /// 【2026-10-11：默认 64 → 256】依据 `docs/CDN并发阈值-实测.md` 的实测拐点：
+        /// 依据 `docs/CDN并发阈值-实测.md` 的实测拐点：
         /// ```
         ///  并发  总速中位    单连接速
         ///   64   4.00 MB/s   64.0 KB/s
@@ -51,20 +47,17 @@ namespace GeZi
 
         /// <summary>
         /// 是否跟随 Windows 系统代理（2026-10-11 新增）。默认 **false = 直连**。
-        ///
-        /// 【为什么默认关闭】程序历来强制直连（理由见 <see cref="NetworkOptions"/>：
+        /// 程序历来强制直连（理由见 <see cref="NetworkOptions"/>：
         /// 本机代理软件会把夸克接口劫持到 127.0.0.1；代理会改变 TLS ClientHello
         /// 指纹，而 pan.quark.cn 的 WAF 对指纹敏感）。但"必须经代理才能上网"的
         /// 环境（公司网络、只放行代理出口的校园网）里，直连等于程序完全不可用 ——
         /// 所以补一个**显式开关**，把此前那句没有实现的 "UseSystemProxy" 注释做成真功能。
-        ///
         /// ⚠️ **零回归**：`XmlSerializer` 反序列化**不执行字段初始化器**，老配置里
         ///    没有这个节点时读到 `default(bool)` = false = 直连，与升级前行为一致。
         /// ⚠️ 开关只影响**此后新建**的连接：改完要新建下载任务 / 重新登录才生效
         ///    （在途请求用的还是旧 handler）。
         /// </summary>
         public bool UseSystemProxy { get; set; }
-
 
         /// <summary>
         /// 分片/续传元数据的根目录。留空 = 与目标文件同级（`{目标}.qparts`），即原有行为。
@@ -80,7 +73,6 @@ namespace GeZi
 
         /// <summary>
         /// 曾经用过的分片根目录清单（最多 <see cref="PartsDirsMax"/> 个，最近使用的在末尾）。
-        ///
         /// 移植自 Python Flet 版的 `part_dirs_known`。存在的理由很实际：
         /// 用户改过「默认分片位置」之后，**旧目录里的残留分片既扫不到、也没入口去清**，
         /// 只能一直烂在磁盘上（"分片根本没删掉"就是这么来的）。
@@ -110,7 +102,7 @@ namespace GeZi
         /// **当前登录账号的档案 Key**（对应 accounts/{key}.xml 的文件名）。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03 新增】用来判断"账号列表里哪一行是当前账号"。
+        /// 用来判断"账号列表里哪一行是当前账号"。
         /// 原来是用**整串 Cookie 做字符串比较**（`acc.Cookie == _client.CookieStr`），
         /// 但运行时 Cookie 会被重建/刷新（顺序、条目都可能变），所以永远比不中 ——
         /// 表现为「正在登录的那个账号，它的『切换』按钮居然还是可点的」（用户反馈）。
@@ -122,7 +114,7 @@ namespace GeZi
         /// 点主窗口「关闭」按钮时的行为。见 <see cref="CloseAction"/>。
         /// </summary>
         /// <remarks>
-        /// 【2026-10-03 新增】用户要求：「第一次时会询问用户，然后可以选择最小化托盘
+        /// 用户要求：「第一次时会询问用户，然后可以选择最小化托盘
         /// 或者是直接关闭程序，并且在这个弹窗的右下角可以勾选此后不再提示，在设置中可以修改」。
         /// ⚠️ 默认值必须是 0 = <see cref="CloseAction.Ask"/>：
         ///    XmlSerializer 反序列化**不会执行字段初始化器**，老配置文件里没有这个节点时
@@ -150,8 +142,7 @@ namespace GeZi
 
         /// <summary>
         /// <see cref="ClipboardAutoParse"/> 是否已经落过盘。
-        ///
-        /// 🚨 【为什么光有一个布尔不够】XmlSerializer 反序列化**不执行字段初始化器**：
+        /// 🚨 XmlSerializer 反序列化**不执行字段初始化器**：
         ///   老配置文件里没有 ClipboardAutoParse 节点时，属性会保持 default(bool) = false ——
         ///   也就是"老用户升级后，自动解析默认变成关闭"，与要求（默认打开）正好相反，
         ///   而且用户会觉得"你说默认开，我什么都没动怎么是关的"。
@@ -162,7 +153,6 @@ namespace GeZi
 
         /// <summary>
         /// 外观主题（2026-10-04 新增）。Light / Dark / System。
-        ///
         /// ⚠️ 默认值必须是 0 = <see cref="AppTheme.System"/>：
         ///    XmlSerializer 反序列化**不执行字段初始化器**，老配置里没有这个节点时
         ///    属性保持 default(T) = 0。这里刻意让 0 对应 System（而不是 Light），
@@ -175,15 +165,13 @@ namespace GeZi
 
         /// <summary>
         /// 上次检查更新的时刻（<see cref="DateTime.Ticks"/>，本地时间）。0 = 从没查过。
-        ///
-        /// 【为什么用它】启动检查要节流 —— 每次启动都打一次接口既没意义
+        /// 启动检查要节流 —— 每次启动都打一次接口既没意义
         /// （版本不会几分钟变一次），又会在接口失效时白白拖慢启动。
         /// </summary>
         public long UpdateLastCheckTicks { get; set; }
 
         /// <summary>
         /// 上次查到的最新版本号（"2.5.0"）。空/null = 目前没有待提示的更新。
-        ///
         /// ⚠️ 存它是为了**红点能跨会话保持**：检查只在启动时做，而「关于」窗口是后来才打开的，
         ///    打开时不能再去查一次（会卡一下 UI），只能读这里。
         /// </summary>
@@ -210,8 +198,7 @@ namespace GeZi
 
         /// <summary>
         /// 配置文件读写的互斥锁。
-        ///
-        /// 🚨 【为什么必须加】Save 走的是"写 .tmp → 删原文件 → File.Move"，
+        /// 🚨 Save 走的是"写 .tmp → 删原文件 → File.Move"，
         /// 而临时文件名是固定的（<c>FilePath + ".tmp"</c>）。**两个线程同时 Save 时**：
         ///   A 写完 tmp → B 也写同一个 tmp → A 删原文件 → A 把 tmp 移走 →
         ///   B 再去移 tmp 时文件已经没了 → 抛异常 → **B 这次设置更新被静默丢弃**。

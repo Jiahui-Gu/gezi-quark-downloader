@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,8 +19,7 @@ namespace GeZi.Core.Update
 {
     /// <summary>
     /// 三段式版本号（主.次.补），用于更新检查。
-    ///
-    /// 【为什么不用 <see cref="Version"/> 直接比】<see cref="Version"/> 会带第 4 段
+    /// <see cref="Version"/> 会带第 4 段
     /// （<c>2.2.0.0</c>），而需求只按三段比；而且它比较的是 Revision，容易和发布号混淆。
     /// 这里收窄成三段，语义明确、也便于单测。
     /// </summary>

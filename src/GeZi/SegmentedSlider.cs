@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -26,7 +23,6 @@ namespace GeZi
     /// <summary>
     /// 分段控件的「滑动指示器（滑块）」：选中项切换时，一个高亮滑块平滑滑到目标位置，
     /// 而不是每个选项各自"亮灭"（Material 分段按钮的标准形态）。
-    ///
     /// 用法（XAML）：
     ///   &lt;Grid local:SegmentedSlider.IsEnabled="True"
     ///         local:SegmentedSlider.Thumb="{x:Reference ModeThumb}"&gt;
@@ -34,18 +30,15 @@ namespace GeZi
     ///               VerticalAlignment="Stretch" Background="{DynamicResource SurfaceBrush}"/&gt;
     ///       &lt;StackPanel Orientation="Horizontal"&gt;…RadioButton…&lt;/StackPanel&gt;
     ///   &lt;/Grid&gt;
-    ///
     /// 配套样式约定（见 Styles.xaml）：
     ///   · 滑块是容器的**第一个子元素**（位于最底层，选项文字画在它上面）；
     ///   · 选项 RadioButton 的选中态**不再自绘**白底/下划线（由滑块表达），只切字色/字重；
     ///   · 滑块 HorizontalAlignment=Left + RenderTransform(TranslateTransform) 定位，
     ///     Width 动画同步到目标选项宽度。
-    ///
-    /// 【为什么不纯 XAML 做】滑块的目标 X / Width 取决于选项的**实测宽度**
+    /// 滑块的目标 X / Width 取决于选项的**实测宽度**
     /// （内容自适应，改字号/文案都会变），XAML 触发器写死数值必然走样；用附加行为
     /// 每次布局后现算，一处逻辑服务全部分段控件。
-    ///
-    /// 【时序】Loaded / 容器尺寸变化 → 无动画直接吸附（避免开窗时滑块"飞"过来）；
+    /// Loaded / 容器尺寸变化 → 无动画直接吸附（避免开窗时滑块"飞"过来）；
     /// 运行中 RadioButton.Checked → CubicEase 200ms 滑动。初始 IsChecked 在布局前
     /// 就会触发 Checked，此时 ActualWidth=0，跳过即可，由 Loaded 兜底。
     /// </summary>
@@ -88,8 +81,7 @@ namespace GeZi
         /// <summary>
         /// 动画进行中的截止时刻（UTC）。此期间 <see cref="OnContainerSizeChanged"/> 直接忽略，
         /// 不做"无动画吸附"。
-        ///
-        /// 【为什么】滑块自己的 Width 动画会让容器（auto 宽）跟着变 → 触发 SizeChanged →
+        /// 滑块自己的 Width 动画会让容器（auto 宽）跟着变 → 触发 SizeChanged →
         /// 旧代码在这里 MoveThumb(animate:false) → **第一帧就把动画打断、直接落到终值**，
         /// 用户看到的就是"选中态瞬间跳过去，没有滑动"。
         /// 实测复现（tmp-links/SepSlideProbe）：点击后 thumb x/Width 一步到位，无中间帧。

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,18 +19,15 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 从"用户手上能拿到的东西"里解析出可用的 Cookie 串。
-    ///
-    /// 【背景】用户反馈：「为什么没有导入 cookie 文件进行登录的功能」——
+    /// 用户反馈：「为什么没有导入 cookie 文件进行登录的功能」——
     /// 原来只能把 Cookie 文本粘进输入框，但浏览器扩展导出的是**文件**，
     /// 手动打开复制再粘贴很别扭。这里负责把文件内容变成能用的 Cookie 串。
-    ///
     /// 支持的来源（按识别顺序）：
     ///   1) JSON 数组：<c>[{"name":"a","value":"1","domain":".quark.cn"}, ...]</c>
     ///      —— Cookie-Editor / EditThisCookie 等扩展的导出格式
     ///   2) JSON 对象：<c>{"a":"1","b":"2"}</c>（name → value 映射）
     ///   3) JSON 对象带单个 cookie 字段：<c>{"cookie":"a=1; b=2"}</c>
     ///   4) 原始 Cookie 串：<c>a=1; b=2</c>（允许带 "Cookie: " 前缀、允许跨行）
-    ///
     /// 输出统一成 <c>a=1; b=2</c> —— 就是 <c>Headers["Cookie"]</c> 要的样子。
     /// </summary>
     public static class CookieText
@@ -175,7 +169,6 @@ namespace GeZi.Core.Support
 
         // ────────────────────────────────────────────────────────────
         // 极简 JSON 解析（只覆盖 cookie 导出会用到的子集：对象 / 数组 / 字符串 / 字面量）
-        //
         // 为什么不用 JavaScriptSerializer：它需要 System.Web.Extensions，
         // 而给 SDK 风格的 WPF 工程加这个引用会让 XAML 编译器（MarkupCompilePass）报
         // "Could not find assembly 'System.Web'"，构建直接挂掉。

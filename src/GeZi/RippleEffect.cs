@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,22 +10,16 @@ namespace GeZi
 {
     /// <summary>
     /// 侧栏导航波纹效果（Material 手感）：鼠标按下时从按下点扩散一圈渐隐波纹。
-    ///
     /// 用法（两处配套，缺一不可）：
     ///   1. ListBox 上挂 attached property：
     ///      &lt;ListBox local:RippleEffect.IsEnabled="True" …&gt;
     ///   2. ItemContainerStyle 的 ControlTemplate 里放一个波纹画布：
     ///      &lt;Canvas x:Name="RippleHost" ClipToBounds="True" IsHitTestVisible="False"/&gt;
     ///      位置：选中/悬停底色层之上、内容（图标/文字）之下。
-    ///
     /// 波纹颜色取主题令牌 RippleBrush（浅色=深色波纹 / 深色=浅色波纹，见 Colors.*.xaml），
     /// 随主题切换自动生效；找不到资源时静默跳过，不会崩。
-    ///
-    /// 【为什么用 PreviewMouseLeftButtonDown 而不是 MouseDown】
     ///   Preview 在 ListBox 内部选中逻辑之前触发，保证波纹和选中变化同帧启动，
     ///   视觉上"按下即有反馈"。
-    ///
-    /// 【为什么是静态类 + attached property 而不是代码后置】
     ///   保持 XAML 声明式挂载（一处属性即用），且不依赖具体窗口类型，将来别的
     ///   列表（右键菜单等）想加波纹直接挂同一个属性。
     /// </summary>

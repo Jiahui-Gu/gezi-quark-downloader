@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -28,18 +25,13 @@ namespace GeZi
 {
     /// <summary>
     /// 托盘图标（常驻通知区）+ 主题化的右键菜单。
-    ///
-    /// 【为什么用 WinForms 的 NotifyIcon】
     /// WPF 本身没有托盘 API；`Shell_NotifyIcon` 自己 P/Invoke 要处理
     /// 消息窗口、图标句柄、任务栏重建（TaskbarCreated）等一堆细节。
     /// 本项目 <c>UseWindowsForms=true</c> **本来就开着**（「浏览目录」用
     /// `FolderBrowserDialog`），所以 NotifyIcon 是零新增依赖的最优解。
-    ///
-    /// 【为什么右键菜单不用 WinForms 的 ContextMenuStrip】
     /// ContextMenuStrip 是 Win32 经典外观（灰底、方角、系统字体），
     /// 跟本项目自绘的圆角卡片 UI 完全两个世界。所以这里用 **WPF 的 ContextMenu**
     /// （复用 Styles.xaml 里那套隐式 ContextMenu/MenuItem 样式）。
-    ///
     /// ⚠️ 托盘图标**必须 Dispose**：不释放的话进程退出后图标会留在托盘上，
     ///    鼠标划过去才消失（最经典的托盘 bug）。
     /// </summary>
@@ -102,8 +94,7 @@ namespace GeZi
 
         /// <summary>
         /// 托盘图标 = 主题主色 + `IconDownload` 几何（向下箭头 + 底线）。
-        ///
-        /// 【为什么不用 app.ico】那是"衔橄榄枝的鸽子"，缩到 16px 后几乎看不清，
+        /// 那是"衔橄榄枝的鸽子"，缩到 16px 后几乎看不清，
         /// 外面还带一大圈白底方块，在深色任务栏上很突兀（用户反馈「不好看」）。
         /// 直接把矢量图标渲染成位图更清晰，也能自动跟随 DPI（16/20/24/32px）。
         /// </summary>
@@ -125,8 +116,7 @@ namespace GeZi
 
         /// <summary>
         /// 主题切换后重画托盘图标（2026-10-04 新增）。
-        ///
-        /// 【为什么必须显式重画】<see cref="BuildTrayIcon"/> 用的是 `PrimaryBrush`，
+        /// <see cref="BuildTrayIcon"/> 用的是 `PrimaryBrush`，
         /// 而 DrawIcon 的结果是**一次性渲染的位图**，不会随资源字典变化自动更新。
         /// 深色模式下主色从 #4F6BED 变成 #5B74F0，不重画的话任务栏上还是旧颜色。
         /// （浅色→深色时差别很小，但既然做就做对。）
@@ -256,7 +246,6 @@ namespace GeZi
 
         /// <summary>
         /// 在鼠标位置弹出 WPF 右键菜单。
-        ///
         /// ⚠️ 定位方式试过三种，只有最后一种对（都实测过菜单窗口的真实 rect）：
         ///   ① `AbsolutePoint` + `HorizontalOffset=光标X` → 菜单跑到屏幕**右下**（实测偏了 300+px）。
         ///      原因：WPF 会把它按 `PlacementTarget`（一个在屏幕外的 1×1 宿主窗口）去算，
@@ -265,7 +254,6 @@ namespace GeZi
         ///      而托盘菜单弹出时鼠标从没进过宿主窗口，读到的位置是陈旧的。
         ///   ③ ✅ **把宿主窗口挪到光标处 + `RelativePoint`(0,0)** —— 不依赖任何跟踪，
         ///      菜单就出现在宿主（= 光标）左上角。实测偏差 0~2px。
-        ///
         /// ⚠️ 打开前必须把宿主设为**前台**，否则点菜单外面菜单不会自动收起
         ///    （托盘菜单不像普通右键菜单那样有鼠标捕获）。
         /// </summary>
@@ -326,7 +314,7 @@ namespace GeZi
         {
             var cm = new ContextMenu();
 
-            // 【2026-10-17 用户反馈】托盘菜单左右空隙太大。
+            // 托盘菜单左右空隙太大。
             // 根因：复用了带 **22px 图标列** 的隐式 MenuItem 样式（那是给任务行/文件列表
             // 右键菜单对齐图标用的），而托盘这四项**都没有图标** —— 图标列 + Margin 变成
             // 左侧一大块空白，Header 列又是 `*` 填满，右侧再留一截。
@@ -348,8 +336,7 @@ namespace GeZi
             cm.Items.Add(_miPause);
 
             // 🚨 分隔条**必须显式套上应用里的 Separator 样式**，不能指望隐式样式。
-            //
-            // 【为什么】WPF 的 ContextMenu 对**菜单内**的分隔条用的是它自己内部那套
+            // WPF 的 ContextMenu 对**菜单内**的分隔条用的是它自己内部那套
             // 菜单分隔条样式（挂在 `MenuItem.SeparatorStyleKey` 上），**会盖掉**
             // 应用里 `<Style TargetType="Separator">` 的隐式样式。
             // 实测取证（tmp-links 的 traymenu-probe，真弹菜单后读实例）：
@@ -393,7 +380,6 @@ namespace GeZi
 
         /// <summary>
         /// 弹一条通知。
-        ///
         /// ⚠️ **不再用 `_ni.ShowBalloonTip`**：Win10/11 会把它转成系统 toast，
         /// 而 toast 的图标取自进程的 AppUserModelID（= exe 的 app.ico），
         /// **不是**托盘图标 —— 用户看到的就是"一个黑疙瘩"（app.ico 是浅底 + 深色

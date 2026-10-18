@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -203,7 +200,6 @@ namespace GeZi.Core.Api
 
         /// <summary>
         /// 判断一条接口消息是否为「网盘容量不足」。
-        ///
         /// 对齐 Python 版 `_is_capacity_error`（匹配「容量」/「capacity」），
         /// 并额外补上夸克实际会返回的英文表述 —— 只匹配中文会漏掉一批。
         /// </summary>
@@ -245,7 +241,7 @@ namespace GeZi.Core.Api
         /// 外部（Python 桥）拿到头像地址后回填。
         /// </summary>
         /// <remarks>
-        /// 【为什么需要】`account/info` 挂在 `pan.quark.cn`，**.NET 连不上**（WAF 按
+        /// `account/info` 挂在 `pan.quark.cn`，**.NET 连不上**（WAF 按
         /// ClientHello 指纹过滤），所以 <see cref="ValidateAsync"/> 永远走不到解析分支，
         /// 头像只能由 Python 桥取回后从外部塞进来。
         /// </remarks>
@@ -433,8 +429,7 @@ namespace GeZi.Core.Api
 
         /// <summary>
         /// 取分享目录的**一页**（page 从 1 开始）。
-        ///
-        /// 【为什么要有它】<see cref="ShareDetailAsync"/> 是"从第 1 页循环到第 200 页、
+        /// <see cref="ShareDetailAsync"/> 是"从第 1 页循环到第 200 页、
         /// 把整个目录攒完再返回"—— 一个几千项的分享点进去要等十几秒（用户实测反馈
         /// 「一开始点击加载会很卡顿」）。这个只取一页，由上层按需一页页地取。
         /// </summary>
@@ -531,7 +526,7 @@ namespace GeZi.Core.Api
         }
 
         /// <param name="ct">
-        /// 【2026-10-11】可选取消令牌。转存确认最长要轮询 300 秒，用户点了「终止入队」
+        /// 可选取消令牌。转存确认最长要轮询 300 秒，用户点了「终止入队」
         /// 应当能立刻停下，而不是干等完 —— 这个 token 由上层（MainWindow 的入队流程）传入。
         /// </param>
         public async Task<object> QueryTaskAsync(string taskId, int timeoutSeconds = 300,
@@ -558,7 +553,7 @@ namespace GeZi.Core.Api
                 if (status == QuarkErrorCode.TaskStatusSuccess)
                     return data;
 
-                // 【2026-10-11 新增】终态失败检测。
+                // 终态失败检测。
                 // 转存任务可能因「网盘容量不足」(业务码 32003) 等原因以失败收场，
                 // 不能傻等满 timeoutSeconds 才报"转存任务超时"—— 那样用户要干等很久。
                 // 一旦识别到失败终态就立即抛出，上层（SaveAndGetItemsAsync / 更新流程）
@@ -1084,11 +1079,9 @@ namespace GeZi.Core.Api
 
         /// <summary>
         /// 保活心跳**连续失败**到阈值时触发一次 —— 登录态很可能已经失效。
-        ///
-        /// 【为什么现在要通知 UI】用户问「账号状态多久刷新一次」时发现：原来这里
+        /// 用户问「账号状态多久刷新一次」时发现：原来这里
         /// 失败**只静默记录**，于是登录真的过期了，界面还显示着昵称和绿色容量条，
         /// 用户完全不知道，直到某个操作撞到 401。现在会通知 UI 明确提示。
-        ///
         /// ⚠️ 在**后台线程**上触发，订阅方必须自己切回 UI 线程。
         /// ⚠️ 只触发一次（随后停掉心跳），避免每 5 分钟骚扰一次。
         /// </summary>

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -96,10 +93,8 @@ namespace GeZi.Core.Api
         /// <summary>
         /// 带状态上报的轮询：每轮解析 status/message 并通过 <paramref name="onState"/> 回调，
         /// 让界面能显示"等待扫码 → 已扫码待确认 → 成功 / 已过期"的实时进度。
-        ///
         /// 返回最终结果：GotTicket 表示拿到 ticket；Expired 表示二维码失效（**立即返回**，
         /// 不再空转到超时）；其余情况表示超时。
-        ///
         /// 对未知 status 采取"不吞信息"策略：原样带回 status 与 message，由界面展示，
         /// 而不是假装还在等待 —— 免得下次接口又加新状态码时用户又看到"卡住"。
         /// </summary>
@@ -186,8 +181,7 @@ namespace GeZi.Core.Api
 
         /// <summary>
         /// 用 service_ticket 换取登录 Cookie（<c>__pus</c> / <c>__puus</c>）。
-        ///
-        /// <para>【两条路径】</para>
+        /// <para></para>
         /// <list type="number">
         /// <item><b>首选：Python 桥</b>。登录态只能由 <c>pan.quark.cn/account/info?st=</c> 下发，
         ///       而该域把 .NET 的 SChannel 全部 RST 掉（按 ClientHello 指纹过滤）。
@@ -230,8 +224,7 @@ namespace GeZi.Core.Api
                     var problems = new List<string>();
                     string stQ = Uri.EscapeDataString(ticket);
 
-                    // 1a) 【首选】用 service_ticket 在 uop 域激活登录态。
-                    //
+                    // 1a) 用 service_ticket 在 uop 域激活登录态。
                     // `uop.quark.cn` 在 .NET 里可达，且实测同样接受 service_ticket 并下发
                     // 一整套 `.quark.cn` 域的登录 Cookie（`_UP_*` 系列）。
                     // 把它放第一位，是因为下面 1b 的 pan.quark.cn 在 .NET 栈**必然失败**。
@@ -249,7 +242,7 @@ namespace GeZi.Core.Api
                         problems.Add("uop.quark.cn/cas/login 失败: " + RootMessage(ex));
                     }
 
-                    // 1b) 【补充】官方主入口。.NET 下会因 TLS 指纹被 RST，失败**不算错**。
+                    // 1b) 官方主入口。.NET 下会因 TLS 指纹被 RST，失败**不算错**。
                     try
                     {
                         await GetRawAsync(http, QuarkConstants.AccountUrl + "?st=" + stQ + "&lw=scan",
@@ -308,13 +301,11 @@ namespace GeZi.Core.Api
                     string cookie = JoinCookies(dict);
 
                     // 4) 判定是否拿到了关键登录 Cookie（`__puus`）。
-                    //
-                    // 【设计说明】这里**只认 `__puus`**，不把 `_UP_*` 系列当成功证据 ——
+                    // 这里**只认 `__puus`**，不把 `_UP_*` 系列当成功证据 ——
                     // 实测：即使 st 完全无效，`uop.quark.cn/cas/login` 也会照常下发
                     // `_UP_F7E_8D_` / `_UP_A4A_11_` / `_UP_D_` 等 Cookie，且 `_UP_D_` 的值
                     // 在真假票据下并不稳定（假票据有时也回 `pc`）。**没有可靠的"看起来像成功"
                     // 的信号**，所以不能靠猜 —— 判据必须保守，否则会把失败伪装成成功。
-                    //
                     // 真正的"是否登录成功"由调用方的 ApplyLoginAsync → ValidateAsync 判定：
                     // 它会拿这份 Cookie 去调可达的 `drive-pc.quark.cn` 业务接口，
                     // 用真实返回码说话（那才是唯一能自证的判据）。

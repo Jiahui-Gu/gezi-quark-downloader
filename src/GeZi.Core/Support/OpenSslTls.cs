@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -25,8 +22,6 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 用 **OpenSSL** 发 HTTPS 请求的最小传输层（2026-10-11 新增，用来取代内置 CPython）。
-    ///
-    /// 【为什么必须用它 —— 这是实测结论，别改成 HttpClient】
     /// <c>pan.quark.cn</c> 的前置 ALB 按 **TLS ClientHello 指纹**过滤。实测（2026-10-11，均强制直连）：
     /// <code>
     ///   SChannel（.NET HttpClient / Windows 自带 curl）        → ❌ 连接被重置
@@ -37,16 +32,13 @@ namespace GeZi.Core.Support
     /// ⇒ **只有 OpenSSL 3.5.7 能过**，所以既不能换托管栈、也不能换版本，
     ///   只能**直接调用项目里已经固化的那份 OpenSSL 3.5.7**
     ///   （<c>lib/OpenSSL/libssl-3-x64.dll</c> + <c>libcrypto-3-x64.dll</c>）。
-    ///
-    /// 【为什么之前用 Python】同一件事以前是"起一个 CPython 子进程跑 .py"，
+    /// 同一件事以前是"起一个 CPython 子进程跑 .py"，
     /// 代价是包体积 +11MB、并且带着"解释器 + 脚本 + 子进程"这组特征（会被杀软当成
     /// PyInstaller 式载荷，实测命中 BitDefender 系的 <c>Gen:Variant.Yogi</c>）。
     /// 现在改成 P/Invoke，**指纹完全一致，但不再需要解释器**。
-    ///
-    /// 【只用于这一个用途】本类刻意做得很小：只发 GET、只读到一个响应就结束
+    /// 本类刻意做得很小：只发 GET、只读到一个响应就结束
     /// （固定 <c>Connection: close</c>）。它<b>不是</b>通用 HTTP 客户端 ——
     /// 业务接口一律走 <c>QuarkClient</c> / <c>HttpClient</c>。
-    ///
     /// ⚠️ <b>平台</b>：DLL 是 x64 的，进程必须是 64 位（AnyCPU 在 64 位系统上即为 x64）。
     ///    32 位系统上 <see cref="IsAvailable"/> 会是 false，调用方需自行降级
     ///    （登录页的「导入并登录」可以手动粘 Cookie）。

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -27,13 +24,11 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 二维码/条码解码器（基于 ZXing.Net，Apache-2.0，本地固化引用见 lib/ZXing/）。
-    ///
-    /// 【为什么用库而不是自己写】<see cref="QrEncoder"/> 那种编码器只要把数据排进矩阵，
+    /// <see cref="QrEncoder"/> 那种编码器只要把数据排进矩阵，
     /// 而解码反着来：要先在杂乱图像里找出定位图形、做透视校正、按模块采样，
     /// 最后跑 Reed-Solomon 纠错 —— 现实中的截图/照片还带缩放、JPEG 噪点、背景干扰。
     /// 这部分用成熟库远比自写可靠。
-    ///
-    /// 【设计要点】现实图片千奇百怪，单次尝试失败率偏高，所以这里做**多轮渐进尝试**：
+    /// 现实图片千奇百怪，单次尝试失败率偏高，所以这里做**多轮渐进尝试**：
     ///   1) 原图直解（清晰截图命中率最高，也最快）
     ///   2) 放大（小图/被缩小的图，模块太小会丢）
     ///   3) 灰度 + 提高对比度（低对比、带色调的截图）

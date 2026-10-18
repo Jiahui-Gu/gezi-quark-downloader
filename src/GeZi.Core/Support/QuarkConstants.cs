@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -34,17 +31,14 @@ namespace GeZi.Core.Support
 
         /// <summary>
         /// 下载直链用的 UA。
-        ///
         /// **必须与 ApiUa 保持同族（客户端伪装）**，不要改回普通浏览器 UA。
         /// 依据：同类开源项目 QuarkDownloader（油猴脚本）在下发直链给
         /// aria2 / cURL / Motrix 时，一律用「夸克客户端 UA」而非浏览器 UA，
         /// 并以同样方式附带 Cookie —— 见其 generateAria2Commands /
         /// generateCurlCommands / sendFilesToMotrixRpc。
-        ///
         /// 原因是夸克 CDN 会对「取链时声明的客户端身份」与「实际下载时的身份」
         /// 做一致性校验：取链用客户端 UA、下载却换成浏览器 UA，等于自证非客户端，
         /// 更容易被判定为盗链而降速或 412。统一为客户端 UA 才是完整闭环。
-        ///
         /// 版本号比 QuarkDownloader 的 2.5.20 更新，且与 ApiUa 的 3.14.2 同代，
         /// 避免「取链一个版本、下载另一个版本」的破绽。
         /// </summary>
@@ -62,11 +56,9 @@ namespace GeZi.Core.Support
 
         /// <summary>
         /// 用 service_ticket 激活登录态的**备用入口**（位于可达的 uop 域）。
-        ///
-        /// 【为什么需要】`pan.quark.cn/account/info?st=` 是官方主入口，但该域的前置 ALB
+        /// `pan.quark.cn/account/info?st=` 是官方主入口，但该域的前置 ALB
         /// 会 RST 掉"过小的 ClientHello"，而 .NET Framework 的 SChannel 不支持 TLS 1.3、
         /// ClientHello 天然偏小 → 在 .NET 里该域**完全不可达**（SChannel / WinINet 均实测被拒）。
-        ///
         /// 实测发现 `uop.quark.cn/cas/login?st=<TICKET>&lw=scan` 同样接受 service_ticket，
         /// 并下发一整套 `.quark.cn` 域的登录 Cookie（`_UP_*` 系列）；而 `uop.quark.cn`
         /// 在 .NET 里**完全可达**。因此把它作为首选入口，`pan.quark.cn` 仅作补充尝试。

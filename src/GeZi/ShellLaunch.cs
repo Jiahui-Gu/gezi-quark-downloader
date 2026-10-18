@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -27,22 +24,18 @@ namespace GeZi
 {
     /// <summary>
     /// 「打开外部东西」——**逐行对齐 Python Flet 版的逻辑**。
-    ///
     /// 之前几版反复失败，原因不是语言，而是**没照抄到位**。Python 版真正的做法是：
-    ///
     ///   os.startfile(path)
     ///     → CPython 内部：ShellExecuteW(NULL, L"open", path, NULL, cwd, SW_SHOWNORMAL)
     ///     → 在**普通后台线程**里调用，**不显式初始化 COM**
     ///     → **不看返回值**，而是**枚举 Explorer 窗口，确认新窗口真的出现**
     ///     → 出现后 ShowWindow + BringWindowToTop + SetForegroundWindow 置前
     ///     → 失败才退到 ShellExecuteW("explore", path, dir=dirname(path))
-    ///
     /// 我此前犯的四个错：
     ///   1. operation 传 NULL（Python 传的是 "open"）
     ///   2. 自作主张加 CoInitializeEx + COINIT_DISABLE_OLE1DDE（那是 qBittorrent 的路，不是 Python 的）
     ///   3. **拿 ShellExecute 的返回值当成功判据**——ShellExecute 的返回码在目录打开这条路上并不可靠
     ///   4. 还带一个"3 秒超时就把 result 置 false"的 bug
-    ///
     /// 所以本版把成功判据换成 Python 的：**窗口真的出现了才算成功**。
     /// </summary>
     internal static class ShellLaunch
@@ -137,7 +130,7 @@ namespace GeZi
         {
             if (string.IsNullOrWhiteSpace(file) || !File.Exists(file)) return false;
 
-            // 【2026-10-04 用户反馈】「VLC 开了但没播，还得手动用它自己的『打开文件』才能看」。
+            // 「VLC 开了但没播，还得手动用它自己的『打开文件』才能看」。
             // 根因：**路径里混了正/反斜杠**。
             //   设置页的下载目录是**用户手输**的文本框，可能是 `C:/Users/<用户名>/Downloads`；
             //   而 .NET 的 `Path.Combine` 拼文件名时用的是 `\` →
@@ -154,7 +147,7 @@ namespace GeZi
                 Process p = null;
                 try
                 {
-                    // 【2026-10-04 用户反馈】「点播放调用的是 VLC，VLC 开了但没播」。
+                    // 「点播放调用的是 VLC，VLC 开了但没播」。
                     // 原因：VLC 是**单实例**程序。已经有一个 VLC 在跑时，再执行
                     // `vlc.exe "文件"` 只会把文件**塞进那个实例的播放列表**就退出 ——
                     // 窗口出来了、却没有开始播放，正是用户看到的现象。

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -26,8 +23,7 @@ namespace GeZi
 {
     /// <summary>
     /// 手写弹窗（诊断面板 / 下载历史 / 直链 / 账号管理 / 启动待处理）的统一样式脚手架。
-    ///
-    /// 【背景】这些窗口原本是用代码 `new Window { ... }` + `new Button { ... }`
+    /// 这些窗口原本是用代码 `new Window { ... }` + `new Button { ... }`
     /// 拼出来的，控件全走系统默认外观：方角、灰色系统字体、无内边距 —— 放在
     /// 自绘主界面旁边像是另一个软件。此处把"套主题"这件事收拢成几个工厂方法，
     /// 各弹窗只管摆布局，外观由这里统一给。
@@ -35,7 +31,6 @@ namespace GeZi
     internal static class DialogChrome
     {
         // ---------------- 无边框窗口的 Win11 系统圆角 ----------------
-        //
         // WPF 自己没法给顶层窗口加圆角（除非开 AllowsTransparency，那会关掉
         // ClearType，文字发糊 —— 小窗就踩过这个坑）。Win11 的 DWM 提供原生圆角，
         // 一次调用即可，且由系统裁剪内容、不留锯齿。Win10 上调用会失败，静默忽略。
@@ -48,8 +43,7 @@ namespace GeZi
 
         /// <summary>
         /// DWMWA_USE_IMMERSIVE_DARK_MODE —— 让 **Windows 自己画的原生标题栏** 变深色。
-        ///
-        /// 【为什么需要它】这些弹窗（下载诊断 / 识别二维码 / 获取直链 / 未完成任务 …）用的是
+        /// 这些弹窗（下载诊断 / 识别二维码 / 获取直链 / 未完成任务 …）用的是
         /// **系统标题栏**（`WindowStyle` 保持默认，不像主窗那样自绘）。系统标题栏的颜色
         /// 不受 WPF 资源字典控制 —— 它由 DWM 按"应用是否声明深色"来画，默认是**浅色**。
         /// 所以深色模式下：内容区变暗了，唯独顶上那条标题栏**还是白的**（用户截图反馈）。
@@ -186,7 +180,7 @@ namespace GeZi
         /// <summary>主色实心按钮。</summary>
         /// <summary>
         /// 主动作按钮。
-        /// 【2026-10-18 用户要求】「除主界面外的小窗口按钮全部改成背景透明」。
+        /// 「除主界面外的小窗口按钮全部改成背景透明」。
         /// 主界面的按钮走 XAML 里的 PrimaryButton 样式（不受影响）；
         /// 这些对话框一律用 GhostButton（透明底 + 悬停反馈）。
         /// </summary>
@@ -199,7 +193,7 @@ namespace GeZi
             return b;
         }
 
-        /// <summary>白底描边按钮（次要操作）。【2026-10-18】小窗口统一透明化 → GhostButton。</summary>
+        /// <summary>白底描边按钮（次要操作）。小窗口统一透明化 → GhostButton。</summary>
         public static Button SecondaryButton(string text, RoutedEventHandler onClick = null)
         {
             var b = new Button { Content = text };
@@ -210,7 +204,7 @@ namespace GeZi
         }
 
         /// <summary>
-        /// 危险操作按钮（删除类）。【2026-10-18】背景透明化（用户要求全部透明），
+        /// 危险操作按钮（删除类）。背景透明化（用户要求全部透明），
         /// 但保留**红色文字**警示 —— 「丢弃这些任务」是破坏性操作，不能失去语义。
         /// </summary>
         public static Button DangerButton(string text, RoutedEventHandler onClick = null)
@@ -249,7 +243,7 @@ namespace GeZi
             var s = Res<Style>("PlainListBox", null);
             if (s != null) lb.Style = s;
             lb.BorderThickness = new Thickness(0);
-            // 【2026-10-17】去掉 WPF 默认 ListBoxItem 的「系统蓝」：
+            // 去掉 WPF 默认 ListBoxItem 的「系统蓝」：
             //   选中 = 蓝底白字、键盘焦点 = 1px 浅蓝矩形描边（会套在圆角行卡片外面，很难看）。
             //   行内容自己就是完整卡片，容器只需原样呈现内容。见 Styles.xaml 的 PlainListRow。
             //   ⚠️ 个别列表若需要「悬停/选中」反馈，调用方在 StyledList() 之后

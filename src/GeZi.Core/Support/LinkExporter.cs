@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,12 +19,10 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 直链导出：把已取到的直链生成可直接粘贴到外部下载器的文本。
-    ///
     /// 参考同类开源项目 QuarkDownloader（油猴脚本）的导出实现：
     /// 它在下发直链时**一定同时给出匹配的 User-Agent 与 Cookie**，
     /// 而不是只丢一个裸链接 —— 裸链接粘到 aria2/IDM 里必然 403，
     /// 因为夸克直链有防盗链，缺 UA/Cookie 会被直接拒。
-    ///
     /// 本类输出的格式都遵循这一原则：
     ///   1) aria2c 命令（-x/-s 取自同族项目的经验值）
     ///   2) curl 命令（-C - 断点续传）
@@ -50,14 +45,12 @@ namespace GeZi.Core.Support
             Curl,
             /// <summary>
             /// **Motrix 图形界面用**：把各字段**分段列好**，每段前面标注「粘到哪个框」。
-            ///
-            /// 【为什么要这个格式】Motrix 的「新建任务」里有个可展开的「高级」区，
+            /// Motrix 的「新建任务」里有个可展开的「高级」区，
             /// 里面有 **User-Agent / Referer / Cookie** 三个独立输入框
             /// （实测截图确认，不是所有版本都有）。
             /// 夸克直链有防盗链 —— **Cookie 不填就是 412**。
             /// 但 Cookie 混在 curl/aria2c 那种一行长命令里，用户得自己抠，
             /// 所以这里直接拆成一段一段，逐项复制粘贴即可。
-            ///
             /// 💡 实测结论：**夸克只校验 Cookie**（+ Referer 建议带上）。
             ///    UA 换成 aria2 默认 / 浏览器 / 空值都是 HTTP 206，**User-Agent 可留空**。
             /// </summary>
@@ -66,7 +59,7 @@ namespace GeZi.Core.Support
             PlainUrls,
             /// <summary>
             /// 带文件名的直链列表：每行「文件名 + 制表符 + 直链」。
-            /// 【2026-10-02】纯 URL 一行一条看不出哪条对应哪个文件，加上文件名后方便对照。
+            /// 纯 URL 一行一条看不出哪条对应哪个文件，加上文件名后方便对照。
             /// 枚举名保留 Labeled（历史命名），界面显示名是「纯直链」——
             /// 用户明确要求「把名字改回原本的名字纯直链」，别再显示成「标注版」。
             /// </summary>
@@ -103,7 +96,6 @@ namespace GeZi.Core.Support
         /// <param name="format">输出格式。</param>
         /// <param name="absoluteSaveDir">
         /// **仅 Motrix 格式使用**：保存目录的绝对路径（如 `C:\Users\me\Downloads`）。
-        ///
         /// 🚨 为什么必须要它：Motrix 是**独立进程**，它把 `--save-dir "."` 解析成
         /// **它自己的工作目录**（实测落在 `D:\motrix\`，即 Motrix 安装目录！），
         /// 而不是用户执行命令时所在的目录 —— 文件会跑到用户完全想不到的地方。

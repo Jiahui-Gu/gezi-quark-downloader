@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,29 +19,25 @@ namespace GeZi.Core.Support
 {
     /// <summary>
     /// 分片残留清扫器：删除各分片目录里「超过 N 天未被触碰」的孤儿分片。
-    ///
-    /// <para>【为什么需要它】</para>
+    /// <para></para>
     /// <para>
     /// 用户中途取消、换分片目录、或程序被强杀时，分片文件会留在磁盘上。
     /// 没有清扫机制的话，这些残留**只增不减** —— 用户会明显感到"磁盘越用越少"，
     /// 却找不到是谁占的（分片目录默认还是隐藏的）。Python Flet 版靠启动时的一次
     /// 后台清扫解决这个问题，C# 版此前没有对应实现。
     /// </para>
-    ///
-    /// <para>【判定依据：文件 mtime】</para>
+    /// <para></para>
     /// <para>
     /// 正在下载的分片，其 mtime 会被持续刷新，所以**永远不会**被误删；
     /// 只有"早已放弃"的分片（超过阈值没被碰过）才会被回收。这正是我们要的语义。
     /// </para>
-    ///
-    /// <para>【已知副作用（有意为之）】</para>
+    /// <para></para>
     /// <para>
     /// 中断/暂停超过 <see cref="DefaultMaxAgeDays"/> 天的下载，其分片会在下次启动时
     /// 被清掉，该任务将**无法续传**（需从 0 重下）。这是"自动回收磁盘"与
     /// "无限期保留断点"之间必须做的取舍；阈值取得足够大就不会误伤正常使用。
     /// </para>
-    ///
-    /// <para>【并发安全】</para>
+    /// <para></para>
     /// <para>
     /// 清扫在**独立后台线程**执行，且每删一个文件都容忍
     /// <see cref="IOException"/> / <see cref="UnauthorizedAccessException"/>
@@ -77,7 +70,6 @@ namespace GeZi.Core.Support
 
         /// <summary>
         /// 清扫给定的全部分片根目录（含历史目录）。
-        ///
         /// <para>
         /// <paramref name="partsRoots"/> 应传入"当前生效 + 历史上用过的"全部根目录
         /// （界面层用 <c>AllPartsRoots()</c> 得到）；只传当前的那个会漏掉旧目录里的残留。

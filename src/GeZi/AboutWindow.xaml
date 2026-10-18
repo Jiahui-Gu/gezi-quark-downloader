@@ -1,4 +1,4 @@
-<Window x:Class="GeZi.AboutWindow"
+﻿<Window x:Class="GeZi.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
@@ -21,7 +21,6 @@
            圆角交给 DWM（见 Loaded 里的 ApplyRoundedCorners）。
         ⚠️ CaptionHeight=44 让标题栏能拖动，里面的关闭按钮要 IsHitTestVisibleInChrome。
 
-        【本次改版要点】
         1. **分区卡片化**：品牌 / 更新 / 链接 / 功能 / 说明 / 赞赏 各自成块，
            不再是一大坨纯文字流。
         2. **底部「关闭」固定在 ScrollViewer 外**：内容再长也不会把按钮滚走。
@@ -128,7 +127,7 @@
                     </Border>
 
                     <!-- ③ 链接：两个并排按钮（原来是两行裸下划线文字）
-                         【2026-10-18 用户要求】背景透明（GhostButton），与各小窗口按钮一致 -->
+                         背景透明（GhostButton），与各小窗口按钮一致 -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="RepoBtn" Click="OnRepoClick"
                                 AutomationProperties.Name="打开项目开源地址"

@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -24,13 +21,10 @@ namespace GeZi
 {
     /// <summary>
     /// 统一的自绘对话框，取代系统 <see cref="MessageBox"/>。
-    ///
-    /// 【为什么要做这个】
     /// 系统 MessageBox 是 Win32 经典外观：方角、左上角大块位图图标、
     /// 方形灰按钮、固定字号。本项目其余部分都是圆角卡片 + 设计令牌自绘，
     /// 两者放一起像是两个软件拼起来的（用户截图反馈"各式各样弹窗都好丑"）。
-    ///
-    /// 【用法】保持与原 MessageBox.Show 高度接近的静态签名，替换调用点时
+    /// 保持与原 MessageBox.Show 高度接近的静态签名，替换调用点时
     /// 只需把 `MessageBox.Show(...)` 改成 `AppDialog.Show(...)`，
     /// 返回类型仍是 <see cref="MessageBoxResult"/>，调用方的判断逻辑不用动。
     /// </summary>
@@ -99,11 +93,9 @@ namespace GeZi
 
         /// <summary>
         /// 显示一个对话框，并在右下角带一个「此后不再提示」勾选框。
-        ///
-        /// 【为什么要它】「关闭按钮该最小化到托盘还是直接退出」这类问题只该问一次，
+        /// 「关闭按钮该最小化到托盘还是直接退出」这类问题只该问一次，
         /// 之后由用户的选择记住 —— 硬弹一个每次都要问的框很烦，静默替用户决定
         /// 又容易让人以为"程序关了其实还在跑"。
-        ///
         /// 按钮两个，按本对话框既有的「主操作在左」习惯排列：
         /// 左边 <paramref name="primaryText"/>（主按钮、回车默认，返回 <see cref="MessageBoxResult.OK"/>）、
         /// 右边 <paramref name="secondaryText"/>（次按钮，返回 <see cref="MessageBoxResult.Cancel"/>）。

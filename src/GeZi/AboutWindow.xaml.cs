@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -26,11 +23,9 @@ namespace GeZi
 {
     /// <summary>
     /// 「关于」窗口：软件介绍 + 赞赏码（可点击放大）。
-    ///
-    /// 【来由】用户要求「和 Python Flet 版那个差不多」——Flet 版有个 `_show_about()`
+    /// 用户要求「和 Python Flet 版那个差不多」——Flet 版有个 `_show_about()`
     /// 带品牌行、B 站链接、应用简介、功能特性、赞赏支持。这里按当前 C# 版的实际情况
     /// **重写了介绍内容**（Flet 版那套功能描述已经对不上了）。
-    ///
     /// ⚠️ 赞赏码用的是 Flet 版里那份 `APP_REWARD_LG_B64`（360×360）解出来的
     /// `Resources/reward-qr.png` —— 同一张码，没有重画。
     /// </summary>
@@ -41,19 +36,19 @@ namespace GeZi
 
         /// <summary>
         /// 项目开源地址（GitHub）。
-        /// 【为什么放显眼处】这类工具的用户最怕"来路不明的 exe"（见过太多捆绑木马的），
+        /// 这类工具的用户最怕"来路不明的 exe"（见过太多捆绑木马的），
         /// 源码公开是他们判断可信度的第一依据 —— 比任何"本软件无毒"的声明都有用。
         /// </summary>
         private const string RepoUrl = "https://github.com/huaotem-bot/gezi-quark-downloader";
 
         /// <summary>功能特性（面向普通用户，一条一句话）。</summary>
         /// <remarks>
-        /// 【2026-10-03】用户提醒「怎么没在简介里写免转存功能，这不是很大的一个特点吗」——
+        /// 用户提醒「怎么没在简介里写免转存功能，这不是很大的一个特点吗」——
         /// 确实漏了。补上后顺带把「多账号」也加了（也是别人常问的）。
         /// 写法要求：**说清"对你有什么好处"**，别只写功能名。
         /// </remarks>
         /// <remarks>
-        /// 【2026-10-11 重排版】改成 **两列小卡**（标题 + 一句说明），
+        /// 改成 **两列小卡**（标题 + 一句说明），
         /// 所以这里从"一行长文字"拆成两项。写法仍是"说清对你有什么好处"。
         /// </remarks>
         private static readonly string[,] Features =
@@ -76,7 +71,7 @@ namespace GeZi
             try
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
-                VersionPillText.Text = "v" + (ver != null ? ver.ToString(3) : "2.3.0");
+                VersionPillText.Text = "v" + (ver != null ? ver.ToString(3) : "2.3.1");
             }
             catch { }
 
@@ -109,8 +104,7 @@ namespace GeZi
 
         /// <summary>
         /// 点「检查更新」：立刻查一次（**不节流**），然后把结果明确告诉用户。
-        ///
-        /// 【为什么弹窗放在这里，而不是启动时】需求要求启动时**不打断用户** ——
+        /// 需求要求启动时**不打断用户** ——
         /// 启动只做后台检查 → 红点 + 气泡，用户不点就当没发生过。
         /// 这里是用户**主动点了**，所以有结果就该说清楚（失败也要给原因和手动地址），
         /// 与"静默"的启动检查是两回事。

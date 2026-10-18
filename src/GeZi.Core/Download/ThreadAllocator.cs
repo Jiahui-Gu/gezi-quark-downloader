@@ -1,16 +1,13 @@
-// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
+﻿// GeZi —— 夸克网盘下载器 (Quark netdisk downloader)
 // Copyright (C) 2026  Yi Yuan
-//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -21,17 +18,13 @@ namespace GeZi.Core.Download
 {
     /// <summary>
     /// 把「总连接预算」按**文件大小比例**分给一批下载任务。
-    ///
-    /// 【背景】Python Flet 版有「智能调度」：`实际线程数 = min(下载线程数, 总连接预算 / 本批任务数)`
+    /// Python Flet 版有「智能调度」：`实际线程数 = min(下载线程数, 总连接预算 / 本批任务数)`
     /// —— 多个文件**平分**总预算。C# 版当初删掉「全局连接预算」设置项时，
     /// 连"多文件共享总预算"这件事一起没了，变成每个任务都开满自己的线程数
     /// （单文件设 512、同时跑 3 个 = 1536 条连接，而夸克是按账号限总连接数的）。
-    ///
-    /// 【用户要求】「不要平均分配了，改成比例分配，按文件大小，文件越大分配越多，
+    /// 「不要平均分配了，改成比例分配，按文件大小，文件越大分配越多，
     /// 文件越小分配越少，但有最低下限，不然别让小文件根本下不了了」。
-    ///
     /// 所以：<c>threads_i = clamp(预算 × size_i / Σsize, 下限, 用户设的单文件并发数)</c>
-    ///
     /// 抽成独立静态类是为了**可测试** —— 纯数学，不碰 UI 也不碰网络，
     /// 验证宿主可以直接跑一组用例（见 tmp-links）。
     /// </summary>
@@ -61,8 +54,7 @@ namespace GeZi.Core.Download
         /// · **多个文件等大** → 退化成"平分"，与 Python 版行为一致。
         /// · **大小全未知** → 也退回平分，不会把所有任务饿到只剩下限。
         /// · 结果永远落在 [<paramref name="minPerFile"/>, <paramref name="perFileCap"/>]。
-        ///
-        /// 【为什么要按"批数"放大预算】调度器用信号量限制**同时只跑
+        /// 调度器用信号量限制**同时只跑
         /// <paramref name="concurrency"/> 个**任务，所以 N 个文件其实是分
         /// ⌈N/concurrency⌉ 批跑完的。如果预算只按 512 分给全部 N 个，
         /// 文件一多（比如 200 个）每份就被压到下限 4 路 —— 而同时其实只有 3 个在跑，
@@ -136,15 +128,13 @@ namespace GeZi.Core.Download
             }
 
             // ---- 水位填充：把「因 perFileCap 封顶而省下的预算」继续分给未封顶的文件 ----
-            //
-            // 【2026-10-13】为什么需要：按比例分配时，一旦某个文件被 perFileCap 封顶，
+            // 为什么需要：按比例分配时，一旦某个文件被 perFileCap 封顶，
             // 它那一份就用不完了，而这部分预算会**白白闲置**。
             // 实测（用户日志复现，tmp-links 用例 alloc_waterfill）：
             //   30.78GB + 160.09MB、cap=256、conc=3
             //   → 大文件 256（撞 cap）、小文件 4（只吃下限）→ **只用掉 260/512，浪费 252**
             // 而夸克 CDN 是**按连接**限速的（docs/CDN并发阈值-实测.md：64→4.00、256→13.94 MB/s，
             // 拐点 256），闲置预算 = 白扔的带宽 ⇒ 160MB 小文件只有 4 路，要磨十几分钟。
-            //
             // ⚠️ 必须**保持大小比例**：slack 只在「未封顶的文件」之间按 size 比例分摊。
             //    绝不能平均加 —— 那会退化成"平均分配"，直接违背用户当初的要求
             //    「不要平均分配，按文件大小，大的多分小的少分，但有最低下限」。

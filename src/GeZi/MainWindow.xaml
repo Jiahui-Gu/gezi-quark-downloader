@@ -1,4 +1,4 @@
-<Window x:Class="GeZi.MainWindow"
+﻿<Window x:Class="GeZi.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:GeZi"
@@ -21,7 +21,7 @@
                             UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <!-- 【2026-10-17】主题切换「圆形揭示」：旧画面垫底，真实界面加圆形 Clip 盖在上面。
+    <!-- 主题切换「圆形揭示」：旧画面垫底，真实界面加圆形 Clip 盖在上面。
          这样圆外露旧图、圆内是**实时的新 UI** —— 分段控件的滑块能继续滑，不被快照冻住。 -->
     <Grid>
         <Image x:Name="ThemeOldSnapshot" Stretch="Fill" IsHitTestVisible="False"
@@ -44,7 +44,7 @@
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="14,0,0,0"
                                 VerticalAlignment="Center">
-                        <!-- 【2026-10-03】按用户要求标题栏**只留文字、不要图标**：
+                        <!-- 按用户要求标题栏**只留文字、不要图标**：
                              「这里我决定不要图标了只要文字」。
                              （窗口/任务栏图标仍是应用图标，那是 Window.Icon，与这里无关。） -->
                         <TextBlock Text="鸽子下载" FontSize="12" FontWeight="SemiBold"
@@ -168,7 +168,7 @@
                         </StackPanel>
 
                         <!-- 导航（ListBox，与 Tabs 用 SelectedIndex 双向同步） -->
-                        <!-- 🚨 【2026-10-10】必须关掉 WPF 自带的「首字母定位」（TextSearch）：
+                        <!-- 🚨 必须关掉 WPF 自带的「首字母定位」（TextSearch）：
                              它是一个 ListBox 就会自带 —— 焦点在导航上时按 s 会跳到「设置」、
                              按 r 跳到「任务」……选中一变页面就切了，用户会以为"某个字母键是快捷键"。
                              这不是我们的快捷键，是框架行为，所以显式关掉。 -->
@@ -332,7 +332,7 @@
                                             Click="OnRefreshAccountClick"
                                             AutomationProperties.Name="刷新账号状态"
                                             ToolTip="刷新">
-                                        <!-- 【2026-10-17】图标色与「刷新」（DriveRefreshBtn，TextSecondary）对齐。
+                                        <!-- 图标色与「刷新」（DriveRefreshBtn，TextSecondary）对齐。
                                              原来这里是 TextTertiary（更浅一档），两个刷新图标本身就不同色；
                                              再加上加载转圈绑的是按钮 Foreground，三者各说各话。
                                              ⚠️ IconRefresh 是实心几何（环带+三角），只能上 Fill，
@@ -351,7 +351,7 @@
 
                 <!-- ============ 下载 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
-                    <!-- 【2026-10-14 UI 改造】页面外框留白统一到 8px 网格：
+                    <!-- 页面外框留白统一到 8px 网格：
                          左右 24px（建议规范的「页面左右边距」档），上下 24px。
                          原来是 20,18,20,18 —— 18 不是网格值，且上下留白偏少，
                          底部按钮区贴边，观感"被硬塞在窗口底部"。 -->
@@ -365,7 +365,7 @@
                         </Grid.RowDefinitions>
 
                         <!-- 页头：标题与副标题之间用 4px（紧凑），整块与下方内容之间 20px。
-                             【2026-10-14】原来是 16px，改成 20px 让"标题区"与"操作区"分层更清楚。 -->
+                             原来是 16px，改成 20px 让"标题区"与"操作区"分层更清楚。 -->
                         <StackPanel Grid.Row="0" Margin="0,0,0,20">
                             <TextBlock Text="下载" Style="{StaticResource PageTitleText}"/>
                             <TextBlock Text="粘贴分享链接解析，或先登录后在「我的网盘」里选择文件"
@@ -393,7 +393,7 @@
                         </Border>
 
                         <!-- 分享面板（卡片）
-                             【2026-10-03 调整】用户反馈「这里做的 ui 总感觉很僵硬，特别是那个解析按钮」。
+                             用户反馈「这里做的 ui 总感觉很僵硬，特别是那个解析按钮」。
                              实测出三处不协调：
                                ① 输入框高 34px（padding 7 + 边框 1 + 文字 18），
                                   而主按钮高 32px（padding 7 + 文字 18，无边框）
@@ -402,7 +402,7 @@
                                ③ 提取码标签与按钮前的间距不一致（12/10 混用），节奏乱。
                              现在统一成：三个控件**同高 34px**、提取码框加宽到 120px、
                              间距统一 14px，按钮 padding 放宽到 20 让它不像个"方块"。 -->
-                        <!-- 【2026-10-14 UI 改造】SharePanel 加**聚焦态**：
+                        <!-- SharePanel 加**聚焦态**：
                              LinkBox 获得焦点时，整张卡片边框变主色 + 一层极淡发光
                              （Raycast 的大搜索框体验：聚焦时"整个条"有反应，而不是只输入框自己变）。
                              用 IsKeyboardFocusWithin 触发，这样点扫码/清空按钮时焦点仍在条内，
@@ -415,8 +415,8 @@
                                 <Style TargetType="Border" BasedOn="{StaticResource Card}">
                                     <Style.Triggers>
                                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                            <!-- 【2026-10-14 去蓝】聚焦反馈从"边框变蓝 + 蓝色发光"改成
-                                                 "边框加深"—— 克制、不引入彩色。发光也去掉（那是 AI 味来源）。 -->
+                                            <!-- 聚焦反馈从"边框变蓝 + 蓝色发光"改成
+                                                 "边框加深"—— 克制、不引入彩色。发光也去掉（那是模板化观感的来源）。 -->
                                             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushStrong}"/>
                                         </Trigger>
                                     </Style.Triggers>
@@ -425,13 +425,13 @@
                           <Grid>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <!-- 【2026-10-14 用户要求】扫码按钮移到「输入框」与「提取码」之间 -->
+                                    <!-- 扫码按钮移到「输入框」与「提取码」之间 -->
                                     <ColumnDefinition Width="*"/>      <!-- 输入框 -->
                                     <ColumnDefinition Width="Auto"/>   <!-- 扫码按钮 -->
                                     <ColumnDefinition Width="Auto"/>   <!-- 提取码 输入框 -->
                                     <ColumnDefinition Width="Auto"/>   <!-- 解析 按钮 -->
                                 </Grid.ColumnDefinitions>
-                                <!-- 【2026-10-14 布局修复】原「分享链接」文字标签删除，改用 placeholder。
+                                <!-- 原「分享链接」文字标签删除，改用 placeholder。
                                      原因：Auto 列总宽超出可用宽度 → Grid 不压缩 Auto 列 → 右侧「解析」按钮
                                      被挤出窗口（UIA 实测解析按钮右边缘 1345 > 窗口 1240，溢出 105px）。
                                      去掉两个文字标签省下约 160px，且 placeholder 是现代表单的标准做法
@@ -442,16 +442,16 @@
                                      34 时内容区只剩 18px → **文字和光标被裁成一条细缝**
                                      （用户反馈「光标怎么这么小了我输入文字也看不见了」）。
                                      离屏渲染逐档实测：34/36/38/40 都裁，**42 起完整显示**。
-                                     【2026-10-03 追根】真正的病根已找到并修掉：模板把
+                                     真正的病根已找到并修掉：模板把
                                      Padding 用了两遍（WPF 的 TextBoxView 自己也会按 Padding
                                      缩进），天然高度因此虚高到 46.5。修完天然高度 32.5，
                                      34 也不再裁字。这里仍保留 42，是为了和提取码框、解析
                                      按钮同高（视觉上一排整齐），不是为了躲裁切。 -->
-                                <!-- 【2026-10-14 用户反馈】扫码按钮**移到输入框外**（独立一列，在输入框左侧）。
+                                <!-- 扫码按钮**移到输入框外**（独立一列，在输入框左侧）。
                                      用户原话：「扫描二维码的图标拿出到输入框外」。
                                      原来是绝对定位贴在输入框内部右缘，与清空按钮挤在一起、
                                      还逼得输入框右内边距要留 58px —— 现在独立成列，输入框干净了。 -->
-                                <!-- 【2026-10-17 对齐修正 · 第二轮】用户要求「图标在输入框与提取码之间居中」。
+                                <!-- 用户要求「图标在输入框与提取码之间居中」。
                                      🔎 真正的病根：**提取码那一列自带 `Margin="14,0,0,0"`**（见下方 Grid.Column=2），
                                         而扫码按钮原来是 `7,0,7,0` ⇒ 两侧间距根本不相等：
                                           左 = 7 + (36-16)/2 = 17px
@@ -460,7 +460,7 @@
                                      ✅ 修法：把左边补成 14、右边归零 ⇒ 左 = 14+10 = 24，右 = 10+0+14 = 24，**严格居中**。
                                      ✅ 总占宽仍是 50（36+14+0 = 36+7+7），输入框宽度一点不受影响。
 
-                                     【2026-10-17】用户要求**删掉扫码按钮的悬停提示**（原来那串
+                                     用户要求**删掉扫码按钮的悬停提示**（原来那串
                                      「识别二维码：把夸克分享二维码图片识别成链接（也可直接 Ctrl+V 粘贴截图）」
                                      太长、挡视线）⇒ 直接不设 ToolTip，悬停不再弹任何文字。
                                      ⚠️ 别再加回来；`AutomationProperties.Name` 保留（UIA 定位 + 无障碍要用）。 -->
@@ -504,7 +504,7 @@
                                     </Button.Style>
                                 </Button>
                                 <Grid Grid.Column="0">
-                                    <!-- 【2026-10-14 UI 改造 · Raycast 式来源栏】
+                                    <!--
                                          目标：把「输入框 + 扫码/清空/解析」合成**一个整体**，
                                          而不是三个各自带边框的控件排一排（那是"控件堆叠"感）。
                                          做法（Raycast 的做法）：**输入框本身无边框，边框只在容器上**。
@@ -519,10 +519,10 @@
                                              DataObject.Pasting="OnLinkBoxPasting"
                                              ToolTip="支持含提取码的完整链接，也可只粘贴链接再单独填提取码">
                                         <TextBox.Style>
-                                            <!-- 【2026-10-14 修正】上一版按 Raycast 做成"输入框完全无边框无底色"，
+                                            <!-- 上一版按 Raycast 做成"输入框完全无边框无底色"，
                                                  结果在白卡片上**彻底看不见** —— 用户反馈「解析框不见了」，
                                                  根本不知道那里能输入。可用性 > 风格。
-                                                 ✅ 折中：保留"无硬边框"（不画 1px 灰线，那是 AI 味的来源），
+                                                 ✅ 折中：保留"无硬边框"（不画 1px 灰线，那是模板化观感的来源），
                                                  改用**极淡的凹陷底色**（SurfaceSunken）表达"这里可以输入"。
                                                  配合外层 SharePanel 聚焦时边框变主色 + 淡光。 -->
                                             <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBox}">
@@ -613,7 +613,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </Grid>
-                                <!-- 【2026-10-14 用户反馈】解析按钮上的 2 颗装饰星已删除（用户：「加的几颗星星反而让它更丑了」）。
+                                <!-- 解析按钮上的 2 颗装饰星已删除（用户：「加的几颗星星反而让它更丑了」）。
                                      现在就是一个干净的实心块。 -->
                                 <Button x:Name="ParseBtn" Grid.Column="3" Content="解析"
                                         Click="OnParseClick"
@@ -671,7 +671,7 @@
                                     </ScrollViewer>
                                 </Grid>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <!-- 【2026-10-14 UI 改造】搜索框：从"白底描边胶囊"改为"凹陷底色无边框"。
+                                    <!-- 搜索框：从"白底描边胶囊"改为"凹陷底色无边框"。
                                          与来源栏（LinkBox）同一套语言，工具栏区视觉统一。
                                          外层 Border 只负责圆角和凹陷底色，不画边框。 -->
                                     <Border CornerRadius="8"
@@ -719,11 +719,11 @@
                                             <TextBlock Text="刷新" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
-                                    <!-- 【2026-10-09】解析历史的**看得见**的入口：用户要求
+                                    <!-- 解析历史的**看得见**的入口：用户要求
                                          「在我的网盘右侧也加一个，更直观」——
                                          单靠 h 键没人猜得到。⚠️ 这条工具栏是两个模式共用的，
                                          所以「分享链接」模式下也一并显示（两边都能用，不冲突）。
-                                         【2026-10-17】按用户要求**删掉悬停提示**
+                                         按用户要求**删掉悬停提示**
                                          （原来那串「解析历史：最近解析过的分享，点一条即可重新打开」）。
                                          别再加回来；按钮自身带「解析历史」文字，信息已足够。 -->
                                     <Button Click="OnShareHistoryButtonClick"
@@ -754,7 +754,7 @@
                                          用户要求「可以使用 shift 多选，但不是连选」——
                                          即 Shift+点击只切换**这一个**项的选中态。
                                          做法见 OnListPreviewMouseDown（拦下 Shift 点击自己处理）。
-                                         【2026-10-10】单击 = 选中，**双击文件夹才进目录**
+                                         单击 = 选中，**双击文件夹才进目录**
                                          （OnFileListDoubleClick）。第三方分支 v2.4 曾改成
                                          「单击直接进入」并摘掉本事件，**我们不采纳**那个改动。 -->
                                     <ListBox x:Name="FileList" SelectionMode="Extended"
@@ -766,7 +766,7 @@
                                              MouseRightButtonUp="OnFileListRightClick">
                                         <ListBox.ContextMenu>
                                             <ContextMenu>
-                                                <!-- 【2026-10-14 右键菜单重设计】按行业标准（参考用户给的下载器截图）：
+                                                <!-- 按行业标准（参考用户给的下载器截图）：
                                                      每项 = 线性图标 + 文字 + 快捷键；破坏性操作（删除）用红色。
                                                      图标 14px、统一 22px 图标列宽，保证文字左对齐。 -->
                                                 <MenuItem Header="下载选中" Click="OnDownloadSelected">
@@ -779,7 +779,7 @@
                                                               StrokeLineJoin="Round"/>
                                                     </MenuItem.Icon>
                                                 </MenuItem>
-                                                <!-- 【2026-10-03】免转存下载：不往自己网盘写中转文件，直接从分享取链。
+                                                <!-- 免转存下载：不往自己网盘写中转文件，直接从分享取链。
                                                      ⚠️ 续传时不会重新换 stoken（全代码只在解析时取一次），
                                                      stoken 过期就取不到新链 → 中途断了只能重新解析分享、从头再来。
                                                      必须让用户在点之前就知道，所以括号里写明「无法续传」。 -->
@@ -882,8 +882,8 @@
                                          code-behind 的 UpdateFileStates() 统一裁决可见性。 -->
 
                                     <!-- 加载中
-                                         【2026-10-14 UI 改造】去掉**旋转动画**（规范里"不要做"的一项：
-                                         旋转加载圈是最典型的 AI 味元素）。保留图标 + 文案，
+                                         去掉**旋转动画**（规范里"不要做"的一项：
+                                         旋转加载圈是最典型的模板化元素）。保留图标 + 文案，
                                          改为静态显示 —— 加载态靠文字说明，不靠动效抢注意力。
                                          ⚠️ 这不影响 UiBusy.cs 的按钮「加载中」态（那是另一套，MinBusyMs=280），
                                          也不影响 LoadingSpinner 样式本身（仍在 Styles.xaml，可复用）。 -->
@@ -902,7 +902,7 @@
                                     <StackPanel x:Name="FileEmptyState" IsHitTestVisible="False"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Visibility="Collapsed">
-                                        <!-- 【2026-10-14 UI 改造】空状态改 Notion 式三级层级：
+                                        <!-- 空状态改 Notion 式三级层级：
                                              ① 图标 40 → 64px，颜色从 BorderBrushStrong（描边色，极淡、几乎看不见）
                                                 改成 PrimarySoftBrush（主色浅版）—— 空状态是全页最该被"看见"的引导，
                                                 不该是最淡的元素；
@@ -923,7 +923,7 @@
                                                    Style="{StaticResource TertiaryText}" FontSize="12"/>
                                     </StackPanel>
 
-                                    <!-- 【2026-10-09】分页提示：目录大时列表一次只"露"一批条目，
+                                    <!-- 分页提示：目录大时列表一次只"露"一批条目，
                                          这行告诉用户"下面还有"，滚到底会自动续上（见 LoadMoreItems）。 -->
                                     <TextBlock x:Name="FileMoreHint" Grid.Row="1"
                                                Visibility="Collapsed"
@@ -935,14 +935,14 @@
                         </Grid>
 
                         <!-- 操作按钮
-                             【2026-10-14 UI 改造】上方留白 12 → 24，与内容区拉开呼吸。
+                             上方留白 12 → 24，与内容区拉开呼吸。
                              这是"AI味"诊断里指出的「按钮区像被硬塞在窗口底部」的正解：
                              **用空间分隔，不画分割线**（Linear 的做法 —— 线是噪音，留白才是层级）。 -->
-                        <!-- 【2026-10-17 用户要求】三个按钮靠右对齐 —— 原来贴左边，右侧一大片空白，
+                        <!-- 三个按钮靠右对齐 —— 原来贴左边，右侧一大片空白，
                              视觉重心全压在左半边。 -->
                         <StackPanel Grid.Row="4" Orientation="Horizontal"
                                     HorizontalAlignment="Right" Margin="0,24,0,0">
-                            <!-- 【2026-10-14 UI 改造】Fluent 主次原则：**一个视图只有一个实心主操作**。
+                            <!-- Fluent 主次原则：**一个视图只有一个实心主操作**。
                                  改前「下载选中」实心、「下载全部」描边 —— 其实已经是主次分明的。
                                  这里做的是**统一三者的视觉重量**：下载全部从 SecondaryButton 降为
                                  GhostButton（更轻），让「下载选中」成为唯一焦点；
@@ -951,7 +951,7 @@
                             <Button x:Name="DownloadSelBtn" Click="OnDownloadSelected"
                                     Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <!-- 【2026-10-17】图标颜色必须跟按钮前景色走 → SolidBtnFgBrush。
+                                    <!-- 图标颜色必须跟按钮前景色走 → SolidBtnFgBrush。
                                          别写 TextOnPrimaryBrush：那个两个主题都是纯白，而暗色主题的实心按钮
                                          是「浅灰底 #E8EAF0」，白图标画上去就消失了（用户反馈看不见）。 -->
                                     <Path Data="{StaticResource IconDownload}" Stretch="Uniform" Width="14"
@@ -962,11 +962,11 @@
                                     <TextBlock Text="下载选中" Margin="7,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <!-- 【2026-10-17 用户反馈】三个按钮之间的**视觉缝隙不一致**。
+                            <!-- 三个按钮之间的**视觉缝隙不一致**。
                                  根因：GhostButton 的 Padding 是 10,5、FontSize 12（比 Primary 的 16,7 / 13 小），
                                  按钮实际边界更窄 → 看起来中间那道缝更大。
                                  这里给「下载全部」本地覆盖成与另外两个完全一致的 16,7 / 13。 -->
-                            <!-- 【2026-10-17 用户反馈】幽灵按钮背景透明、看不见边界，
+                            <!-- 幽灵按钮背景透明、看不见边界，
                                  视觉上「实心→幽灵」的缝隙会比「幽灵→描边」小（光学错觉），
                                  代码里明明都是 8px 却看着不匀。改成 SecondaryButton
                                  （白底 + 1px 描边，Padding 15,7 已做边框补偿），三个按钮边界都清晰。 -->
@@ -993,7 +993,7 @@
                                     <TextBlock Text="获取直链" Margin="7,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <!-- 【2026-10-17 用户要求】按钮右边那串「获取直链后可导出为 …」删掉。
+                            <!-- 按钮右边那串「获取直链后可导出为 …」删掉。
                                  这句已经移到「获取直链」对话框标题下方，主界面不再重复。 -->
                         </StackPanel>
                     </Grid>
@@ -1001,7 +1001,7 @@
 
                 <!-- ============ 任务 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
-                    <!-- 【2026-10-14 UI 改造】页面外框留白统一到 8px 网格：
+                    <!-- 页面外框留白统一到 8px 网格：
                          左右 24px（建议规范的「页面左右边距」档），上下 24px。
                          原来是 20,18,20,18 —— 18 不是网格值，且上下留白偏少，
                          底部按钮区贴边，观感"被硬塞在窗口底部"。 -->
@@ -1032,7 +1032,7 @@
                                            Foreground="{DynamicResource TextTertiaryBrush}"
                                            Opacity="0.85"/>
                             </StackPanel>
-                            <!-- 【2026-10-14 UI 重构】任务分类 Tab（参考 Motrix 的任务列表分类）。
+                            <!-- 任务分类 Tab（参考 Motrix 的任务列表分类）。
                                  原来所有任务混在一个列表里，"哪个失败了"得自己一行行扫。
                                  4 个分类**共用同一个 TaskList**，只切换 ICollectionView 的过滤器
                                  （用 TabItem 会需要 4 份列表副本 → 状态不同步）。 -->
@@ -1044,7 +1044,7 @@
                                 <Border x:Name="FilterThumb" Height="2" VerticalAlignment="Bottom"
                                         HorizontalAlignment="Left" IsHitTestVisible="False"
                                         Background="{DynamicResource TextPrimaryBrush}"/>
-                                <!-- 【2026-10-17 用户要求】计数从「紧跟已完成」移到整行最右，
+                                <!-- 计数从「紧跟已完成」移到整行最右，
                                      与分类 Tab 同一水平线（左列自适应、右列 Auto）。 -->
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1083,7 +1083,7 @@
                         </StackPanel>
 
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-                            <!-- 【2026-10-03】「暂停全部 / 恢复全部」合并成一个按钮：
+                            <!-- 「暂停全部 / 恢复全部」合并成一个按钮：
                                  图标与文案按当前任务状态自动切换（有在跑的就显示"暂停全部"，
                                  否则显示"恢复全部"），由 UpdatePauseAllButton() 在代码里维护。
                                  「取消全部」按钮按用户要求移除 —— 单个任务的「取消」仍在右键菜单里。 -->
@@ -1109,7 +1109,7 @@
                                     <TextBlock Text="诊断面板" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <!-- 【2026-10-03 新增】用户要求任务页也能直接打开下载目录（原来只有设置页有） -->
+                            <!-- 用户要求任务页也能直接打开下载目录（原来只有设置页有） -->
                             <Button Click="OnOpenOutDir" Style="{StaticResource ToolButton}"
                                     Margin="0" ToolTip="在资源管理器中打开下载目录">
                                 <StackPanel Orientation="Horizontal">
@@ -1163,7 +1163,7 @@
                                                       StrokeLineJoin="Round"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
-                                        <!-- 【2026-10-17 用户要求】原「删除本地文件…」→「删除并移除」，
+                                        <!-- 原「删除本地文件…」→「删除并移除」，
                                              位置从最底部移到「取消」下方（两者同属「不要这个任务了」的终止类），
                                              并补上垃圾桶图标 + 警示红。 -->
                                         <MenuItem Header="删除并移除" Click="OnTaskDeleteLocal"
@@ -1196,7 +1196,7 @@
                                             </MenuItem.Icon>
                                         </MenuItem>
                                         <Separator Style="{StaticResource MenuSeparator}"/>
-                                        <!-- 【2026-10-17】删除项已上移到「取消」下方；这里只剩「仅移除记录」，
+                                        <!-- 删除项已上移到「取消」下方；这里只剩「仅移除记录」，
                                              顺手补图标，避免整份菜单只有它没图标。 -->
                                         <MenuItem Header="仅移除记录" Click="OnTaskRemoveRecord">
                                             <MenuItem.Icon>
@@ -1274,7 +1274,7 @@
                                                         Tag="{Binding}" Style="{StaticResource TaskPauseButton}"
                                                         Margin="6,0,0,0" VerticalAlignment="Center"/>
                                                 <!-- 「播放」= 交给系统默认程序打开（装了 VLC 就用 VLC）。
-                                                     【2026-10-03】按用户要求：只有**能播**的时候才显示这个按钮
+                                                     按用户要求：只有**能播**的时候才显示这个按钮
                                                      （见 TaskItem.CanPlay）——
                                                        · 独立分片+边合并 → 目标文件从 0 连续增长，未下完也能边下边播 ✓
                                                        · 共写同一文件 → 预分配的满尺寸空洞文件，播放器打不开 ✗
@@ -1298,7 +1298,7 @@
                                                         Margin="2,0,0,0" VerticalAlignment="Center"
                                                         ToolTip="在资源管理器中选中该文件。"/>
                                             </Grid>
-                                            <!-- 【2026-10-14】任务行第二排 = 连接车道 + 进度条 + 速度/已完成/百分比。
+                                            <!-- 任务行第二排 = 连接车道 + 进度条 + 速度/已完成/百分比。
                                                  「连接车道」参考 Ketch 的招牌设计（每条连接一条活的车道）：
                                                  左侧 20 个小格子按"活跃连接占比"点亮，后面跟 12/16 连接 的文字。
                                                  作用：一眼判断"是服务端限速、还是客户端没把连接发出去"。
@@ -1368,7 +1368,7 @@
                             <StackPanel x:Name="TaskEmptyState" IsHitTestVisible="False"
                                         HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Visibility="Visible">
-                                <!-- 【2026-10-14 UI 改造】与下载页空状态保持同一套 Notion 式三级层级：
+                                <!-- 与下载页空状态保持同一套 Notion 式三级层级：
                                      图标 64px + PrimarySoftBrush、标题 14px SemiBold TextPrimary、
                                      引导 12px TertiaryText。两个空状态必须一致，否则一精一糙。 -->
                                 <Path Data="{StaticResource IconActivity}" Stretch="Uniform" Width="64"
@@ -1393,7 +1393,7 @@
                                 <RowDefinition Height="132"/>
                             </Grid.RowDefinitions>
                             <!-- 标题行：左标题 + 右「详细」开关 -->
-                            <!-- 【2026-10-18 用户要求】默认只显示日常必要信息（下载/解析/报错的
+                            <!-- 默认只显示日常必要信息（下载/解析/报错的
                                  结果），点「详细」才显示专业级（目录加载、缓存命中、连接分配、
                                  内部状态等过程细节）。按钮背景透明（GhostButton）。 -->
                             <Grid Grid.Row="0" Margin="0,0,0,6">
@@ -1424,16 +1424,15 @@
                 <!-- ============ 设置 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
-                        <!-- 【2026-10-14 UI 改造】外边距统一 24px（与下载页/任务页一致） -->
+                        <!-- 外边距统一 24px（与下载页/任务页一致） -->
                         <StackPanel Margin="24,24,24,24" MaxWidth="900" HorizontalAlignment="Left">
 
                             <TextBlock Text="设置" Style="{StaticResource PageTitleText}" Margin="0,0,0,4"/>
                             <TextBlock Text="所有改动即时生效，无需保存"
                                        Style="{StaticResource TertiaryText}" Margin="0,0,0,18"/>
 
-
                                 <!-- ════════════════════════════════════════════════════════════
-                                    【2026-10-17 UI 重构】设置页改为「一页平铺，不滚动」
+                                    设置页改为「一页平铺，不滚动」
                                     改前：5 个分类 Tab（外观 / 下载 / 窗口 / 存储 / 高级），
                                            一次只看一类，找设置要切来切去。
                                     改后：去掉分类 Tab，所有设置项**一页两列排平**，
@@ -1449,7 +1448,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <!-- 【2026-10-17 用户要求「对齐」】两列各自堆叠 → **3 行 × 2 列行对齐**：
+                                    <!-- 两列各自堆叠 → **3 行 × 2 列行对齐**：
                                          每行两张卡等高（VerticalAlignment 默认 Stretch），两列底边自然齐平。
                                          代价：矮卡底部会留白（行高由该行较高的那张决定），这是行对齐的固有取舍。 -->
                                     <Grid.RowDefinitions>
@@ -1481,7 +1480,7 @@
                                                               SelectionChanged="OnSettingChanged">
                                                         <ComboBoxItem Content="16  — 省网保守"/>
                                                         <ComboBoxItem Content="32  — 保守，够用"/>
-                                                        <!-- 【2026-10-11 更正文案】标注必须与 Settings.Threads 的默认值一致。
+                                                        <!-- 标注必须与 Settings.Threads 的默认值一致。
                                                         默认值已按**实测拐点**从 64 改成 256
                                                         （docs/CDN并发阈值-实测.md：64 路 4.00 MB/s、128 路 7.98、
                                                         **256 路 13.94 ← 拐点**、512 路 13.31）。
@@ -1508,7 +1507,7 @@
                                                              KeyDown="OnSettingKeyDown"/>
                                                 </Grid>
 
-                                                <!-- 【2026-10-11 新增】跟随系统代理。
+                                                <!-- 跟随系统代理。
                                                 背景：程序历来**强制直连**（显式关闭代理，理由是
                                                 本机代理软件会劫持夸克接口、代理会改变 TLS 指纹被 WAF 拒）。
                                                 但"必须经代理才能上网"的环境（公司网络）里直连 = 程序
@@ -1540,7 +1539,7 @@
                                                 <TextBlock Text="窗口与后台" Style="{StaticResource CardTitleText}"
                                                            FontSize="14" Margin="0,0,0,10"/>
 
-                                                <!-- 【2026-10-03 新增】关闭按钮行为 + 悬浮小窗入口。
+                                                <!-- 关闭按钮行为 + 悬浮小窗入口。
                                                 用户要求：第一次点 × 时询问「最小化到托盘 / 直接退出」，
                                                 弹窗里可勾「此后不再提示」，之后在**这里**还能改。 -->
                                                 <Grid Margin="0,0,0,6">
@@ -1560,7 +1559,7 @@
                                                     </ComboBox>
                                                 </Grid>
 
-                                                <!-- 【2026-10-08 新增】剪贴板监听：复制夸克分享链接即自动解析。
+                                                <!-- 剪贴板监听：复制夸克分享链接即自动解析。
                                                 默认开；不想被打扰的用户在这里关掉。
                                                 走独立的 Click 处理器（不是 OnSettingChanged）——
                                                 这个开关不需要重建下载调度器，见 OnClipboardAutoParseChanged。 -->
@@ -1587,7 +1586,7 @@
                                                 <TextBlock Text="存储" Style="{StaticResource CardTitleText}"
                                                            FontSize="14" Margin="0,0,0,10"/>
 
-                                                <!-- 【2026-10-17 用户要求「对齐」】原来是 [120][*][Auto][Auto] 单行：
+                                                <!-- 原来是 [120][*][Auto][Auto] 单行：
                                                      输入框被「浏览…」+「打开下载目录」两个按钮挤到只剩 ~60px，
                                                      只显示得出 "C://Users" 就被截断。
                                                      改成与右列「分片与缓存」完全同构的**竖排**：
@@ -1631,7 +1630,6 @@
                                                           Click="OnSettingChanged"/>
                                             </StackPanel>
                                         </Border>
-
 
                                     <!-- 右列：个性化 → 分片与缓存 → 播放器 -->
 
@@ -1681,7 +1679,7 @@
                                                            Text="跟随系统时，Windows 切换深色/浅色，本程序会自动跟着变。"/>
 
                                                 <!-- 主题版预览：让用户不用切来切去也能看到效果
-                                                【2026-10-14 UI 改造】色块 34×22 → 40×40、圆角 5 → 8，
+                                                色块 34×22 → 40×40、圆角 5 → 8，
                                                 并且**每个色块下方带自己的标签**（页面底 / 卡片 / 主色 / 正文）。
                                                 改前只有末尾一行笼统的「当前配色的底色、卡片色、主色」——
                                                 用户得数着猜哪个是哪个（"AI味"诊断里准确的一条：色块展示原始）。
@@ -1730,7 +1728,7 @@
 
                                                 <TextBlock Text="分片/缓存根目录" Style="{StaticResource BodyText}"
                                                            Margin="0,0,0,6"/>
-                                                <!-- 【2026-10-04 用户要求】除「浏览…」外，再加一个「打开目录」按钮，
+                                                <!-- 除「浏览…」外，再加一个「打开目录」按钮，
                                                 与上方「下载目录」行保持一致的操作入口。 -->
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -1785,7 +1783,7 @@
                                                             Click="OnRecheckPlayer" Style="{StaticResource SecondaryButton}"/>
                                                 </StackPanel>
 
-                                                <!-- 【2026-10-17 用户指正】这里要介绍的是 **VLC**（本卡的主题是播放器），
+                                                <!-- 这里要介绍的是 **VLC**（本卡的主题是播放器），
                                                      不是鸽子下载自己。 -->
                                                 <Border Margin="0,14,0,0" Padding="0,12,0,0"
                                                         BorderBrush="{DynamicResource BorderBrushSoft}"
@@ -1811,7 +1809,7 @@
                 <!-- ============ 登录 ============ -->
                 <TabItem Style="{StaticResource HeadlessTabItem}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
-                        <!-- 【2026-10-14 UI 改造】外边距统一 24px -->
+                        <!-- 外边距统一 24px -->
                         <StackPanel Margin="24,24,24,24" MaxWidth="960" HorizontalAlignment="Left">
 
                             <TextBlock Text="登录" Style="{StaticResource PageTitleText}" Margin="0,0,0,4"/>
@@ -1827,7 +1825,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- ============ 左列：扫码登录 ============
-                                     【2026-10-17 两轮调整，改之前先读完】
+
                                      ① 用户第一次反馈「获取二维码按钮与上方框之间距离太大」。
                                         根因：二维码那行原来是 `*` + 框 VerticalAlignment=Center，
                                         左卡被右列撑高后多出来的 ~80px 被平均分到框的上下，
@@ -1871,11 +1869,11 @@
                                         </StackPanel>
 
                                         <!-- 二维码：固定 264×264 占位框，未生成时显示提示，避免高度跳变。
-                                             【2026-10-17】本行已改为 Auto（不再 *），所以**不要**加
+                                             本行已改为 Auto（不再 *），所以**不要**加
                                              VerticalAlignment=Center —— Auto 行里它本来就贴顶，
                                              加了反而会在高度富余时又被居中、把间距撑开。
 
-                                             🚨 【2026-10-17 修「边框显示不全」】两个 Border **都不能写死 Width**。
+                                             🚨 两个 Border **都不能写死 Width**。
                                                  左卡 Width=304，`PrimaryCard` 是 BorderThickness=1 + Padding=20
                                                  ⇒ **内宽 = 304-2-40 = 262**，比 264 少 2px。
                                                  原来 `QrImageBox` 写了 Width="264"，比可用宽度多 2px ⇒
@@ -1937,7 +1935,7 @@
                                                 <Button x:Name="QrLoginBtn" Click="OnQrLogin"
                                                         Style="{StaticResource PrimaryButton}">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <!-- 【2026-10-17】同 DownloadSelBtn：用 SolidBtnFgBrush 跟随按钮前景色。
+                                                        <!-- 同 DownloadSelBtn：用 SolidBtnFgBrush 跟随按钮前景色。
                                                              TextOnPrimaryBrush 恒为纯白，暗色主题浅灰底上会看不见。 -->
                                                         <Path Data="{StaticResource IconQr}"
                                                               Stretch="Uniform"
@@ -1951,7 +1949,7 @@
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                 </Button>
-                                                <!-- 【2026-10-17 按用户要求把「刷新」加回来，放在「获取二维码」右边】
+                                                <!--
                                                      历史：2026-10-03 曾删掉过一个「刷新二维码」按钮，理由是它和
                                                      「获取二维码」绑同一个处理函数、看着重复。但实际用起来
                                                      二维码过期后**必须滚回上面的按钮**才能重取，所以用户又要回来了。
@@ -2026,7 +2024,7 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
-                                                    <!-- 【2026-10-17】第三列：切换账号（挪到账号信息同一行右侧） -->
+                                                    <!-- 第三列：切换账号（挪到账号信息同一行右侧） -->
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <Border x:Name="LoginAvatarBox" Grid.Column="0"
@@ -2059,7 +2057,7 @@
                                                                TextWrapping="Wrap"/>
                                                 </StackPanel>
 
-                                                <!-- 【2026-10-17 按用户要求重排这一块】
+                                                <!--
                                                      ① **删掉「登录」按钮**：它只做了 `Tabs.SelectedIndex = 3`，
                                                         和左侧「获取二维码」、下方「导入 Cookie」完全重复，
                                                         用户反馈「这个登录按钮没有任何作用」。
@@ -2069,7 +2067,7 @@
                                                         这时候左侧扫码 + 下方导入 Cookie 就是全部入口。
                                                      ⚠️ 可见性由 MainWindow.xaml.cs 的「登出」与「登录完成」两处控制，
                                                         改这里务必同步改那两处（搜 AccountsBtn）。
-                                                     【2026-10-03】「登出」按钮按用户要求删除（觉得多余），
+                                                     「登出」按钮按用户要求删除（觉得多余），
                                                      退出登录的能力没丢：挪进了「切换账号」窗口里，
                                                      那里才是账号管理的地方。 -->
                                                 <Button x:Name="AccountsBtn" Grid.Column="2"
@@ -2097,7 +2095,7 @@
                                                         Click="OnImportCookie"
                                                         Style="{StaticResource PrimaryButton}"
                                                         Margin="0,0,8,0"/>
-                                                <!-- 【2026-10-03 新增】从文件导入 Cookie（用户反馈缺这个入口）。
+                                                <!-- 从文件导入 Cookie（用户反馈缺这个入口）。
                                                      支持 .txt（原始 Cookie 串）与 .json（浏览器扩展导出的格式）。 -->
                                                 <Button x:Name="ImportCookieFileBtn" Click="OnImportCookieFile"
                                                         Style="{StaticResource SecondaryButton}"
@@ -2117,7 +2115,7 @@
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                 </Button>
-                                                <!-- 【2026-10-03 改】原来是「复制当前 Cookie」→ 只往剪贴板塞。
+                                                <!-- 原来是「复制当前 Cookie」→ 只往剪贴板塞。
                                                      用户要求「无论是导出直链还是导出 cookie 都不要复制到
                                                      粘贴板上」，所以改成**写文件**，按钮文案与图标同步改。 -->
                                                 <Button Click="OnExportCookie"
@@ -2137,7 +2135,7 @@
                                                                    VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                 </Button>
-                                                <!-- 【2026-10-18 用户要求】备选登录：扫码不方便/不想用
+                                                <!-- 备选登录：扫码不方便/不想用
                                                      应用内二维码时，拉起默认浏览器在网页里扫码登录，
                                                      再把浏览器里的 Cookie 拿回来导入。 -->
                                                 <Button x:Name="AltLoginBtn" Click="OnAltLogin"
@@ -2172,7 +2170,7 @@
                                                        Margin="0,0,0,6"/>
                                             <TextBlock Style="{StaticResource ProseText}"
                                                        Text="· 登录信息经系统加密后存在本地配置里，不会上传到任何服务器。"/>
-                                            <!-- 【2026-10-03 再改】上一版写的是
+                                            <!-- 上一版写的是
                                                  「登录状态过期时不用重新扫码，再点一次「获取二维码」即可」——
                                                  这句是**错的**：它把「二维码本身过期」和「登录态过期」
                                                  混为一谈了。
@@ -2199,7 +2197,7 @@
             <!-- ================= 解析历史 =================
                  盖住整窗（含标题栏），观感与「关于」这类浮层一致：**居中**一块卡片，
                  背后压暗；点面板外的暗色区域或按 Esc 关闭（见 OnMainKeyDown）。
-                 【为什么不做成独立 Window】独立窗口没法把"背后的主界面压暗"，
+                 独立窗口没法把"背后的主界面压暗"，
                  而这个面板要的正是"浮在当前界面之上"；在窗口里加一层 Grid 最直接。
                  列表内容由 RebuildHistoryPanel() 动态生成（分组标题 + 可点行）。
                  Focusable=True：打开时把焦点收到自己身上，免得之后随手敲的字母
@@ -2242,7 +2240,7 @@
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextTertiaryBrush}"/>
                             </StackPanel>
-                            <!-- 【2026-10-14 用户要求】右上角改为**关闭叉号**（原来这里是「清空」按钮，
+                            <!-- 右上角改为**关闭叉号**（原来这里是「清空」按钮，
                                  现在「清空」移到面板右下角）。 -->
                             <Button Grid.Column="1"
                                     Click="OnHistoryCloseClick"
@@ -2266,7 +2264,7 @@
                         </ScrollViewer>
 
                         <!-- 脚：左侧提示 + 右下角「清空」按钮
-                             【2026-10-14 用户要求】「清空」从右上角移到这里（右下角）。 -->
+                             「清空」从右上角移到这里（右下角）。 -->
                         <Border Grid.Row="2" BorderThickness="0,1,0,0"
                                 BorderBrush="{DynamicResource BorderBrushSoft}"
                                 Padding="18,10,14,10">

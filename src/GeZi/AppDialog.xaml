@@ -1,4 +1,4 @@
-<Window x:Class="GeZi.AppDialog"
+﻿<Window x:Class="GeZi.AppDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="提示"
@@ -65,7 +65,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 图标圆：38×38 容器，CornerRadius=19（= 宽高一半）才是**正圆**。
-                     【2026-10-14】曾被圆角收敛脚本误改成 12（会变方角），已改回。
+                     曾被圆角收敛脚本误改成 12（会变方角），已改回。
                      ⚠️ 教训：圆角收敛**不能无脑映射** —— 圆形容器的圆角 = 尺寸/2，不参与档位。 -->
                 <Border x:Name="IconBox" Grid.Column="0" Width="38" Height="38"
                         CornerRadius="19" VerticalAlignment="Top" Margin="0,1,14,0"
@@ -94,7 +94,7 @@
                       Style="{StaticResource AppCheckBox}"/>
 
             <!-- 按钮区 -->
-            <!-- 【2026-10-18 用户要求】小窗口按钮全部背景透明（GhostButton）。
+            <!-- 小窗口按钮全部背景透明（GhostButton）。
                  AppDialog 也是小窗口（消息框），一并透明化。 -->
             <StackPanel x:Name="ButtonRow" Grid.Row="3" Orientation="Horizontal"
                         HorizontalAlignment="Right" Margin="20,20,20,18">
