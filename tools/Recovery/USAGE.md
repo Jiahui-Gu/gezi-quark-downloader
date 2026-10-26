@@ -94,3 +94,32 @@ Tests use generated small fixtures under `tools\Recovery\bin` and loopback TCP
 only, then remove their own fixtures. They never inspect real downloads or
 credentials. Large-file throughput, live CDN authorization, and share refresh
 are deliberately not exercised.
+
+## Explicit live incident gap acquisition
+
+`LiveGaps.cs` is a separate, incident-specific net48 CLI for the four diagnosed
+COD23SP files. It calls the supplied production Core assembly's `QuarkClient`
+and `QuarkSession` without reimplementing their API headers or fallback logic.
+
+```powershell
+& .\tools\Recovery\Build-Live.ps1 -CoreDll 'C:\repair\app\GeZi.Core.dll'
+& .\tools\Recovery\bin\GeZi.LiveGaps.exe `
+  'C:\explicit\GeZi.config.xml' 'C:\explicit\original-state-backup.json' `
+  'https://pan.quark.cn/s/SHARE_ID#/list/share/FOLDER_FID' `
+  'C:\explicit\new-gap-directory'
+```
+
+Configuration and state are read-only. The explicit original pending records'
+Fids must match fresh directory entries, names and four-GiB sizes. Cookies,
+stokens and signed URLs remain in memory. Only numeric API statuses and
+non-sensitive result information are printed. The supplied Core's bounded
+read-only authentication validation and candidate-link attempts still apply;
+one rejected candidate does not mean all candidates failed.
+
+The output directory must be new and its parent must exist. Only the four
+fixed missing ranges (14,879,299 bytes total) are fetched. This uses the same
+strict Range implementation as candidate recovery and renames a `.partial`
+file only after validation. An unsuccessful file may leave its partial output;
+use another new output directory for a deliberate retry. No cloud saves,
+deletions, state updates, original-file replacement or UI operations occur.
+Successful gaps still require candidate assembly and the manifest MD5 check.

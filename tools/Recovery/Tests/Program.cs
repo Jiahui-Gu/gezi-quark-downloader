@@ -19,6 +19,19 @@ internal static class Tests
         Directory.CreateDirectory(root);
         try
         {
+            Test("live helper reuses strict range fetch without overwriting", delegate {
+                var fetch = typeof(Recovery).GetMethod("FetchRange");
+                Check(fetch != null, "missing strict range fetch entry point");
+                string existing = Path.Combine(root, "existing-range");
+                File.WriteAllText(existing, "preserve");
+                try
+                {
+                    fetch.Invoke(null, new object[] { new Uri("http://127.0.0.1:1/"), null, 6L, 7L, 16L, existing });
+                    Check(false, "existing patch accepted");
+                }
+                catch (System.Reflection.TargetInvocationException) { }
+                Check(File.ReadAllText(existing) == "preserve", "existing patch changed");
+            });
             Test("plan is read-only and reports logical gap", delegate {
                 Fixture f = NewFixture();
                 string text; int code = Run(f, out text, "--plan");
@@ -95,7 +108,7 @@ internal static class Tests
             Test("extra HTTP body rejects", delegate { HttpCase(206, "bytes 6-7/16", "ghi", false); });
         }
         finally { Directory.Delete(root, true); }
-        Console.WriteLine("RESULT: " + (16 - failures) + "/16 passed");
+        Console.WriteLine("RESULT: " + (17 - failures) + "/17 passed");
         Environment.ExitCode = failures == 0 ? 0 : 1;
     }
 

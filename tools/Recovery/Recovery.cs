@@ -335,6 +335,19 @@ namespace GeZi.Recovery
                 return reader.ReadToEnd().Trim();
         }
 
+        public static void FetchRange(Uri uri, string cookie, long start, long end, long total, string path)
+        {
+            if (uri == null || !string.IsNullOrEmpty(uri.UserInfo) ||
+                !(uri.Scheme == "https" || (uri.Scheme == "http" && uri.IsLoopback)) ||
+                start < 0 || end < start || end >= total)
+                throw new Failure("INVALID_RANGE_REQUEST");
+            path = Canonical(path);
+            RejectReparse(path);
+            if (File.Exists(path) || Directory.Exists(path))
+                throw new Failure("PATCH_ALREADY_EXISTS");
+            DownloadRange(uri, cookie, new Gap { Start = start, End = end }, total, path);
+        }
+
         private static void DownloadRange(Uri uri, string cookie, Gap gap, long total, string path)
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
