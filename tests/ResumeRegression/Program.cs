@@ -23,6 +23,10 @@ namespace ResumeRegression
             SynchronizationContext.SetSynchronizationContext(
                 new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
             int failures = 0;
+            Run("both speed aggregations exclude local merging (16 assertions)",
+                MaintenanceRegression.Speed, ref failures);
+            Run("maintained fork version and release parsing",
+                MaintenanceRegression.Release, ref failures);
             Run("11 asynchronous share resumes stay on the WPF dispatcher", () =>
             {
                 var h = new ResumeHarness();

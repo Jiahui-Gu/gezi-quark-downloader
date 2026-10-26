@@ -13,6 +13,14 @@ function Get-Method([string] $start, [string] $end) {
 # Never construct MainWindow/App: their startup touches real configuration and UI.
 $resume = Get-Method 'private async Task ResumePendingBatchAsync(' 'private async Task<string> RefreshLinkAsyncForPending('
 $busy = Get-Method 'private void SetBusy(bool busy)' 'private readonly HashSet<Button> _busyButtons'
+$speedMethods = foreach ($window in @('MainWindow', 'MiniWindow')) {
+    $text = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\..\src\GeZi\$window.xaml.cs") -Raw -Encoding UTF8
+    $active = [regex]::Match($text, 'var active = (_tasks|_all)\.Where\(.*?\.ToList\(\);', 'Singleline').Value
+    $speed = [regex]::Match($text, 'double speed = .*?;').Value
+    if (!$active -or !$speed) { throw "Cannot locate speed aggregation in $window" }
+    $active = $active.Replace('_tasks', 'tasks').Replace('_all', 'tasks')
+    "internal static double $window(IEnumerable<GeZi.TaskItem> tasks) { $active $speed return speed; }"
+}
 $generated = @"
 using System;
 using System.Collections.Generic;
@@ -24,6 +32,10 @@ using GeZi;
 using GeZi.Core.Download;
 namespace ResumeRegression
 {
+    internal static partial class MaintenanceRegression
+    {
+        $($speedMethods -join "`n")
+    }
     internal partial class ResumeHarness
     {
         $resume

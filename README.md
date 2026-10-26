@@ -1,5 +1,9 @@
 # 鸽子下载（GeZi）
 
+> **Jiahui 自维护版 v2.3.2**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
+> [huaotem-bot/gezi-quark-downloader](https://github.com/huaotem-bot/gezi-quark-downloader)。
+> 保留原作者 Yi Yuan 的署名、品牌、赞赏入口及 GPL-3.0-or-later / 第三方许可。
+
 > 一个 Windows 桌面端的**夸克网盘下载器** —— 支持分享链接 / 网盘直链解析、
 > 多线程分片下载、边下边播、多账号管理、深色模式。
 > 基于 **.NET Framework 4.8 + WPF** 开发，**零 NuGet 依赖、可完全离线构建**。
@@ -8,10 +12,10 @@
   <img src="src/GeZi/Resources/app-logo.png" width="120" alt="鸽子下载">
 </p>
 <p align="center">
-  <img src="https://img.shields.io/github/repo-size/huaotem-bot/gezi-quark-downloader?style=social" alt="Repo Size">
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=huaotem-bot.gezi-quark-downloader&radius=12" alt="Visitors">
-  <img src="https://img.shields.io/github/license/huaotem-bot/gezi-quark-downloader?style=social" alt="License">
-  <img src="https://img.shields.io/github/stars/huaotem-bot/gezi-quark-downloader?style=social" alt="Stars">
+  <img src="https://img.shields.io/github/repo-size/Jiahui-Gu/gezi-quark-downloader?style=social" alt="Repo Size">
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=Jiahui-Gu.gezi-quark-downloader&radius=12" alt="Visitors">
+  <img src="https://img.shields.io/github/license/Jiahui-Gu/gezi-quark-downloader?style=social" alt="License">
+  <img src="https://img.shields.io/github/stars/Jiahui-Gu/gezi-quark-downloader?style=social" alt="Stars">
 </p>
 
 ---
@@ -63,7 +67,7 @@
 
 ### 方式一：下载发行版（推荐）
 
-1. 从 [Releases](https://github.com/huaotem-bot/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.1-win64.zip` 并解压到任意目录
+1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.2-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
 2. 双击 `GeZi.exe` 即可运行
 3. 若系统缺少 .NET Framework 4.8，Windows 会弹窗提示，按引导安装即可
 
@@ -71,20 +75,32 @@
 
 ### 方式二：从源码构建
 
-```bash
+```powershell
 # 1. 克隆仓库
-git clone <仓库地址>
-cd GeZi
+git clone https://github.com/Jiahui-Gu/gezi-quark-downloader.git
+cd gezi-quark-downloader
 
 # 2. 构建（Release）
-dotnet build GeZi.slnx -c Release
+dotnet build .\src\GeZi\GeZi.csproj -c Release -p:Platform=x64
 
 # 3. 运行
-src/GeZi/bin/Release/net48/GeZi.exe
+.\src\GeZi\bin\x64\Release\net48\GeZi.exe
 ```
 
 **无需 `nuget restore`** —— 本项目零 NuGet 依赖，所有第三方库以固化 DLL 形式随仓库分发，
 任何机器 clone 下来即可直接构建（需已安装 .NET Framework 4.8 开发包 / MSBuild）。
+
+### 自维护范围与后续同步
+
+- 合入上游 [PR #11](https://github.com/huaotem-bot/gezi-quark-downloader/pull/11)：主窗口与悬浮窗总速度不计本地分片合并吞吐。
+- 合入上游 [PR #12](https://github.com/huaotem-bot/gezi-quark-downloader/pull/12)：合并只读取已提交字节，重试覆盖未提交尾部；原 PR 保持独立，不在上游自动合并或关闭。
+- 纳入启动续传的 WPF Dispatcher / 可见错误修复，以及按逻辑 S/E 区间对账、动态分裂重启完整性修复。缺失 partial 缓存仍显式拒绝，不补零；不自动把 Failed 转成 Pending，不改变现有关闭退出设置。
+- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.2-win64.zip`。
+- `tools\Recovery` 保留非破坏性候选恢复和精确缺口获取工具，见 [使用说明](tools/Recovery/USAGE.md)；不随包附带任何账号、真实断点或下载数据。
+
+后续同步先添加上游（已存在则跳过）：`git remote add upstream https://github.com/huaotem-bot/gezi-quark-downloader.git`，
+再 `git fetch upstream`、`git merge upstream/main`，保留维护版更新源与安全修复，运行下面全部回归后正常推送；不要 force push。
+SDK 8 请直接构建上述 csproj；较新 SDK 也可使用 `GeZi.slnx`。
 
 ### 下载完整性回归测试
 
@@ -116,6 +132,8 @@ dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj 
 下载验证使用真实调度器、下载引擎与仅监听回环地址的本地 HTTP 服务。
 所有断点和文件均为合成数据，不启动主程序，也不读取账户或真实下载配置。
 下载验证会短时建立 2816 条本地连接；成功后自动清理测试文件，失败时输出保留目录。
+同一测试入口还从两处生产源码提取速度汇总表达式，执行 8 场景 × 2 窗口共 16 个断言，
+并验证两程序集版本、个人 fork 的更新/源码入口及便携附件名解析。
 另覆盖动态窃取生成乱序分片后的失败/重启：`pNNNNNN` 的编号保持不变，
 续传对账只按元数据的逻辑 `S/E` 区间定位，不能按编号累加、删除或重新编号。
 若目标停在某分片中间但对应缓存已丢失，下载器会保留原件并明确停止，

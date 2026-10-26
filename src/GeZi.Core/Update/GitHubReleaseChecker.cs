@@ -23,7 +23,7 @@ namespace GeZi.Core.Update
 {
     /// <summary>
     /// 查 GitHub Releases 的「最新发布」（2026-10-18 新一代检查更新）。
-    /// 项目已开源（github.com/huaotem-bot/gezi-quark-downloader），
+    /// 维护版源码（github.com/Jiahui-Gu/gezi-quark-downloader），
     /// Release 天然带 tag_name（版本号）、body（更新说明）、html_url（下载页），
     /// 不依赖夸克登录态、不写用户网盘、无中转清理 —— 旧那套网盘更新源整套退役。
     /// GitHub API 对没有 User-Agent 的请求直接 403。
@@ -33,7 +33,7 @@ namespace GeZi.Core.Update
     public sealed class GitHubReleaseChecker
     {
         /// <summary>仓库归属（与 README 的开源地址一致）。</summary>
-        public const string RepoOwner = "huaotem-bot";
+        public const string RepoOwner = "Jiahui-Gu";
 
         /// <summary>仓库名（与 README 的开源地址一致）。</summary>
         public const string RepoName = "gezi-quark-downloader";
