@@ -5722,6 +5722,7 @@ namespace GeZi
                             // stoken 一般几小时~几天就过期，过期后这一路必失败。
                             // 交给 GetShareLinkWithReResolveAsync：旧凭证失败就自动重解析分享
                             // （换新 stoken + 新 share_fid_token）再试 —— 用户点一次续传即自愈。
+                            // 后续要更新绑定集合、启动 UI 进度回调并复位按钮，必须回到 UI 线程。
                             url = await GetShareLinkWithReResolveAsync(
                                 client, p.Fid, p.Token, p.PwdId, p.Stoken, p.Passcode,
                                 p.StartFid, p.ShareRelDir,
@@ -5732,7 +5733,7 @@ namespace GeZi
                                     // 写回记录：下面构造 job.Pending 时 Stoken = p.Stoken 用的就是新值
                                     p.Stoken = freshStoken;
                                     p.Token = freshToken;
-                                }, default(CancellationToken)).ConfigureAwait(false);
+                                }, default(CancellationToken)).ConfigureAwait(true);
                         }
                         else
                         {
@@ -5789,6 +5790,10 @@ namespace GeZi
                     _tasks.Add(new TaskItem(job, job.Name));
                 Log("已续传 " + jobs.Count + " 个任务。");
                 RunJobs(jobs);
+            }
+            catch (Exception ex)
+            {
+                Log("续传启动失败: " + ex.Message + "。请保留断点与未完成任务记录后重试。");
             }
             finally
             {
