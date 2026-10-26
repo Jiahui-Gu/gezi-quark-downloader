@@ -69,8 +69,16 @@ namespace ResumeRegression
                 Assert(h.Started.Count == 0 && h.Ready, "failed batch must not start");
             }, ref failures);
             if (args.Contains("--download"))
+            {
+                Run("out-of-order split plan preserves merged logical prefixes",
+                    () => Pump(DownloadRegression.RunSplitPlanAsync(false)), ref failures);
+                Run("missing partial-head cache fails without truncating source bytes",
+                    () => Pump(DownloadRegression.RunSplitPlanAsync(true)), ref failures);
+                Run("real worker-created split plan survives failure and restart",
+                    () => Pump(DownloadRegression.RunDynamicSplitAsync()), ref failures);
                 Run("11 files resume at 256 real concurrent HTTP ranges each",
                     () => Pump(DownloadRegression.RunAsync()), ref failures);
+            }
             Console.WriteLine("Failures: " + failures);
             return failures == 0 ? 0 : 1;
         }

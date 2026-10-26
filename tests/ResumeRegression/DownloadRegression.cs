@@ -23,6 +23,113 @@ namespace ResumeRegression
         private const int Workers = 256;
         private const long Total = PartCount * PartSize;
 
+        internal static async Task RunDynamicSplitAsync()
+        {
+            string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "dynamic-fixture-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string dest = Path.Combine(root, "dynamic.bin");
+            string parts = dest + ".qparts";
+            Directory.CreateDirectory(parts);
+            File.WriteAllBytes(dest, Data(0, 0, 65536));
+            long[] starts = { 0, 65536, 131072, 1441792, Total };
+            var lines = new List<string> { Total.ToString(), "4" };
+            for (int i = 0; i < 4; i++)
+            {
+                int written = i == 0 ? 65536 : 1;
+                lines.Add(starts[i] + "," + (starts[i + 1] - 1) + "," + written);
+                if (i > 0)
+                    File.WriteAllBytes(Path.Combine(parts, "p" + i.ToString("D6")),
+                        Data(0, starts[i], written));
+            }
+            File.WriteAllLines(dest + ".qmeta", lines);
+            bool passed = false;
+            try
+            {
+                using (var failing = new RangeServer(false, true))
+                using (var dl = new SegmentedDownloader(threads: 4))
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                {
+                    var result = await dl.DownloadAsync(failing.Url + "0", dest, null, timeout.Token)
+                        .ConfigureAwait(false);
+                    Program.Assert(!result.Ok, "injected HTTP 404 must preserve the partial task");
+                }
+                var saved = File.ReadAllLines(dest + ".qmeta");
+                var offsets = saved.Skip(2).Select(l => long.Parse(l.Split(',')[0])).ToArray();
+                Program.Assert(offsets.Length > 4, "real workers must append a split");
+                Program.Assert(!offsets.SequenceEqual(offsets.OrderBy(x => x)),
+                    "the worker-generated plan must be logically out of index order");
+                Console.WriteLine("Real worker split plan: " + string.Join(",", offsets));
+                using (var server = new RangeServer(false))
+                using (var dl = new SegmentedDownloader(threads: 4))
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                {
+                    var result = await dl.DownloadAsync(server.Url + "0", dest, null, timeout.Token)
+                        .ConfigureAwait(false);
+                    Program.Assert(result.Ok, result.Message);
+                    Program.Assert(File.ReadAllBytes(dest).SequenceEqual(Data(0, 0, (int)Total)),
+                        "restart after a real dynamic split must match all source bytes");
+                }
+                passed = true;
+            }
+            finally
+            {
+                if (passed) Directory.Delete(root, true);
+                else Console.WriteLine("Synthetic dynamic fixture retained: " + root);
+            }
+        }
+
+        internal static async Task RunSplitPlanAsync(bool missingHead)
+        {
+            string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "split-fixture-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string dest = Path.Combine(root, "split.bin");
+            string parts = dest + ".qparts";
+            Directory.CreateDirectory(parts);
+            const int headStart = 262144;
+            const int have = headStart + 1024;
+            byte[] prefix = Data(0, 0, have);
+            File.WriteAllBytes(dest, prefix);
+            File.WriteAllText(dest + ".qmeta", Total + "\n4\n0,65535,65536\n"
+                + "131072,262143,131072\n262144," + (Total - 1) + "," + (Total - headStart)
+                + "\n65536,131071,65536\n");
+            if (!missingHead)
+                File.WriteAllBytes(Path.Combine(parts, "p000002"), Data(0, headStart, (int)Total - headStart));
+            bool passed = false;
+            try
+            {
+                using (var server = new RangeServer(false))
+                using (var dl = new SegmentedDownloader(threads: 4))
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                {
+                    var result = await dl.DownloadAsync(server.Url + "0", dest, null, timeout.Token)
+                        .ConfigureAwait(false);
+                    if (missingHead)
+                    {
+                        Program.Assert(!result.Ok, "missing partial-head cache must not be silently accepted");
+                        Program.Assert(File.ReadAllBytes(dest).SequenceEqual(prefix),
+                            "reconciliation must not truncate the already-merged destination");
+                        Program.Assert(File.Exists(dest + ".qmeta"), "failure must preserve metadata");
+                        Program.Assert(server.Served == 0, "ambiguous resume must stop before network download");
+                    }
+                    else
+                    {
+                        Program.Assert(result.Ok, result.Message);
+                        Program.Assert(File.ReadAllBytes(dest).SequenceEqual(Data(0, 0, (int)Total)),
+                            "logical split-plan resume must preserve all bytes");
+                        Program.Assert(server.Served == 0, "already merged split must not be downloaded again");
+                    }
+                }
+                passed = true;
+            }
+            finally
+            {
+                if (passed) Directory.Delete(root, true);
+                else Console.WriteLine("Synthetic split fixture retained: " + root);
+            }
+        }
+
         internal static async Task RunAsync()
         {
             string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
@@ -172,10 +279,15 @@ namespace ResumeRegression
             private volatile bool _stopping;
             private int _totalActive;
             private long _served;
+            private readonly bool _hold;
+            private readonly bool _failSegments;
             internal readonly ConcurrentQueue<string> Errors = new ConcurrentQueue<string>();
 
-            internal RangeServer()
+            internal RangeServer(bool hold = true, bool failSegments = false)
             {
+                _hold = hold;
+                _failSegments = failSegments;
+                if (!hold) _release.TrySetResult(true);
                 _listener.Start(4096);
                 Url = "http://127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port + "/";
                 _accept = AcceptAsync();
@@ -223,7 +335,14 @@ namespace ResumeRegression
                         long start = long.Parse(bounds[0], CultureInfo.InvariantCulture);
                         long end = long.Parse(bounds[1], CultureInfo.InvariantCulture);
                         bool probe = start == 0 && end == 0;
-                        if (!probe)
+                        if (!probe && _failSegments)
+                        {
+                            byte[] failure = Encoding.ASCII.GetBytes(
+                                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            await stream.WriteAsync(failure, 0, failure.Length).ConfigureAwait(false);
+                            return;
+                        }
+                        if (!probe && _hold)
                         {
                             Program.Assert(start >= MergedParts * PartSize
                                 && start % PartSize == CachedPrefix && end == start - CachedPrefix + PartSize - 1,

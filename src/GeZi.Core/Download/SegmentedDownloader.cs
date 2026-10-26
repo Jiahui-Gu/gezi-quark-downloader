@@ -1563,12 +1563,7 @@ namespace GeZi.Core.Download
 
             // ---- 落盘准备：两种方式在这里分道扬镳 ----
 
-            // 已合并进目标文件的分片数 / 字节数
-            int mergedCount = 0;
             long mergedBytes = 0;
-            // 第 mergedCount 片之内、已经合并进目标文件的字节数。
-            // 有了它才能"边落盘边合并"：合并进度不必停在分片边界上。
-            long mergedInHead = 0;
 
             // 分片"已完成"标记：合并线程据此判断能不能安全删掉
             // 某个分片文件 —— 必须等 worker 关闭文件流之后才能删，否则 worker 后续的
@@ -1599,51 +1594,61 @@ namespace GeZi.Core.Download
             // 合并进度本来就停在某一片的中间。
             long have = 0;
             try { if (File.Exists(dest)) have = new FileInfo(dest).Length; } catch { }
-            if (have > total) have = total;
+            if (have > total)
+                return (false, "目标文件超过预期大小，已保留原文件与断点，请先校验后恢复。");
 
-            // 由已合并字节数反推：进度停在第几片、片内偏移多少
-            long acc = 0;
-            for (int i = 0; i < plan.Parts.Count; i++)
+            // 窃取分片追加在列表尾部，idx 只对应 pNNNNNN，绝不是逻辑文件顺序。
+            // 只排序一个视图验证覆盖；不能重排 plan，否则旧分片会对应到错误区间。
+            long expectedStart = 0;
+            foreach (var part in plan.Parts.OrderBy(p => p.S))
             {
-                long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
-                if (acc + sz > have) break;
-                acc += sz;
-                mergedCount = i + 1;
+                if (part.S != expectedStart || part.E < part.S || part.E >= total
+                    || part.W < 0 || part.W > part.E - part.S + 1)
+                    return (false, "续传分片区间或进度无效，已保留原文件与断点，请先校验后恢复。");
+                expectedStart = part.E + 1;
             }
-            mergedInHead = have - acc;
-            mergedBytes = have;
+            if (expectedStart != total)
+                return (false, "续传分片未完整覆盖目标文件，已保留原文件与断点，请先校验后恢复。");
 
-            // 对账：目标文件尾部那一段必须是"从第 mergedCount 片的分片文件里读来的"。
-            // 若超出分片的可信已写前缀，说明目标文件里混进了来路不明的字节，
-            // 只能把这一段截掉重来 —— 宁可少一点，也不能产出内容错误的文件。
-            if (mergedInHead > 0)
+            int head = plan.Parts.FindIndex(p => p.S < have && have <= p.E);
+            if (head >= 0)
             {
+                var part = plan.Parts[head];
+                string headPath = PartPath(partsDir, head);
+                // 缺片且目标停在片中间，可能是旧版错误对账截断的结果。
+                // 不能把仍在目标中的唯一副本再截掉；由非破坏恢复工具处理。
+                if (!File.Exists(headPath))
+                    return (false, "目标文件停在分片 " + head
+                        + " 中间但对应缓存缺失，已保留原文件与断点；请先校验并恢复缺失区间，勿直接重试。");
                 long headLen = 0;
                 try
                 {
-                    var hfi = new FileInfo(PartPath(partsDir, mergedCount));
-                    if (hfi.Exists) headLen = hfi.Length;
+                    headLen = new FileInfo(headPath).Length;
                 }
-                catch { }
-                long trustedHead = Math.Min(headLen, plan.Parts[mergedCount].W);
+                catch (Exception ex)
+                {
+                    return (false, "无法读取续传分片 " + head + ": " + ex.Message);
+                }
+                long trustedHead = Math.Min(part.E - part.S + 1, Math.Min(headLen, part.W));
+                long mergedInHead = have - part.S;
                 if (trustedHead < mergedInHead)
                 {
                     Log?.Invoke(string.Format(
                         "边合并: 目标文件尾部 {0} 字节超出分片 {1} 的可信进度，需要截除重下（内容正确优先于省流量）。",
-                        Fmt(mergedInHead - trustedHead), mergedCount));
+                        Fmt(mergedInHead - trustedHead), head));
                     try
                     {
                         using (var fs = new FileStream(dest, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-                            fs.SetLength(acc + trustedHead);
+                            fs.SetLength(part.S + trustedHead);
                     }
                     catch (Exception ex)
                     {
                         return (false, "无法截除目标文件的未提交尾部: " + ex.Message);
                     }
-                    mergedInHead = trustedHead;
-                    mergedBytes = acc + trustedHead;
+                    have = part.S + trustedHead;
                 }
             }
+            mergedBytes = have;
 
             // 与磁盘对账：进度只认 .qmeta 记账，盘长只用来截断。
             // 强杀/崩溃瞬间，最后一个在飞的 64KB 写会"撕裂"：
@@ -1656,9 +1661,15 @@ namespace GeZi.Core.Download
             // 所以：W 只认记账（有 .qmeta 时），盘长超出记账的部分一律截掉
             // （撕裂尾不返回、记账不可能包含它）；没有 .qmeta 时记账为 0，
             // 盘长全不可信 → 整片重下。宁可少一点，也不能产出内容错误的文件。
-            for (int i = mergedCount; i < plan.Parts.Count; i++)
+            for (int i = 0; i < plan.Parts.Count; i++)
             {
                 long sz = plan.Parts[i].E - plan.Parts[i].S + 1;
+                if (plan.Parts[i].E < have)
+                {
+                    plan.Parts[i].W = sz;
+                    partDone[i] = 1;
+                    continue;
+                }
                 long len = 0;
                 try
                 {
@@ -1694,12 +1705,6 @@ namespace GeZi.Core.Download
                 if (trusted >= sz)
                     partDone[i] = 1;
             }
-            // 已合并的分片：分片文件应已删除，残留则清掉，并补齐记账
-            for (int i = 0; i < mergedCount; i++)
-            {
-                plan.Parts[i].W = plan.Parts[i].E - plan.Parts[i].S + 1;
-                try { File.Delete(PartPath(partsDir, i)); } catch { }
-            }
             SavePlan(metaPath, plan);
 
             Log?.Invoke(string.Format(
@@ -1731,8 +1736,9 @@ namespace GeZi.Core.Download
             catch { }
 
             var queue = new ConcurrentQueue<int>();
-            for (int i = mergedCount; i < plan.Parts.Count; i++)
-                queue.Enqueue(i);
+            for (int i = 0; i < plan.Parts.Count; i++)
+                if (plan.Parts[i].E >= have)
+                    queue.Enqueue(i);
 
             long done = 0;
             foreach (var p in plan.Parts)
@@ -2361,8 +2367,8 @@ namespace GeZi.Core.Download
                         return;
                     }
                     var mbuf = new byte[1024 * 1024];
-                    int next = mergedCount;      // 仅作日志/初值；真正的定位在循环头按 S 做
-                    long inPart = mergedInHead;
+                    int next = 0;      // 循环头按 S/E 定位，不能用 idx 当逻辑顺序。
+                    long inPart = 0;
                     // 收到收尾信号后还要连续多少轮"读不到新数据"才真的退出。
                     // 见下面收尾分支的注释 —— 这个宽限期是必须的。
                     int stallRounds = 0;
