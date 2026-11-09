@@ -3824,7 +3824,7 @@ namespace GeZi
             // 且和已经开始的这批不是同一个对象 —— 限流账目会错乱。
             // 抓成局部引用后，本批任务从头到尾只用同一个 scheduler，清晰且安全。
             var scheduler = _scheduler;
-            _batchRunning = true;
+            Interlocked.Increment(ref _activeBatchCount);
             // 新任务已入队 → 合并按钮立刻切成「暂停全部」（不用等第一次进度上报）
             UpdatePauseAllButton(force: true);
             // 立刻开启保活，别等 30 秒的定时器 —— 用户可能点完就去睡觉了
@@ -3845,7 +3845,7 @@ namespace GeZi
             }
             finally
             {
-                _batchRunning = false;
+                Interlocked.Decrement(ref _activeBatchCount);
             }
             LogDetail("本批下载结束");
 
@@ -3885,9 +3885,12 @@ namespace GeZi
             {
                 if (_pendingCleanupFids.Count == 0)
                     return;
-                fids = new List<string>(_pendingCleanupFids);
-                _pendingCleanupFids.Clear();
+                fids = _pendingCleanupFids.Where(fid => !_tasks.Any(t =>
+                    t.Job.Pending?.Fid == fid && t.State != JobState.Completed
+                    && t.State != JobState.Cancelled)).Distinct().ToList();
+                _pendingCleanupFids.RemoveAll(fid => fids.Contains(fid));
             }
+            if (fids.Count == 0) return;
             if (!_settings.AutoClean)
             {
                 LogDetail("已保留网盘转存文件 " + fids.Count + " 个（可在设置里关闭自动清理）");
@@ -3967,15 +3970,17 @@ namespace GeZi
 
         /// <summary>上次写入 pending 时的状态签名，用于避免高频重复写盘。</summary>
         private string _pendingSig;
+        private bool _restoringPending;
 
         /// <summary>
-        /// 把当前"未完成"的任务（排队/下载/暂停）写进持久化记录，
+        /// 把当前"未完成"的任务（排队/下载/暂停/失败）写进持久化记录，
         /// 已完成的从记录里移除。供下次启动提示"有 N 个未完成任务"。
         /// 节流：只有"任务身份 + 状态 + 已知总大小"组合变了才真正写盘 ——
         /// OnJobUpdate 每 500ms 就来一次，无条件写盘等于持续小额 IO。
         /// </summary>
         private void SyncPending()
         {
+            if (_restoringPending) return;
             try
             {
                 var sb = new StringBuilder();
@@ -3985,7 +3990,7 @@ namespace GeZi
                     // 更新包下载不持久化：跨重启续传没有意义，且避免 Pending 信息残缺
                     if (t.Job.SkipPersist)
                         continue;
-                    if (t.State == JobState.Queued || t.State == JobState.Downloading
+                    if (t.State == JobState.Failed || t.State == JobState.Queued || t.State == JobState.Downloading
                         || t.State == JobState.Paused)
                     {
                         var pi = t.Job.Pending;
@@ -4011,6 +4016,7 @@ namespace GeZi
                             // 自动重解析分享的上下文（stoken 过期自愈用）
                             StartFid = pi?.StartFid,
                             ShareRelDir = pi?.ShareRelDir,
+                            PartsRoot = t.Job.PartsRoot ?? "",
                         });
                     }
                 }
@@ -4169,7 +4175,7 @@ namespace GeZi
                 var s = _tasks[i].State;
                 // 含 Cancelling：用户点了取消就说明不想要它了，
                 // 不该逼他等下载器慢慢退出之后才能清掉。
-                if (s == JobState.Completed || s == JobState.Failed
+                if (s == JobState.Completed
                     || s == JobState.Cancelled || s == JobState.Cancelling)
                     _tasks.RemoveAt(i);
             }
@@ -4242,6 +4248,12 @@ namespace GeZi
             foreach (var t in TasksFromMenu(sender)) ResumeTask(t);
         }
 
+        private async void OnTaskRetry(object sender, RoutedEventArgs e)
+        {
+            var row = (sender as Button)?.Tag as TaskItem;
+            await RetryFailedTasksAsync(row != null ? new List<TaskItem> { row } : TasksFromMenu(sender));
+        }
+
         /// <summary>
         /// 任务行上那个**图标式播放/暂停切换按钮**（图标会随状态互换）。
         /// 它控制的是**这个下载任务**的暂停/恢复 —— 与右键菜单的「暂停/恢复」同一套逻辑。
@@ -4309,12 +4321,12 @@ namespace GeZi
         {
             if (t == null) return;
             if (t.State == JobState.Downloading || t.State == JobState.Queued
-                || t.State == JobState.Paused || t.State == JobState.Cancelling)
+                || t.State == JobState.Paused || t.State == JobState.Cancelling || t.RetryPreparing)
             {
                 t.Job.CancelJob();
                 // 与 CancelAll 同理：立即置「取消中」，否则窗口期内它看着还是
                 // 「下载中」，用户点「清空已完成」清不掉会以为按钮坏了。
-                t.State = JobState.Cancelling;
+                t.State = t.RetryPreparing ? JobState.Cancelled : JobState.Cancelling;
                 // 「丢弃这些任务选择不进行续传的时候不会删除
                 //  取消续传的文件的分片和对应的其他文件」。
                 //  实测根因**不在"丢弃"那一步**（那条路径本来就删）：而是**被取消的任务
@@ -4468,7 +4480,7 @@ namespace GeZi
             // 用户原话：「我中途暂停并且删除了，退出后为什么会显示还有任务正在运行，
             //           这意味着续传也会在我重建软件的时候出现呗」—— 确实如此。
             if (t.State == JobState.Downloading || t.State == JobState.Queued
-                || t.State == JobState.Paused || t.State == JobState.Cancelling)
+                || t.State == JobState.Paused || t.State == JobState.Cancelling || t.RetryPreparing)
             {
                 // 暂停中的任务必须先恢复再取消：worker 正卡在闸门上等 Resume，
                 // 只发 Cancel 的话它要等闸门放开才会看到取消标志。
@@ -4526,7 +4538,7 @@ namespace GeZi
             {
                 // 只要还在"活着"的状态就先取消（含暂停——见上面的注释）
                 if (t.State == JobState.Downloading || t.State == JobState.Queued
-                    || t.State == JobState.Paused || t.State == JobState.Cancelling)
+                    || t.State == JobState.Paused || t.State == JobState.Cancelling || t.RetryPreparing)
                 {
                     try { t.Job.CancelJob(); } catch { }
                     t.State = JobState.Cancelling;
@@ -4965,6 +4977,8 @@ namespace GeZi
             }
             try
             {
+                if (!string.IsNullOrEmpty(snap.JobId)
+                    && !_tasks.Any(t => t.Job.Id == snap.JobId)) return;
                 string key = string.IsNullOrEmpty(snap.Name) ? "(未命名)" : snap.Name;
                 _diagLatest[key] = snap;
 
@@ -4981,6 +4995,7 @@ namespace GeZi
                 foreach (var t in _tasks)
                 {
                     if (t == null || t.Job == null) continue;
+                    if (!string.IsNullOrEmpty(snap.JobId) && t.Job.Id != snap.JobId) continue;
                     if (!string.IsNullOrEmpty(snap.Dest)
                         && string.Equals(t.Job.Dest, snap.Dest, StringComparison.OrdinalIgnoreCase))
                     {
@@ -4988,7 +5003,7 @@ namespace GeZi
                         break;
                     }
                 }
-                if (hit == null && !string.IsNullOrEmpty(snap.Name))
+                if (hit == null && string.IsNullOrEmpty(snap.JobId) && !string.IsNullOrEmpty(snap.Name))
                 {
                     foreach (var t in _tasks)
                     {
@@ -5297,6 +5312,45 @@ namespace GeZi
             catch { }
         }
 
+        private Dictionary<PendingTask, TaskItem> RestorePendingTasks(List<PendingTask> records)
+        {
+            var restored = new Dictionary<PendingTask, TaskItem>();
+            _restoringPending = true;
+            try
+            {
+                foreach (var p in records)
+                {
+                    if (p == null || string.IsNullOrEmpty(p.Dest)) continue;
+                    var item = _tasks.FirstOrDefault(t =>
+                        string.Equals(t.Job.Dest, p.Dest, StringComparison.OrdinalIgnoreCase));
+                    if (item == null)
+                    {
+                        var job = new DownloadJob
+                        {
+                            Name = p.Name ?? Path.GetFileName(p.Dest), Dest = p.Dest, Url = p.Url,
+                            PartsRoot = p.PartsRoot ?? (string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot),
+                            Pending = new PendingInfo
+                            {
+                                Fid = p.Fid, Dest = p.Dest, Size = p.Size, FromShare = p.FromShare,
+                                PwdId = p.PwdId, Stoken = p.Stoken, Token = p.Token, Passcode = p.Passcode,
+                                RelDir = p.RelDir, StartFid = p.StartFid, ShareRelDir = p.ShareRelDir
+                            }
+                        };
+                        item = new TaskItem(job, job.Name)
+                        {
+                            State = JobState.Failed, HistoryRecorded = true,
+                            Error = "上次未完成，断点已保留，可直接重试。"
+                        };
+                        _tasks.Add(item);
+                    }
+                    restored.Add(p, item);
+                }
+            }
+            finally { _restoringPending = false; }
+            SyncPending();
+            return restored;
+        }
+
         private void ShowPendingOnStartup()
         {
             List<PendingTask> all;
@@ -5304,6 +5358,7 @@ namespace GeZi
             catch { return; }
             if (all == null || all.Count == 0)
                 return;
+            var restored = RestorePendingTasks(all);
 
             foreach (var p in all)
                 LogDetail("  - " + p.Name + "  [" + (p.Status ?? "") + "]");
@@ -5453,6 +5508,7 @@ namespace GeZi
                     if (anyFail) failed++;
                     else n++;
                 }
+                foreach (var item in restored.Values.Distinct()) _tasks.Remove(item);
                 HistoryStore.ClearPending();
                 _pendingSig = null;
                 Log(failed == 0
@@ -5466,7 +5522,7 @@ namespace GeZi
 
             if (!doResume)
             {
-                Log("未完成的任务已保留记录，稍后可从下载页重新下载（分片在，会自然续传）。");
+                Log("未完成任务及断点已保留，稍后可在任务行直接点击「重试」。");
                 return;
             }
 
@@ -5493,7 +5549,7 @@ namespace GeZi
 
             Log(string.Format("开始续传 {0} 个任务…", chosen.Count));
             Tabs.SelectedIndex = 1;
-            _ = ResumePendingBatchAsync(chosen);
+            _ = RetryFailedTasksAsync(chosen.Where(restored.ContainsKey).Select(p => restored[p]).ToList());
         }
 
         /// <summary>
@@ -5620,7 +5676,50 @@ namespace GeZi
             return null;
         }
 
-        private async Task ResumePendingBatchAsync(List<PendingTask> tasks)
+        private async Task RetryFailedTasksAsync(List<TaskItem> items)
+        {
+            var retries = new Dictionary<PendingTask, TaskItem>();
+            foreach (var item in items.Distinct())
+            {
+                if (item == null || !_tasks.Contains(item) || !item.CanRetry) continue;
+                string dest;
+                try { dest = Path.GetFullPath(item.Job.Dest); }
+                catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException
+                    || ex is PathTooLongException)
+                {
+                    item.Error = "重试目标路径无效（" + ex.GetType().Name + "），恢复信息已保留。";
+                    Log("[" + item.Name + "] " + item.Error);
+                    continue;
+                }
+                if (_tasks.Any(t => t != item
+                    && (t.RetryPreparing || t.State == JobState.Queued || t.State == JobState.Downloading
+                        || t.State == JobState.Paused || t.State == JobState.Cancelling)
+                    && string.Equals(Path.GetFullPath(t.Job.Dest), dest, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Log("[" + item.Name + "] 同一目标已有任务或重试正在进行，未重复启动。");
+                    continue;
+                }
+                var p = item.Job.Pending;
+                retries.Add(new PendingTask
+                {
+                    Name = item.Name, Dest = item.Job.Dest, Fid = p.Fid, Size = item.Total > 0 ? item.Total : p.Size,
+                    PartsRoot = item.Job.PartsRoot, FromShare = p.FromShare, Token = p.Token,
+                    PwdId = p.PwdId, Stoken = p.Stoken, Passcode = p.Passcode, RelDir = p.RelDir,
+                    StartFid = p.StartFid, ShareRelDir = p.ShareRelDir
+                }, item);
+                item.RetryPreparing = true;
+            }
+            if (retries.Count == 0) return;
+            try { await ResumePendingBatchAsync(retries.Keys.ToList(), retries); }
+            finally
+            {
+                foreach (var item in retries.Values) item.RetryPreparing = false;
+                SyncPending();
+            }
+        }
+
+        private async Task ResumePendingBatchAsync(List<PendingTask> tasks,
+            Dictionary<PendingTask, TaskItem> retries = null)
         {
             // 「弹出续传窗口时我点继续下载，但左下角的账号卡
             //  还没显示登录，这时会怎么样？」
@@ -5649,12 +5748,23 @@ namespace GeZi
 
             SetBusy(true);
             var jobs = new List<DownloadJob>();
+            var replacements = new Dictionary<DownloadJob, TaskItem>();
             try
             {
                 foreach (var p in tasks)
                 {
+                    TaskItem original = null;
+                    if (retries != null) retries.TryGetValue(p, out original);
+                    var oldJob = original?.Job;
+                    var retryCancel = oldJob?.Cancel.Token ?? CancellationToken.None;
                     try
                     {
+                        if (original != null)
+                        {
+                            await oldJob.Completion;
+                            if (!_tasks.Contains(original) || original.State != JobState.Failed
+                                || retryCancel.IsCancellationRequested) continue;
+                        }
                         string url = null;
 
                         if (p.FromShare)
@@ -5675,7 +5785,7 @@ namespace GeZi
                                     // 写回记录：下面构造 job.Pending 时 Stoken = p.Stoken 用的就是新值
                                     p.Stoken = freshStoken;
                                     p.Token = freshToken;
-                                }, default(CancellationToken)).ConfigureAwait(true);
+                                }, retryCancel).ConfigureAwait(true);
                         }
                         else
                         {
@@ -5685,6 +5795,7 @@ namespace GeZi
 
                         if (string.IsNullOrEmpty(url))
                         {
+                            if (original != null) original.Error = "重试取链失败，断点及恢复信息已保留。";
                             Log("[" + p.Name + "] 续传取链失败（可能分享已失效或需要重新解析）。");
                             continue;
                         }
@@ -5699,7 +5810,8 @@ namespace GeZi
                             Dest = dest,
                             Cookie = client.CookieStr,
                             Threads = _settings.Threads,
-                            PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
+                            PartsRoot = original != null ? oldJob.PartsRoot
+                                : p.PartsRoot ?? (string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot),
                             Pending = new PendingInfo
                             {
                                 PwdId = p.PwdId, Stoken = p.Stoken, Passcode = p.Passcode,
@@ -5714,10 +5826,22 @@ namespace GeZi
                         job.LinkRefresher = ct => RefreshLinkAsyncForPending(captured, ct);
                         // 免转存任务续传取不到新链（stoken 过期）→ 失败文案要说"需重新解析分享"
                         job.ResumeCannotRefresh = p.FromShare;
+                        if (original != null)
+                        {
+                            if (!_tasks.Contains(original) || original.Job != oldJob
+                                || original.State != JobState.Failed || retryCancel.IsCancellationRequested)
+                                continue;
+                            replacements.Add(job, original);
+                        }
                         jobs.Add(job);
+                    }
+                    catch (OperationCanceledException) when (retryCancel.IsCancellationRequested)
+                    {
+                        Log("[" + p.Name + "] 重试准备已取消，未重新入队。");
                     }
                     catch (Exception ex)
                     {
+                        if (original != null) original.Error = "重试准备失败（" + ex.GetType().Name + "），断点已保留。";
                         Log("[" + (p.Name ?? "?") + "] 续传失败: " + ex.Message);
                     }
                 }
@@ -5728,8 +5852,20 @@ namespace GeZi
                     return;
                 }
 
+                jobs = jobs.Where(job => !replacements.ContainsKey(job)
+                    || (_tasks.Contains(replacements[job]) && replacements[job].State == JobState.Failed
+                        && !replacements[job].Job.Cancel.IsCancellationRequested
+                        && !_tasks.Any(other => other != replacements[job]
+                            && (other.RetryPreparing || other.State == JobState.Queued
+                                || other.State == JobState.Downloading || other.State == JobState.Paused
+                                || other.State == JobState.Cancelling)
+                            && string.Equals(Path.GetFullPath(other.Job.Dest), Path.GetFullPath(job.Dest),
+                                StringComparison.OrdinalIgnoreCase)))).ToList();
+                if (jobs.Count == 0) return;
                 foreach (var job in jobs)
-                    _tasks.Add(new TaskItem(job, job.Name));
+                    if (replacements.TryGetValue(job, out var item)) item.ReplaceForRetry(job);
+                    else _tasks.Add(new TaskItem(job, job.Name));
+                SyncPending();
                 Log("已续传 " + jobs.Count + " 个任务。");
                 RunJobs(jobs);
             }
@@ -6537,7 +6673,8 @@ namespace GeZi
         }
 
         /// <summary>当前是否有下载批次在跑。用于阻止"运行中重建 scheduler"这类危险操作。</summary>
-        private volatile bool _batchRunning;
+        private int _activeBatchCount;
+        private bool _batchRunning => Volatile.Read(ref _activeBatchCount) > 0;
 
         private void OnBrowseOutDir(object sender, RoutedEventArgs e)
         {

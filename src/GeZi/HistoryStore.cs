@@ -366,6 +366,8 @@ namespace GeZi
         /// </summary>
         [DataMember(Order = 16)] public string ShareRelDir { get; set; }
 
+        [DataMember(Order = 17)] public string PartsRoot { get; set; }
+
         /// <summary>写入模式是否为"边下边播"（独立分片+边合并）。</summary>
         [DataMember(Order = 14)] public bool StreamPlayMode { get; set; }
 

@@ -20,6 +20,8 @@ namespace ResumeRegression
         [STAThread]
         private static int Main(string[] args)
         {
+            if (args.Length == 2 && (args[0] == "--state-write" || args[0] == "--state-read"))
+                return FailedRetryRegression.PersistenceChild(args);
             SynchronizationContext.SetSynchronizationContext(
                 new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
             int failures = 0;
@@ -89,6 +91,24 @@ namespace ResumeRegression
                 PendingSizeRegression.Backfill, ref failures);
             Run("pending signature distinguishes same-name destinations",
                 PendingSizeRegression.Identity, ref failures);
+            Run("failed recovery identity remains durable until explicit cancellation",
+                PendingSizeRegression.FailedRetention, ref failures);
+            Run("in-app retry preserves exact row and rejects duplicate or stale execution",
+                FailedRetryRegression.ExactIdentity, ref failures);
+            Run("in-app retry link failure preserves Failed recovery context",
+                FailedRetryRegression.LinkFailure, ref failures);
+            Run("cancel or removal during link acquisition prevents retry resurrection",
+                FailedRetryRegression.CancelOrRemoveDuringLink, ref failures);
+            Run("retry rejects already active destination",
+                FailedRetryRegression.ActiveDestination, ref failures);
+            Run("failed source fid is not auto-cleaned before retry",
+                FailedRetryRegression.TransferRetention, ref failures);
+            Run("failed recovery record round-trips and resumes original cache root",
+                FailedRetryRegression.RestartRecord, ref failures);
+            Run("startup retains unselected records and failed link acquisitions",
+                FailedRetryRegression.StartupRetainsUnselectedAndFailedLinks, ref failures);
+            Run("real Failed state survives disk write and separate-process restart",
+                FailedRetryRegression.RealDiskRestart, ref failures);
             Run("11 asynchronous share resumes stay on the WPF dispatcher", () =>
             {
                 var h = new ResumeHarness();
@@ -210,6 +230,13 @@ namespace ResumeRegression
         internal bool FailStart;
         internal string FailedFid;
         private string _pendingSig;
+        private bool _restoringPending;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DiagnosticsSnapshot> _diagLatest
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, DiagnosticsSnapshot>();
+        internal void Diagnose(DiagnosticsSnapshot snapshot) { OnDiagnostics(snapshot); }
+        private readonly List<string> _pendingCleanupFids = new List<string>();
+        private readonly object _cleanupLock = new object();
+        private readonly QuarkClient _client = new QuarkClient();
 
         internal ResumeHarness()
         {
@@ -226,6 +253,13 @@ namespace ResumeRegression
         internal void Remove(TaskItem item) => _tasks.Remove(item);
         internal void Sync() => SyncPending();
         internal void Update(JobUpdate update) => OnJobUpdate(update);
+        internal Task Cleanup(string fid)
+        {
+            if (!_pendingCleanupFids.Contains(fid)) _pendingCleanupFids.Add(fid);
+            _settings.AutoClean = true;
+            return CleanupTransferredAsync();
+        }
+        internal IReadOnlyList<string> Deleted => _client.Deleted;
         private void UpdatePauseAllButton() { }
         internal void Configure(int threads, int concurrent)
         {
@@ -244,6 +278,8 @@ namespace ResumeRegression
         }
         private Task<string> RefreshLinkAsyncForPending(DownloadJob job, CancellationToken ct)
             => Task.FromResult(job.Url);
+        internal void ConfigureCache(string root) { _settings.PartsRoot = root; }
+
         private void RunJobs(List<DownloadJob> jobs)
         {
             Dispatcher.VerifyAccess();
@@ -255,6 +291,9 @@ namespace ResumeRegression
 
     internal sealed class QuarkClient
     {
+        internal readonly List<string> Deleted = new List<string>();
+        internal Task DeleteAsync(List<string> fids) { Deleted.AddRange(fids); return Task.CompletedTask; }
+        internal Task PurgeRecycleAsync(List<string> fids) => Task.CompletedTask;
         internal string CookieStr => "";
         internal async Task<List<DownloadLink>> GetDownloadAsync(List<string> fids)
         {

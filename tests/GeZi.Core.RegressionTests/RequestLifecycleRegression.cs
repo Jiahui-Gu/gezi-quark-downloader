@@ -21,7 +21,8 @@ internal static class RequestLifecycleRegression
     private const int Parts = 512;
     private const int Workers = 64;
 
-    internal static async Task<int> RunAsync(bool budgetOnly = false)
+    internal static async Task<int> RunAsync(bool budgetOnly = false, bool progressOnly = false,
+        bool tailWaitOnly = false, bool tinyTailOnly = false, bool retryPolicyOnly = false)
     {
         NetworkConfig.Apply(512);
         using (var defaults = new HttpClient())
@@ -29,8 +30,19 @@ internal static class RequestLifecycleRegression
         int failures = 0;
         foreach (var test in new Func<Task>[] { Reuse, CloseAndReplace, CancelPendingHeaders,
             RedactedFailureChain, RequeueBudgetBoundaries, DistinctTerminalErrors, BoundedSendFailures,
-            AlreadyCommitted, FatalAfterIdle, CancelBackoffAfterIdle, SharedBudgetExhaustion }
-            .Where(test => !budgetOnly || test.Method.Name == nameof(SharedBudgetExhaustion)))
+            AlreadyCommitted, FatalAfterIdle, CancelBackoffAfterIdle, SharedBudgetExhaustion,
+            ProgressAcrossHistoricalFailures, HealthyTailHeaders, HealthyTinyTailHeaders,
+            TinyTailRetryBackoff, TinyTailBodyStall, OwnPartProgress, LastBadPart, SubQuantumTrickle }
+            .Where(test => (!budgetOnly || test.Method.Name == nameof(SharedBudgetExhaustion))
+                && (!progressOnly || test.Method.Name == nameof(ProgressAcrossHistoricalFailures))
+                && (!tailWaitOnly || test.Method.Name == nameof(HealthyTailHeaders)
+                    || test.Method.Name == nameof(HealthyTinyTailHeaders)
+                    || test.Method.Name == nameof(TinyTailRetryBackoff)
+                    || test.Method.Name == nameof(TinyTailBodyStall))
+                && (!tinyTailOnly || test.Method.Name == nameof(HealthyTinyTailHeaders))
+                && (!retryPolicyOnly || test.Method.Name == nameof(OwnPartProgress)
+                    || test.Method.Name == nameof(LastBadPart)
+                    || test.Method.Name == nameof(SubQuantumTrickle))))
         {
             try
             {
@@ -69,24 +81,21 @@ internal static class RequestLifecycleRegression
         return Task.CompletedTask;
     }
 
-    private delegate bool ReserveRequeue(ref int used);
-
     private static Task RequeueBudgetBoundaries()
     {
-        var method = typeof(SegmentedDownloader).GetMethod("TryReserveRequeue",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Check(method != null, "shared requeue budget must have atomic reservation");
-        var reserve = (ReserveRequeue)Delegate.CreateDelegate(typeof(ReserveRequeue), method);
-        int used = 499;
-        Check(reserve(ref used) && used == 500, "the 500th reservation must be allowed");
-        Check(!reserve(ref used) && used == 500, "the 501st reservation must not change the counter");
-        used = 0;
+        var type = typeof(SegmentedDownloader).GetNestedType("ProgressRetryBudget", BindingFlags.NonPublic);
+        Check(type != null, "shared requeue budget must have atomic progress-aware reservation");
+        object budget = Activator.CreateInstance(type, new object[] { 500, 0L });
+        var method = type.GetMethod("TryReserve");
         int accepted = 0;
         Parallel.For(0, 100000, _ =>
         {
-            if (reserve(ref used)) Interlocked.Increment(ref accepted);
+            if ((bool)method.Invoke(budget, new object[] { 0L })) Interlocked.Increment(ref accepted);
         });
-        Check(accepted == 500 && used == 500, "concurrent reservations must neither overspend nor lose increments");
+        int used = (int)type.GetProperty("Used").GetValue(budget);
+        Check(accepted == 500 && used == 500
+            && !(bool)method.Invoke(budget, new object[] { 0L }),
+            "concurrent reservations must stop at 500, never overspend or lose increments");
         Console.WriteLine("BUDGET reservations=100000 accepted=" + accepted + " used=" + used + " limit=500");
         return Task.CompletedTask;
     }
@@ -262,6 +271,166 @@ internal static class RequestLifecycleRegression
         }
     }
 
+    private static async Task ProgressAcrossHistoricalFailures()
+    {
+        const int count = 1040;
+        using (var fixture = new Fixture(count))
+        using (var server = new Server(true, false, count, progressFailures: true))
+        using (var downloader = new SegmentedDownloader(512))
+        using (var deadline = new CancellationTokenSource(120000))
+        {
+            var logs = new ConcurrentQueue<string>();
+            downloader.Log = logs.Enqueue;
+            var clock = Stopwatch.StartNew();
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Console.WriteLine("PROGRESS-RECOVERY seconds=" + clock.Elapsed.TotalSeconds.ToString("F3",
+                CultureInfo.InvariantCulture) + " ok=" + result.Ok + " requests=" + server.Requests
+                + " requeueLines=" + logs.Count(l => l.Contains("整轮重试 "))
+                + " error=" + result.Message);
+            Check(!deadline.IsCancellationRequested && result.Ok,
+                "ongoing real committed progress must not fail solely because 520 historical requeues exceed 500: "
+                + result.Message);
+            Check(logs.Count(l => l.Contains("整轮重试 ")) == 520,
+                "all 520 finite transient rounds must be observed, not hidden or silently skipped");
+            Check(server.Requests == count + 520 * 5, "no extra network requests beyond five failures and recovery");
+            byte[] data = File.ReadAllBytes(fixture.Dest);
+            Check(data.Length == count * PartSize
+                && data.Where((value, i) => value != Value(i)).Count() == 0,
+                "recovery must preserve each cached byte and all downloaded bytes");
+            Check(server.Errors.IsEmpty, string.Join("; ", server.Errors));
+        }
+    }
+
+    private static async Task OwnPartProgress()
+    {
+        const int size = 4 * 1024 * 1024;
+        using (var fixture = new Fixture(1, pieceSize: size))
+        using (var server = new Server(false, false, 1, pieceSize: size, partialFailures: 25))
+        using (var downloader = new SegmentedDownloader(1))
+        using (var deadline = new CancellationTokenSource(120000))
+        {
+            var logs = new ConcurrentQueue<string>();
+            downloader.Log = logs.Enqueue;
+            var clock = Stopwatch.StartNew();
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Console.WriteLine("OWN-PROGRESS seconds=" + clock.Elapsed.TotalSeconds.ToString("F3",
+                CultureInfo.InvariantCulture) + " ok=" + result.Ok + " requests=" + server.Requests
+                + " requeues=" + logs.Count(l => l.Contains("整轮重试 ")) + " error=" + result.Message);
+            Check(!deadline.IsCancellationRequested && result.Ok && server.Requests == 26,
+                "own committed progress must recover beyond the historical 20-attempt cap");
+            byte[] data = File.ReadAllBytes(fixture.Dest);
+            Check(data.Length == size && data.Where((value, i) => value != Value(i)).Count() == 0,
+                "partial successful writes and exact resumed Range must produce identical output");
+        }
+    }
+
+    private static async Task SubQuantumTrickle()
+    {
+        using (var fixture = new Fixture(1, pieceSize: 4 * 1024 * 1024))
+        using (var server = new Server(false, false, 1, pieceSize: 4 * 1024 * 1024,
+            partialFailures: 25, partialBytes: 1024))
+        using (var downloader = new SegmentedDownloader(1))
+        using (var deadline = new CancellationTokenSource(90000))
+        {
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Check(!deadline.IsCancellationRequested && !result.Ok && server.Requests == 20,
+                "20 KiB of partial-write trickle must not refresh either no-progress retry window");
+            string[] part = File.ReadAllLines(fixture.Dest + ".qmeta")[2].Split(',');
+            Check(long.Parse(part[2], CultureInfo.InvariantCulture) == 1 + 20 * 1024,
+                "failure preserves exactly the cached byte plus each newly committed drip");
+            Console.WriteLine("TRICKLE requests=20 newBytes=20480 cachedBytes=1 preserved=True");
+        }
+    }
+
+    private static async Task LastBadPart()
+    {
+        using (var fixture = new Fixture(64))
+        using (var server = new Server(true, false, 64, status: 429, firstOnly: true, bodyDelay: 500))
+        using (var downloader = new SegmentedDownloader(2))
+        using (var deadline = new CancellationTokenSource(90000))
+        {
+            var trace = RequestStageTrace.Attach(downloader);
+            var clock = Stopwatch.StartNew();
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Console.WriteLine("LAST-BAD seconds=" + clock.Elapsed.TotalSeconds.ToString("F3",
+                CultureInfo.InvariantCulture) + " ok=" + result.Ok + " sends=" + trace.RequestsStarted
+                + " error=" + result.Message);
+            Check(!deadline.IsCancellationRequested && !result.Ok && result.Message.Contains("HTTP 429"),
+                "other parts' continuous successful writes must not indefinitely renew the last bad part");
+            Check(trace.RequestsStarted == 63 + 20 && File.Exists(fixture.Dest + ".qmeta"),
+                "bad part keeps four rounds of five attempts and all recovery metadata");
+        }
+    }
+
+    private static async Task HealthyTailHeaders()
+    {
+        using (var fixture = new Fixture(8))
+        using (var server = new Server(true, false, 8, firstOnly: true, headerDelay: 80000))
+        using (var downloader = new SegmentedDownloader(8))
+        using (var deadline = new CancellationTokenSource(110000))
+        {
+            var logs = new ConcurrentQueue<string>();
+            downloader.Log = logs.Enqueue;
+            var clock = Stopwatch.StartNew();
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Console.WriteLine("TAIL-HEADERS seconds=" + clock.Elapsed.TotalSeconds.ToString("F3",
+                CultureInfo.InvariantCulture) + " ok=" + result.Ok + " requests=" + server.Requests
+                + " error=" + result.Message);
+            Check(!deadline.IsCancellationRequested && result.Ok,
+                "last healthy 80s response headers must not be killed by the 45s global watchdog");
+            Check(server.Requests == 8 && !logs.Any(l => l.Contains("下载停滞:")),
+                "bounded header wait must finish without retry/preemption or false global stall");
+            byte[] data = File.ReadAllBytes(fixture.Dest);
+            Check(data.Length == 8 * PartSize && data.Where((value, i) => value != Value(i)).Count() == 0,
+                "healthy tail output must remain byte-identical");
+        }
+    }
+
+    private static Task HealthyTinyTailHeaders() => TinyTailAsync(80000, false, false);
+    private static Task TinyTailRetryBackoff() => TinyTailAsync(0, true, false);
+    private static Task TinyTailBodyStall() => TinyTailAsync(0, false, true);
+
+    private static async Task TinyTailAsync(int headers, bool retries, bool bodyStall)
+    {
+        using (var fixture = new Fixture(8, tinyTail: true))
+        using (var server = new Server(true, false, 8, firstOnly: true, headerDelay: headers,
+            progressFailures: retries, statusDelay: retries ? 8000 : 0, bodyDelay: bodyStall ? 80000 : 0))
+        using (var downloader = new SegmentedDownloader(8))
+        using (var deadline = new CancellationTokenSource(115000))
+        {
+            var logs = new ConcurrentQueue<string>();
+            downloader.Log = logs.Enqueue;
+            var clock = Stopwatch.StartNew();
+            var result = await downloader.DownloadAsync(server.Url, fixture.Dest,
+                cancel: deadline.Token).ConfigureAwait(false);
+            Console.WriteLine("TINY-TAIL headersMs=" + headers + " retries=" + retries + " bodyStall=" + bodyStall
+                + " missing=1019 seconds=" + clock.Elapsed.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)
+                + " ok=" + result.Ok + " requests=" + server.Requests + " error=" + result.Message);
+            Check(!deadline.IsCancellationRequested, "tiny-tail test must not need external cancellation");
+            if (bodyStall)
+            {
+                Check(!result.Ok && logs.Any(l => l.Contains("下载停滞:"))
+                    && File.Exists(fixture.Dest + ".qmeta"),
+                    "genuinely stuck final body still needs bounded termination with preserved cache");
+                Check(!logs.Any(l => l.Contains("与你的网络无关") || l.Contains("多半是")),
+                    "stall log must not present CDN or local-network attribution as fact");
+            }
+            else
+            {
+                Check(result.Ok && server.Requests == (retries ? 6 : 1),
+                    "only 1019 missing bytes must recover through bounded headers/backoff without false global stall");
+                byte[] data = File.ReadAllBytes(fixture.Dest);
+                Check(data.Length == 8 * PartSize && data.Where((value, i) => value != Value(i)).Count() == 0,
+                    "all cached logical prefixes and following parts must remain byte-identical");
+            }
+        }
+    }
+
     private static async Task CancelPendingHeaders()
     {
         using (var fixture = new Fixture())
@@ -299,17 +468,17 @@ internal static class RequestLifecycleRegression
         private readonly string _root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
             "lifecycle-fixture-" + Guid.NewGuid().ToString("N"));
         internal string Dest => Path.Combine(_root, "synthetic.bin");
-        internal Fixture(int parts = Parts, bool complete = false)
+        internal Fixture(int parts = Parts, bool complete = false, bool tinyTail = false, int pieceSize = PartSize)
         {
             Directory.CreateDirectory(Dest + ".qparts");
-            var lines = new List<string> { ((long)parts * PartSize).ToString(), parts.ToString() };
+            var lines = new List<string> { ((long)parts * pieceSize).ToString(), parts.ToString() };
             for (int i = 0; i < parts; i++)
             {
-                long start = (long)i * PartSize;
-                lines.Add(start + "," + (start + PartSize - 1) + "," + (complete ? PartSize : 1));
+                long start = (long)i * pieceSize;
+                int written = tinyTail ? (i == 0 ? pieceSize - 1019 : pieceSize) : complete ? pieceSize : 1;
+                lines.Add(start + "," + (start + pieceSize - 1) + "," + written);
                 File.WriteAllBytes(Path.Combine(Dest + ".qparts", "p" + i.ToString("D6")),
-                    complete ? Enumerable.Range(0, PartSize).Select(offset => Value(start + offset)).ToArray()
-                        : new[] { Value(start) });
+                    Enumerable.Range(0, written).Select(offset => Value(start + offset)).ToArray());
             }
             File.WriteAllLines(Dest + ".qmeta", lines);
         }
@@ -325,9 +494,10 @@ internal static class RequestLifecycleRegression
         private readonly TaskCompletionSource<bool> _allWorkers = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Task _accept;
-        private readonly bool _keepAlive, _silent, _reset;
-        private readonly int _parts;
-        private readonly int _status, _statusDelay;
+        private readonly bool _keepAlive, _silent, _reset, _progressFailures;
+        private readonly ConcurrentDictionary<long, int> _rangeAttempts = new ConcurrentDictionary<long, int>();
+        private readonly int _parts, _pieceSize, _partialFailures, _partialBytes;
+        private readonly int _status, _statusDelay, _headerDelay, _bodyDelay;
         private readonly bool _firstOnly;
         private readonly TaskCompletionSource<bool> _firstFailure = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -339,15 +509,23 @@ internal static class RequestLifecycleRegression
         internal Task AllWorkersWaiting => _allWorkers.Task;
         internal Task FirstFailure => _firstFailure.Task;
         internal Server(bool keepAlive, bool silent, int parts = Parts, bool reset = false,
-            int status = 206, bool firstOnly = false, int statusDelay = 0)
+            int status = 206, bool firstOnly = false, int statusDelay = 0, bool progressFailures = false,
+            int headerDelay = 0, int bodyDelay = 0, int pieceSize = PartSize, int partialFailures = 0,
+            int partialBytes = 128 * 1024)
         {
             _keepAlive = keepAlive;
             _silent = silent;
             _parts = parts;
+            _pieceSize = pieceSize;
+            _partialFailures = partialFailures;
+            _partialBytes = partialBytes;
             _reset = reset;
             _status = status;
             _firstOnly = firstOnly;
             _statusDelay = statusDelay;
+            _progressFailures = progressFailures;
+            _headerDelay = headerDelay;
+            _bodyDelay = bodyDelay;
             _listener.Start();
             Url = "http://127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port + "/synthetic";
             _accept = Task.Run(async () =>
@@ -379,7 +557,7 @@ internal static class RequestLifecycleRegression
                     {
                         string request = await reader.ReadLineAsync().ConfigureAwait(false);
                         if (request == null) return;
-                        long start = 0, end = (long)_parts * PartSize - 1;
+                        long start = 0, end = (long)_parts * _pieceSize - 1;
                         string line;
                         while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false)))
                         {
@@ -403,10 +581,14 @@ internal static class RequestLifecycleRegression
                         }
                         if (first) await Task.Delay(100, _stop.Token).ConfigureAwait(false);
                         first = false;
-                        if (!probe && _status != 206 && (!_firstOnly || start < PartSize))
+                        if (!probe && _headerDelay > 0 && (!_firstOnly || start < _pieceSize))
+                            await Task.Delay(_headerDelay, _stop.Token).ConfigureAwait(false);
+                        bool transient = !probe && _progressFailures && (start / _pieceSize) % 2 == 0
+                            && _rangeAttempts.AddOrUpdate(start / _pieceSize, 1, (_, n) => n + 1) <= 5;
+                        if (transient || (!probe && _status != 206 && (!_firstOnly || start < _pieceSize)))
                         {
                             if (_statusDelay > 0) await Task.Delay(_statusDelay, _stop.Token).ConfigureAwait(false);
-                            byte[] error = Encoding.ASCII.GetBytes("HTTP/1.1 " + _status
+                            byte[] error = Encoding.ASCII.GetBytes("HTTP/1.1 " + (transient ? 503 : _status)
                                 + " Synthetic\r\nContent-Length: 0\r\nConnection: "
                                 + (_keepAlive ? "keep-alive" : "close") + "\r\n\r\n");
                             await stream.WriteAsync(error, 0, error.Length, _stop.Token).ConfigureAwait(false);
@@ -416,12 +598,16 @@ internal static class RequestLifecycleRegression
                         }
                         byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 206 Partial Content\r\n"
                             + "Content-Length: " + (end - start + 1) + "\r\nContent-Range: bytes "
-                            + start + "-" + end + "/" + ((long)_parts * PartSize)
+                            + start + "-" + end + "/" + ((long)_parts * _pieceSize)
                             + "\r\nAccept-Ranges: bytes\r\nConnection: " + (_keepAlive ? "keep-alive" : "close") + "\r\n\r\n");
                         await stream.WriteAsync(header, 0, header.Length, _stop.Token).ConfigureAwait(false);
-                        byte[] data = new byte[(int)(end - start + 1)];
+                        if (!probe && _bodyDelay > 0) await Task.Delay(_bodyDelay, _stop.Token).ConfigureAwait(false);
+                        bool partial = !probe && _partialFailures > 0
+                            && _rangeAttempts.AddOrUpdate(start / _pieceSize, 1, (_, n) => n + 1) <= _partialFailures;
+                        byte[] data = new byte[(int)Math.Min(end - start + 1, partial ? _partialBytes : int.MaxValue)];
                         for (int i = 0; i < data.Length; i++) data[i] = Value(start + i);
                         await stream.WriteAsync(data, 0, data.Length, _stop.Token).ConfigureAwait(false);
+                        if (partial) return;
                         if (!_keepAlive) return;
                     }
                 }

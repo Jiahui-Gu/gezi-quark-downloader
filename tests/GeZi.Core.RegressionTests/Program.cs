@@ -16,10 +16,14 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Contains("--progress-budget"))
+            return ProgressBudgetRegression.Run();
         if (args.Contains("--utilization"))
             return ConnectionUtilizationRegression.RunAsync(args).GetAwaiter().GetResult();
         if (args.Contains("--request-lifecycle"))
-            return RequestLifecycleRegression.RunAsync(args.Contains("--budget-only")).GetAwaiter().GetResult();
+            return RequestLifecycleRegression.RunAsync(args.Contains("--budget-only"),
+                args.Contains("--progress-only"), args.Contains("--tail-waits"),
+                args.Contains("--tiny-tail"), args.Contains("--retry-policy")).GetAwaiter().GetResult();
         if (args.Contains("--transport-failures"))
             return TransportFailureRegression.RunAsync().GetAwaiter().GetResult();
         if (args.Contains("--tail-scheduling"))

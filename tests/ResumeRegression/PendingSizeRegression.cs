@@ -74,6 +74,29 @@ namespace ResumeRegression
             Program.Assert(HistoryStore.Writes == 2 && HistoryStore.Last.Single().Dest == second.Job.Dest,
                 "same name/state/size but distinct task must not be hidden by signature throttling");
         }
+
+        internal static void FailedRetention()
+        {
+            HistoryStore.Reset();
+            var h = new ResumeHarness();
+            var item = Item(15728640000);
+            item.Job.PartsRoot = @"C:\synthetic-only\original-parts";
+            item.Job.Pending.PwdId = "synthetic-share";
+            item.Job.Pending.Stoken = "synthetic-stoken";
+            item.Job.Pending.Token = "synthetic-token";
+            h.Add(item);
+            h.Update(new JobUpdate { Job = item.Job, State = JobState.Failed, Error = "synthetic EOF" });
+            Program.Assert(HistoryStore.Last.Count == 1
+                && HistoryStore.Last.Single().Fid == item.Job.Pending.Fid
+                && HistoryStore.Last.Single().Size == item.Total,
+                "Failed must remain durable and resumable without manually reconstructing state");
+            var savedRoot = typeof(PendingTask).GetProperty("PartsRoot");
+            Program.Assert(savedRoot != null
+                && (string)savedRoot.GetValue(HistoryStore.Last.Single()) == item.Job.PartsRoot,
+                "failed resume must retain the exact original cache root");
+            h.Update(new JobUpdate { Job = item.Job, State = JobState.Cancelled });
+            Program.Assert(HistoryStore.Last.Count == 0, "explicit cancellation must still remove pending");
+        }
     }
 
     // Compile production persistence orchestration against a capture-only edge: never read/write real state.

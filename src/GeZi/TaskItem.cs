@@ -20,11 +20,35 @@ namespace GeZi
     /// <summary>任务列表条目（带变更通知，供进度条/状态实时刷新）。</summary>
     public class TaskItem : INotifyPropertyChanged
     {
-        public DownloadJob Job { get; }
+        public DownloadJob Job { get; private set; }
         public string Name { get; }
 
         /// <summary>是否已写入下载历史。终态只记一次，防止重复上报把历史刷屏。</summary>
         public bool HistoryRecorded { get; set; }
+
+        private bool _retryPreparing;
+        public bool RetryPreparing
+        {
+            get => _retryPreparing;
+            set { _retryPreparing = value; OnChanged(nameof(CanRetry)); OnChanged(nameof(DetailText)); }
+        }
+
+        public bool CanRetry => State == JobState.Failed && !RetryPreparing
+            && Job?.Pending?.CanResume == true && !Job.SkipPersist;
+
+        public void ReplaceForRetry(DownloadJob job)
+        {
+            Job = job;
+            HistoryRecorded = false;
+            PauseRequested = false;
+            Error = "";
+            Phase = "";
+            Speed = 0;
+            ActiveConnections = 0;
+            WorkerCount = 0;
+            State = JobState.Queued;
+            OnChanged(nameof(Job));
+        }
 
         public TaskItem(DownloadJob job, string name)
         {
@@ -37,7 +61,7 @@ namespace GeZi
         public JobState State
         {
             get => _state;
-            set { _state = value; OnChanged(nameof(State)); OnChanged(nameof(StatusText)); OnChanged(nameof(DetailText)); OnChanged(nameof(SpeedText)); OnChanged(nameof(CanPlay)); }
+            set { _state = value; OnChanged(nameof(State)); OnChanged(nameof(StatusText)); OnChanged(nameof(DetailText)); OnChanged(nameof(SpeedText)); OnChanged(nameof(CanPlay)); OnChanged(nameof(CanRetry)); }
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -270,6 +294,7 @@ namespace GeZi
         {
             get
             {
+                if (RetryPreparing) return "正在准备断点重试…";
                 if (State == JobState.Failed && !string.IsNullOrEmpty(Error))
                     return "失败: " + Error;
                 return StatusText;

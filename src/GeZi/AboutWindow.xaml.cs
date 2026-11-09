@@ -72,7 +72,7 @@ namespace GeZi
             try
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
-                VersionPillText.Text = "v" + (ver != null ? ver.ToString(3) : "2.3.5");
+                VersionPillText.Text = "v" + (ver != null ? ver.ToString(3) : "2.3.6");
             }
             catch { }
 

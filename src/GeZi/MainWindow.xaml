@@ -1020,7 +1020,7 @@
                                  用一条同色系极淡的竖分隔符「·」隔开，字号 11 比说明再弱一档，
                                  做到"补充说明"而不是并列信息。 -->
                             <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                <TextBlock Text="右键任务行可单独暂停 / 恢复 / 取消 / 删除并移除"
+                                <TextBlock Text="失败可直接重试；右键任务行可暂停 / 恢复 / 取消 / 删除"
                                            Style="{StaticResource TertiaryText}"/>
                                 <TextBlock Text="·" Margin="7,0"
                                            FontSize="11" VerticalAlignment="Center"
@@ -1134,6 +1134,7 @@
                                      MouseDoubleClick="OnTaskListDoubleClick">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
+                                        <MenuItem Header="重试失败任务（保留断点）" Click="OnTaskRetry"/>
                                         <MenuItem Header="暂停" Click="OnTaskPause">
                                             <MenuItem.Icon>
                                                 <Path Data="{StaticResource IconPause}" Stretch="Uniform"
@@ -1272,6 +1273,20 @@
                                                 <Button Grid.Column="2" Click="OnTaskTogglePause"
                                                         Tag="{Binding}" Style="{StaticResource TaskPauseButton}"
                                                         Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="2" Content="重试" Click="OnTaskRetry"
+                                                        Tag="{Binding}" Margin="6,0,0,0"
+                                                        ToolTip="重新取链并从原断点重试，不清除已下载部分">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanRetry}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
                                                 <!-- 「播放」= 交给系统默认程序打开（装了 VLC 就用 VLC）。
                                                      按用户要求：只有**能播**的时候才显示这个按钮
                                                      （见 TaskItem.CanPlay）——

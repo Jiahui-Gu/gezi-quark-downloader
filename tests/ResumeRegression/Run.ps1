@@ -12,6 +12,10 @@ function Get-Method([string] $start, [string] $end) {
 # Compile the unmodified production orchestration with deterministic API/UI edges.
 # Never construct MainWindow/App: their startup touches real configuration and UI.
 $resume = Get-Method 'private async Task ResumePendingBatchAsync(' 'private async Task<string> RefreshLinkAsyncForPending('
+$retry = Get-Method 'private async Task RetryFailedTasksAsync(' 'private async Task ResumePendingBatchAsync('
+$cleanup = Get-Method 'private async Task CleanupTransferredAsync()' 'private void OnJobUpdate('
+$restore = Get-Method 'private Dictionary<PendingTask, TaskItem> RestorePendingTasks(' 'private void ShowPendingOnStartup()'
+$diagnostics = Get-Method 'private void OnDiagnostics(' 'private void OnOpenDiagnostics('
 $syncPending = Get-Method 'private void SyncPending()' '// ---------------- 任务管理 ----------------'
 $jobUpdate = Get-Method 'private void OnJobUpdate(' 'private string _pendingSig;'
 $busy = Get-Method 'private void SetBusy(bool busy)' 'private readonly HashSet<Button> _busyButtons'
@@ -55,6 +59,10 @@ namespace ResumeRegression
     internal partial class ResumeHarness
     {
         $resume
+        $retry
+        $cleanup
+        $restore
+        $diagnostics
         $syncPending
         $jobUpdate
         $busy

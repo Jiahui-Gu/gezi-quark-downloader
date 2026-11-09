@@ -104,7 +104,8 @@ namespace GeZi.Core.Download
 
         public async Task RunAllAsync(IReadOnlyList<DownloadJob> jobs, IProgress<JobUpdate> progress, CancellationToken globalCancel)
         {
-            var tasks = jobs.Select(job => RunOneAsync(job, _sem, progress, globalCancel)).ToArray();
+            var tasks = jobs.Select(job => job.Completion =
+                RunOneAsync(job, _sem, progress, globalCancel)).ToArray();
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
@@ -138,7 +139,11 @@ namespace GeZi.Core.Download
                     {
                         string logScope = "[" + Path.GetFileName(job.Dest) + "; job=" + job.Id + "] ";
                         dl.Log = message => Log?.Invoke(logScope + message);
-                        dl.Diagnostics = Diagnostics;
+                        dl.Diagnostics = snapshot =>
+                        {
+                            snapshot.JobId = job.Id;
+                            Diagnostics?.Invoke(snapshot);
+                        };
                         dl.LinkRefresher = job.LinkRefresher;
                         // 免转存任务：失败文案不能说"可续传"（stoken 过期就取不到新链）
                         dl.ResumeCannotRefresh = job.ResumeCannotRefresh;

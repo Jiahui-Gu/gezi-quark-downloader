@@ -65,6 +65,8 @@ namespace GeZi.Core.Download
         /// </summary>
         public bool SkipPersist { get; set; }
 
+        public Task Completion { get; internal set; } = Task.CompletedTask;
+
         public CancellationTokenSource Cancel { get; } = new CancellationTokenSource();
         public PauseToken Pause { get; } = new PauseToken();
 
