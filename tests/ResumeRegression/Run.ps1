@@ -13,6 +13,19 @@ function Get-Method([string] $start, [string] $end) {
 # Never construct MainWindow/App: their startup touches real configuration and UI.
 $resume = Get-Method 'private async Task ResumePendingBatchAsync(' 'private async Task<string> RefreshLinkAsyncForPending('
 $busy = Get-Method 'private void SetBusy(bool busy)' 'private readonly HashSet<Button> _busyButtons'
+$threadAssignments = [regex]::Matches($source, 'Threads = ([^\r\n,]+),')
+if ($threadAssignments.Count -ne 3) { throw 'Expected exactly three production job creation entries' }
+$allocator = ''
+$allocationSetup = ''
+if ($source.Contains('private int[] AllocateThreads(')) {
+    $allocator = Get-Method 'private int[] AllocateThreads(' 'private void LogAllocation('
+    $allocator = "private const int DownloadConnBudget = 512; private const int MinThreadsPerFile = 4; $allocator"
+    $allocationSetup = 'var alloc = AllocateThreads(sizes);'
+}
+$policyMethods = for ($entry = 0; $entry -lt $threadAssignments.Count; $entry++) {
+    $expression = $threadAssignments[$entry].Groups[1].Value
+    "internal int[] Entry$entry(IList<long> sizes) { $allocationSetup return Enumerable.Range(0, sizes.Count).Select(i => $expression).ToArray(); }"
+}
 $speedMethods = foreach ($window in @('MainWindow', 'MiniWindow')) {
     $text = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\..\src\GeZi\$window.xaml.cs") -Raw -Encoding UTF8
     $active = [regex]::Match($text, 'var active = (_tasks|_all)\.Where\(.*?\.ToList\(\);', 'Singleline').Value
@@ -40,6 +53,8 @@ namespace ResumeRegression
     {
         $resume
         $busy
+        $allocator
+        $($policyMethods -join "`n")
     }
 }
 "@

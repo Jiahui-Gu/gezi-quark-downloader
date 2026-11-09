@@ -3160,67 +3160,12 @@ namespace GeZi
             }
         }
 
-        // ---------------- 连接数按文件大小比例分配 ----------------
-        // Python Flet 版有「智能调度」：实际线程数 = min(下载线程数, 总连接预算 / 本批任务数)
-        // —— 也就是**多个文件平分**总预算。C# 版当初删掉「全局连接预算」设置项时，
-        // 连"多文件共享总预算"这件事一起没了，变成每个任务都开满自己的线程数
-        // （用户把单文件并发拉到 512、同时跑 3 个 = 1536 条连接，而夸克是按账号限总连接数的）。
-        // 「不要平均分配了，改成比例分配，按文件大小，文件越大分配越多，
-        // 文件越小分配越少，但有最低下限，不然别让小文件根本下不了了」。
-        // 具体算法在 GeZi.Core.Download.ThreadAllocator（纯函数，可单独测试）。
-
-        /// <summary>总连接预算。见 <see cref="GeZi.Core.Download.ThreadAllocator.DefaultBudget"/>。</summary>
-        private const int DownloadConnBudget = GeZi.Core.Download.ThreadAllocator.DefaultBudget;
-
-        /// <summary>单个文件的最低连接数。见 <see cref="GeZi.Core.Download.ThreadAllocator.MinPerFile"/>。</summary>
-        private const int MinThreadsPerFile = GeZi.Core.Download.ThreadAllocator.MinPerFile;
-
-        /// <summary>
-        /// 按**文件大小比例**把总连接预算分给这一批任务，返回与入参等长的线程数数组。
-        /// </summary>
-        private int[] AllocateThreads(IList<long> sizes)
-        {
-            return GeZi.Core.Download.ThreadAllocator.Allocate(
-                sizes,
-                Math.Min(_settings.Threads, GeZi.Core.Download.SegmentedDownloader.MaxRealConcurrency),
-                DownloadConnBudget,
-                MinThreadsPerFile,
-                // 同时最多跑几个 —— 预算约束的是"同时并发"的量级，不是整批的账面总和
-                Math.Max(1, _settings.ConcurrentTasks));
-        }
-
-        /// <summary>把分配结果写进日志（只在"不是所有任务都一样"时打，避免刷屏）。</summary>
-        private void LogAllocation(int[] threads)
-        {
-            if (threads == null || threads.Length <= 1) return;
-            bool uniform = true;
-            for (int i = 1; i < threads.Length; i++)
-                if (threads[i] != threads[0]) { uniform = false; break; }
-            if (uniform)
-            {
-                LogDetail(string.Format("本批 {0} 个文件，每个 {1} 路并发。",
-                    threads.Length, threads[0]));
-                return;
-            }
-            var sb = new StringBuilder();
-            for (int i = 0; i < threads.Length && i < 12; i++)
-            {
-                if (i > 0) sb.Append('、');
-                sb.Append(threads[i]);
-            }
-            if (threads.Length > 12) sb.Append("…");
-            LogDetail(string.Format(
-                "已按文件大小分配连接数（总预算 {0}）：{1} —— 大文件多分、小文件少分，每文件不低于 {2} 路。",
-                DownloadConnBudget, sb, MinThreadsPerFile));
-        }
-
         /// <summary>
         /// 用**已取到的链接**直接建任务入队（不再重新取链）。
         /// 给「获取直链」对话框的「下载这些文件」按钮用。
         /// </summary>
         private void StartDownloadFromItems(List<DownloadItem> items)
         {
-            var alloc = AllocateThreads(items.Select(i => i.Size).ToList());
             var jobs = new List<DownloadJob>();
             for (int i = 0; i < items.Count; i++)
             {
@@ -3236,7 +3181,7 @@ namespace GeZi
                 {
                     Name = item.Name, Url = item.Url, Dest = dest,
                     Cookie = _client.CookieStr,
-                    Threads = i < alloc.Length ? alloc[i] : _settings.Threads,
+                    Threads = _settings.Threads,
                     // 写入方式统一取设置页的全局值（原来靠下载区的「边下边播」勾选框，
                     // 与设置页重复且容易误导，已移除该勾选框）。
                     PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
@@ -3255,7 +3200,6 @@ namespace GeZi
             }
             if (jobs.Count == 0) { Log("没有可下载的条目。"); return; }
 
-            LogAllocation(alloc);
             foreach (var job in jobs)
                 _tasks.Add(new TaskItem(job, job.Name));
             Log("已加入下载队列: " + jobs.Count + " 个文件（复用已取链接）");
@@ -3334,9 +3278,6 @@ namespace GeZi
                 var items = await GetDownloadItemsAsync(files, ct, forceNoSave);
                 ct.ThrowIfCancellationRequested();
 
-                // 连接数按文件大小比例分配（大文件多分、小文件少分，各不低于下限）
-                var alloc = AllocateThreads(items.Select(x => x.Size).ToList());
-
                 var jobs = new List<DownloadJob>();
                 for (int i = 0; i < items.Count; i++)
                 {
@@ -3351,7 +3292,7 @@ namespace GeZi
                     {
                         Name = item.Name, Url = item.Url, Dest = dest,
                         Cookie = _client.CookieStr,
-                        Threads = i < alloc.Length ? alloc[i] : _settings.Threads,
+                        Threads = _settings.Threads,
                         // 分片根目录：留空 = 与目标同级（默认）。非空则分片集中存放，
                         // 下载目录不被 .qparts 污染，也支持分片跨盘（如放 SSD）。
                         PartsRoot = string.IsNullOrWhiteSpace(_settings.PartsRoot) ? null : _settings.PartsRoot,
@@ -3379,7 +3320,6 @@ namespace GeZi
                     return;
                 }
 
-                LogAllocation(alloc);
                 foreach (var job in jobs)
                     _tasks.Add(new TaskItem(job, job.Name));
                 Log("已加入下载队列: " + jobs.Count + " 个文件");
@@ -6564,7 +6504,7 @@ namespace GeZi
 
         /// <summary>
         /// 应用设置变更。
-        /// 曾经的实现是无条件 Dispose + new。但保存设置（改并发/连接预算）时
+        /// 曾经的实现是无条件 Dispose + new。但保存设置（改同时下载数）时
         /// 下载往往正在跑：Dispose 会把内部 SemaphoreSlim 一起释放，
         /// 而此刻 RunOneAsync 正持有它 —— 接下来的 sem.Release() 就抛
         /// ObjectDisposedException("已释放该信号量")，任务被中断且提示莫名其妙。
@@ -6578,8 +6518,7 @@ namespace GeZi
         /// </summary>
         private void RecreateScheduler()
         {
-            // 连接上限现在由 SegmentedDownloader / QuarkSession 各自显式设定，
-            // 不再暴露"全局连接预算"给用户（原来的设置项实际不起作用）。
+            // 连接上限由 SegmentedDownloader / QuarkSession 各自显式设定。
             // NetworkConfig.Apply 仍在调度器构造里以固定值调用一次，兜底全局 DefaultConnectionLimit。
             if (_batchRunning)
             {

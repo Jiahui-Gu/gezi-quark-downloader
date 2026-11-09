@@ -39,17 +39,17 @@ namespace ResumeRegression
             Program.Assert(GitHubReleaseChecker.LatestApiUrl ==
                 "https://api.github.com/repos/Jiahui-Gu/gezi-quark-downloader/releases/latest", "latest API entry");
             foreach (var assembly in new[] { typeof(TaskItem).Assembly, typeof(GitHubReleaseChecker).Assembly })
-                Program.Assert(assembly.GetName().Version.ToString(3) == "2.3.2", "assembly version: " + assembly.GetName().Name);
+                Program.Assert(assembly.GetName().Version.ToString(3) == "2.3.3", "assembly version: " + assembly.GetName().Name);
             var aboutRepo = typeof(AboutWindow).GetField("RepoUrl", BindingFlags.NonPublic | BindingFlags.Static);
             Program.Assert((string)aboutRepo.GetRawConstantValue() == repo, "about source entry");
             var parse = typeof(GitHubReleaseChecker).GetMethod("Parse", BindingFlags.NonPublic | BindingFlags.Static);
             var release = (GitHubRelease)parse.Invoke(null, new object[] {
-                "{\"tag_name\":\"v2.3.2\",\"html_url\":\"" + repo + "/releases/tag/v2.3.2\"," +
-                "\"assets\":[{\"name\":\"GeZi-v2.3.2-source.zip\",\"size\":7}," +
-                "{\"name\":\"GeZi-v2.3.2-win64.zip\",\"size\":12345}]}" });
-            Program.Assert(release != null && release.Version.ToString() == "2.3.2", "numeric release tag");
+                "{\"tag_name\":\"v2.3.3\",\"html_url\":\"" + repo + "/releases/tag/v2.3.3\"," +
+                "\"assets\":[{\"name\":\"GeZi-v2.3.3-source.zip\",\"size\":7}," +
+                "{\"name\":\"GeZi-v2.3.3-win64.zip\",\"size\":12345}]}" });
+            Program.Assert(release != null && release.Version.ToString() == "2.3.3", "numeric release tag");
             Program.Assert(release.AssetSize == 12345, "updater must recognize portable filename, not source archive");
-            Program.Assert(release.HtmlUrl == repo + "/releases/tag/v2.3.2", "release navigation");
+            Program.Assert(release.HtmlUrl == repo + "/releases/tag/v2.3.3", "release navigation");
         }
     }
 }

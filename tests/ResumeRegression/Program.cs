@@ -23,6 +23,62 @@ namespace ResumeRegression
             SynchronizationContext.SetSynchronizationContext(
                 new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
             int failures = 0;
+            Run("every production job entry uses 512 independently of size and task count", () =>
+            {
+                foreach (int concurrent in new[] { 1, 3, 11 })
+                {
+                    var h = new ResumeHarness();
+                    h.Configure(512, concurrent);
+                    foreach (var sizes in new[] {
+                        new long[] { 9L << 30, 9L << 30, 9L << 30 },
+                        new long[] { 1, 1L << 20, 100L << 30 },
+                        new long[] { 0, -1, 0, 5L << 30 } })
+                        foreach (var entry in new Func<IList<long>, int[]>[] { h.Entry0, h.Entry1, h.Entry2 })
+                            Assert(entry(sizes).All(t => t == 512),
+                                entry.Method.Name + " must not allocate a shared connection budget");
+                    Pump(h.Resume(Tasks(3)));
+                    Assert(h.Started.All(j => j.Threads == 512), "startup resume must use the same setting");
+                }
+            }, ref failures);
+            Run("no hidden startup or adaptive worker limit", () =>
+            {
+                Assert(typeof(SegmentedDownloader).GetNestedType("SlowStartGate",
+                    System.Reflection.BindingFlags.NonPublic) == null, "response-batched startup must be removed");
+                Assert(!typeof(SegmentedDownloader).GetNestedTypes(System.Reflection.BindingFlags.NonPublic)
+                    .SelectMany(t => t.GetFields(System.Reflection.BindingFlags.Instance
+                        | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                    .Any(f => f.Name == "concurrencyTarget"), "adaptive worker ceiling must be removed");
+            }, ref failures);
+            Run("synthetic saved configuration preserves 512 and simultaneous count", () =>
+            {
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+                var pathField = typeof(SettingsStore).GetField("_filePath", flags);
+                var loadedField = typeof(SettingsStore).GetField("_loaded", flags);
+                object oldPath = pathField.GetValue(null), oldLoaded = loadedField.GetValue(null);
+                string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    "settings-fixture-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(root);
+                string path = Path.Combine(root, "GeZi.config.xml");
+                pathField.SetValue(null, path);
+                loadedField.SetValue(null, true);
+                try
+                {
+                    foreach (int concurrent in new[] { 3, 1 })
+                    {
+                        SettingsStore.Save(new AppSettings { Threads = 512, ConcurrentTasks = concurrent });
+                        Assert(SettingsStore.LastError == null && File.Exists(path), "synthetic configuration saved");
+                        var settings = SettingsStore.Load();
+                        Assert(SettingsStore.LastError == null && settings.Threads == 512
+                            && settings.ConcurrentTasks == concurrent, "saved settings round trip");
+                    }
+                }
+                finally
+                {
+                    pathField.SetValue(null, oldPath);
+                    loadedField.SetValue(null, oldLoaded);
+                    Directory.Delete(root, true);
+                }
+            }, ref failures);
             Run("both speed aggregations exclude local merging (16 assertions)",
                 MaintenanceRegression.Speed, ref failures);
             Run("maintained fork version and release parsing",
@@ -82,6 +138,14 @@ namespace ResumeRegression
                     () => Pump(DownloadRegression.RunDynamicSplitAsync()), ref failures);
                 Run("11 files resume at 256 real concurrent HTTP ranges each",
                     () => Pump(DownloadRegression.RunAsync()), ref failures);
+                Run("three files resume at 512 real simultaneous ranges each",
+                    () => Pump(DownloadRegression.RunAsync(3, 512, 3)), ref failures);
+                Run("simultaneous setting one serializes three 512-worker files",
+                    () => Pump(DownloadRegression.RunAsync(3, 512, 1)), ref failures);
+                Run("three fresh unequal-size files start 512 ranges before any segment response",
+                    () => Pump(DownloadRegression.RunAsync(3, 512, 3, fresh: true)), ref failures);
+                Run("HTTP 429 retries retain configured workers and complete intact",
+                    () => Pump(DownloadRegression.RunAsync(3, 64, 3, throttle: true)), ref failures);
             }
             Console.WriteLine("Failures: " + failures);
             return failures == 0 ? 0 : 1;
@@ -151,6 +215,12 @@ namespace ResumeRegression
             && DownloadAllBtn.IsEnabled && DriveRefreshBtn.IsEnabled
             && DriveUpBtn.IsEnabled && FetchLinksBtn.IsEnabled;
         internal Task Resume(List<PendingTask> tasks) => ResumePendingBatchAsync(tasks);
+        internal void Configure(int threads, int concurrent)
+        {
+            _settings.Threads = threads;
+            _settings.ConcurrentTasks = concurrent;
+        }
+        private void LogDetail(string message) => Log(message);
         private Task<QuarkClient> EnsureClientForResumeAsync() => Task.FromResult(new QuarkClient());
         private async Task<string> GetShareLinkWithReResolveAsync(QuarkClient client,
             string fid, string token, string pwdId, string stoken, string passcode,

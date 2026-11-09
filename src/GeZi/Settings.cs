@@ -22,22 +22,8 @@ namespace GeZi
     public class AppSettings
     {
         /// <summary>
-        /// 单任务下载线程数（= 单文件最大并发连接）。默认 64，与 Python Flet 版一致
-        /// （core 的 DOWNLOAD_THREADS 也是 64）。上限见 SegmentedDownloader.MaxRealConcurrency。
-        /// </summary>
-        /// <summary>
-        /// 单文件并发连接数。
-        /// 依据 `docs/CDN并发阈值-实测.md` 的实测拐点：
-        /// ```
-        ///  并发  总速中位    单连接速
-        ///   64   4.00 MB/s   64.0 KB/s
-        ///  128   7.98 MB/s   63.8 KB/s
-        ///  256  13.94 MB/s   55.7 KB/s   ← 拐点，最快
-        ///  512  13.31 MB/s   27.1 KB/s   ← 反而降（连接互相争抢，谁都涨不起来）
-        /// ```
-        /// 夸克 CDN **按连接限速**（单连接 ~64KB/s），所以加连接线性有效；
-        /// 但 256 以上开始出现争抢（TCP 慢启动叠加 + 服务端反制），**不是越高越好**。
-        /// ⚠️ 默认值只影响新用户；老配置里已有的值不会被覆盖。
+        /// 每个文件独立使用的并发连接数，默认 256，上限见 SegmentedDownloader.MaxRealConcurrency。
+        /// 不按文件大小或同时任务数分配预算；已有配置不会被默认值覆盖。
         /// </summary>
         public int Threads { get; set; } = 256;
 
@@ -301,7 +287,7 @@ namespace GeZi
             // 兼容旧版明文 Cookie：解出来是明文就原样用，下次 Save 时会被自动加密
             s.Cookie = SecretProtector.Unprotect(s.Cookie);
             // 并发上限与核心层的 MaxRealConcurrency 保持一致。
-            // 旧配置里可能存着 512/8192 这类超出范围的值，读进来时夹到有效范围，
+            // 旧配置里可能存着 8192 这类超出范围的值，读进来时夹到有效范围，
             // 免得 UI 上落不到任何一个合法档位。上限取自核心层常量，避免两处失配。
             if (s.Threads <= 0) s.Threads = 256;   // 与上面 Threads 的默认值保持一致
             if (s.Threads > GeZi.Core.Download.SegmentedDownloader.MaxRealConcurrency)

@@ -1,6 +1,6 @@
 # 鸽子下载（GeZi）
 
-> **Jiahui 自维护版 v2.3.2**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
+> **Jiahui 自维护版 v2.3.3**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
 > [huaotem-bot/gezi-quark-downloader](https://github.com/huaotem-bot/gezi-quark-downloader)。
 > 保留原作者 Yi Yuan 的署名、品牌、赞赏入口及 GPL-3.0-or-later / 第三方许可。
 
@@ -27,9 +27,9 @@
   - `共写同一文件`：所有线程写同一个文件，**省磁盘空间**（默认）
   - `独立分片 + 顺序合并`：每个分片独立文件，**可边下边播**
 - **高并发分片下载**：片数按文件大小自动计算（≥ 有效并发 × 8，上限 4096）
-- **连接数按文件大小比例分配**：大文件多给连接，小文件不浪费
+- **连接数直接按设置**：每个文件独立使用设置的连接数（最高 512），同时下载数只控制几个文件一起跑；512 路 × 3 文件可各用 512 路，不共享总预算
 - **暂停 / 续传**：断点续传，重启后自动恢复未完成任务
-- **限速自适应**：被服务端限流时自动退避，空闲后自动恢复
+- **必要错误重试**：HTTP 429/503 等暂时错误保留逐请求退避，不自动降低连接数，也不分批错峰启动；实际活跃连接受剩余分片、非 Range 响应与网络限制
 - **取消即清理**：取消任务会立刻删除本地残留（想保留进度请用「暂停」）
 
 ### 解析与登录
@@ -67,7 +67,7 @@
 
 ### 方式一：下载发行版（推荐）
 
-1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.2-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
+1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.3-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
 2. 双击 `GeZi.exe` 即可运行
 3. 若系统缺少 .NET Framework 4.8，Windows 会弹窗提示，按引导安装即可
 
@@ -95,7 +95,8 @@ dotnet build .\src\GeZi\GeZi.csproj -c Release -p:Platform=x64
 - 合入上游 [PR #11](https://github.com/huaotem-bot/gezi-quark-downloader/pull/11)：主窗口与悬浮窗总速度不计本地分片合并吞吐。
 - 合入上游 [PR #12](https://github.com/huaotem-bot/gezi-quark-downloader/pull/12)：合并只读取已提交字节，重试覆盖未提交尾部；原 PR 保持独立，不在上游自动合并或关闭。
 - 纳入启动续传的 WPF Dispatcher / 可见错误修复，以及按逻辑 S/E 区间对账、动态分裂重启完整性修复。缺失 partial 缓存仍显式拒绝，不补零；不自动把 Failed 转成 Pending，不改变现有关闭退出设置。
-- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.2-win64.zip`。
+- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.3-win64.zip`。
+- 新任务、复用直链、免转存和启动续传统一采用设置的单文件连接数；移除按大小分配、隐藏总预算、启动分批错峰与自动缩减连接数。保留分片规划、窃取、必要错误退避及完整性校验。修改设置不打断正在运行的批次，续传使用当前设置。
 - `tools\Recovery` 保留非破坏性候选恢复和精确缺口获取工具，见 [使用说明](tools/Recovery/USAGE.md)；不随包附带任何账号、真实断点或下载数据。
 
 后续同步先添加上游（已存在则跳过）：`git remote add upstream https://github.com/huaotem-bot/gezi-quark-downloader.git`，
@@ -124,14 +125,18 @@ dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj 
 # WPF 线程亲和性、混合任务、取链失败与启动错误报告
 .\tests\ResumeRegression\Run.ps1
 
-# 额外验证 11 个文件各 256 路实际 HTTP Range 并发与断点内容完整性
+# 额外验证 11 × 256、3 × 512 实际 HTTP Range 并发、任务数限制及断点内容完整性
 .\tests\ResumeRegression\Run.ps1 --download
 ```
 
 测试从源码提取续传编排方法，以异步模拟取链和真实 WPF 集合视图验证线程切回；
 下载验证使用真实调度器、下载引擎与仅监听回环地址的本地 HTTP 服务。
 所有断点和文件均为合成数据，不启动主程序，也不读取账户或真实下载配置。
-下载验证会短时建立 2816 条本地连接；成功后自动清理测试文件，失败时输出保留目录。
+下载验证最高短时建立 2816 条本地连接；成功后自动清理测试文件，失败时输出保留目录。
+额外覆盖三文件各 512 路新下载（不等分片响应再启动其他连接）、三文件各 512 路续传、
+同时任务数为 1 时依次运行三文件，以及一整波 HTTP 429 后保留设置连接数并逐字节完成。
+新下载使用约 770 MiB 有界合成数据；测试不读取真实配置或进度。
+各入队路径还覆盖不同文件大小、未知大小、512 档位与配置保存后的读回。
 同一测试入口还从两处生产源码提取速度汇总表达式，执行 8 场景 × 2 窗口共 16 个断言，
 并验证两程序集版本、个人 fork 的更新/源码入口及便携附件名解析。
 另覆盖动态窃取生成乱序分片后的失败/重启：`pNNNNNN` 的编号保持不变，

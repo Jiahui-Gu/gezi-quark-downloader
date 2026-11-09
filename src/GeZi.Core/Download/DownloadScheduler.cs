@@ -96,10 +96,10 @@ namespace GeZi.Core.Download
             catch { return dest; }
         }
 
-        public DownloadScheduler(int maxConcurrent = 3, int connBudget = 512)
+        public DownloadScheduler(int maxConcurrent = 3)
         {
             _sem = new SemaphoreSlim(Math.Max(1, maxConcurrent));
-            NetworkConfig.Apply(connBudget);
+            NetworkConfig.Apply(512);
         }
 
         public async Task RunAllAsync(IReadOnlyList<DownloadJob> jobs, IProgress<JobUpdate> progress, CancellationToken globalCancel)

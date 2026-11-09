@@ -16,7 +16,7 @@ namespace ResumeRegression
     internal static class DownloadRegression
     {
         private const int FileCount = 11;
-        private const int PartCount = 505;
+        private const int PartCount = 1024;
         private const int PartSize = 4096;
         private const int MergedParts = 230;
         private const int CachedPrefix = 1024;
@@ -130,7 +130,8 @@ namespace ResumeRegression
             }
         }
 
-        internal static async Task RunAsync()
+        internal static async Task RunAsync(int fileCount = FileCount, int workers = Workers,
+            int concurrent = FileCount, bool fresh = false, bool throttle = false)
         {
             string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                 "download-fixture-" + Guid.NewGuid().ToString("N"));
@@ -138,34 +139,40 @@ namespace ResumeRegression
             bool passed = false;
             try
             {
-                using (var server = new RangeServer())
-                using (var scheduler = new DownloadScheduler(FileCount))
+                using (var server = new RangeServer(fileCount: fileCount, workers: workers,
+                    concurrent: concurrent, fresh: fresh, throttle: throttle))
+                using (var scheduler = new DownloadScheduler(concurrent))
                 using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90)))
                 {
                     var jobs = new List<DownloadJob>();
                     var metadata = new Dictionary<string, string>();
-                    for (int file = 0; file < FileCount; file++)
+                    var logs = new ConcurrentQueue<string>();
+                    scheduler.Log = logs.Enqueue;
+                    for (int file = 0; file < fileCount; file++)
                     {
                         string dest = Path.Combine(root, "file-" + file + ".bin");
                         string partsRoot = Path.Combine(root, "cache");
                         SegmentedDownloader.ResolvePaths(dest, partsRoot, out string parts, out string meta);
-                        Directory.CreateDirectory(parts);
-                        File.WriteAllBytes(dest, Data(file, 0, MergedParts * PartSize));
-                        var lines = new List<string> { Total.ToString(), PartCount.ToString() };
-                        for (int p = 0; p < PartCount; p++)
+                        if (!fresh)
                         {
-                            long start = p * PartSize;
-                            int written = p < MergedParts ? PartSize : CachedPrefix;
-                            lines.Add(start + "," + (start + PartSize - 1) + "," + written);
-                            if (p >= MergedParts)
-                                File.WriteAllBytes(Path.Combine(parts, "p" + p.ToString("D6")),
-                                    Data(file, start, written));
+                            Directory.CreateDirectory(parts);
+                            File.WriteAllBytes(dest, Data(file, 0, MergedParts * PartSize));
+                            var lines = new List<string> { Total.ToString(), PartCount.ToString() };
+                            for (int p = 0; p < PartCount; p++)
+                            {
+                                long start = p * PartSize;
+                                int written = p < MergedParts ? PartSize : CachedPrefix;
+                                lines.Add(start + "," + (start + PartSize - 1) + "," + written);
+                                if (p >= MergedParts)
+                                    File.WriteAllBytes(Path.Combine(parts, "p" + p.ToString("D6")),
+                                        Data(file, start, written));
+                            }
+                            File.WriteAllLines(meta, lines);
+                            metadata.Add(meta, string.Join("\n", lines));
                         }
-                        File.WriteAllLines(meta, lines);
-                        metadata.Add(meta, string.Join("\n", lines));
                         jobs.Add(new DownloadJob
                         {
-                            Name = "file-" + file, Dest = dest, Threads = Workers,
+                            Name = "file-" + file, Dest = dest, Threads = workers,
                             PartsRoot = partsRoot, Url = server.Url + file, Cookie = "",
                         });
                     }
@@ -176,7 +183,7 @@ namespace ResumeRegression
                         var ready = await Task.WhenAny(server.AllWorkersReady, download,
                             Task.Delay(TimeSpan.FromSeconds(45))).ConfigureAwait(false);
                         if (ready != server.AllWorkersReady)
-                            throw new InvalidOperationException("Did not reach 11 x 256 simultaneous ranges: "
+                            throw new InvalidOperationException("Did not reach configured simultaneous ranges: "
                                 + string.Join(",", server.Peaks));
                         await server.AllWorkersReady.ConfigureAwait(false);
 
@@ -185,14 +192,17 @@ namespace ResumeRegression
                         foreach (var pair in metadata)
                             Program.Assert(await ReadCheckpointAsync(pair.Key).ConfigureAwait(false) == pair.Value,
                                 "existing checkpoint must not be repartitioned or cleared");
-                        Program.Assert(server.Active == FileCount * Workers,
-                            "all 2816 range requests must be live at the same instant");
+                        Program.Assert(server.Active == concurrent * workers,
+                            "all configured range requests must be live at the same instant");
                         Console.WriteLine("Observed simultaneous ranges per file: "
                             + string.Join(",", server.Peaks) + "; total=" + server.Active);
                     }
                     finally
                     {
-                        server.Release();
+                        if (server.AllWorkersReady.Status == TaskStatus.RanToCompletion)
+                            server.ReleaseDownloads();
+                        else
+                            server.Release();
                         await download.ConfigureAwait(false);
                     }
                     foreach (var job in jobs)
@@ -200,14 +210,24 @@ namespace ResumeRegression
                         Program.Assert(updates.Completed.ContainsKey(job),
                             "download must complete: " + job.Name + "; " + string.Join("; ", updates.Errors));
                         int file = jobs.IndexOf(job);
-                        Program.Assert(File.ReadAllBytes(job.Dest).SequenceEqual(Data(file, 0, (int)Total)),
-                            "resumed output must match every source byte");
+                        VerifyFile(job.Dest, file, server.TotalFor(file));
                     }
                     Program.Assert(server.Errors.IsEmpty, string.Join("; ", server.Errors));
-                    long expected = (long)FileCount * (PartCount - MergedParts) * (PartSize - CachedPrefix);
+                    Program.Assert(server.Peaks.All(p => p == workers), "every file must reach requested workers");
+                    Program.Assert(updates.PeakJobs == concurrent, "scheduler must enforce simultaneous task count");
+                    long expected = fresh
+                        ? Enumerable.Range(0, fileCount).Sum(server.TotalFor)
+                        : (long)fileCount * (PartCount - MergedParts) * (PartSize - CachedPrefix);
                     Program.Assert(server.Served == expected,
                         "must request only missing bytes (no cached bytes downloaded again)");
-                    Console.WriteLine("Verified byte-identical output for 11 files; missing bytes served="
+                    if (throttle)
+                    {
+                        Program.Assert(server.Throttled == fileCount * workers, "inject a full wave of HTTP 429");
+                        Program.Assert(logs.Any(l => l.Contains("HTTP 429/503")), "throttling must be reported");
+                        Program.Assert(!logs.Any(l => l.Contains("收窄") || l.Contains("回升")),
+                            "request errors must not change the worker limit");
+                    }
+                    Console.WriteLine("Verified byte-identical output for " + fileCount + " files; missing bytes served="
                         + server.Served + "; cached bytes re-requested=0");
                 }
                 passed = true;
@@ -251,13 +271,38 @@ namespace ResumeRegression
             return data;
         }
 
+        private static void VerifyFile(string path, int file, long total)
+        {
+            using (var stream = File.OpenRead(path))
+            {
+                Program.Assert(stream.Length == total, "output length must match the HTTP source");
+                var buffer = new byte[65536];
+                long offset = 0;
+                int read;
+                while ((read = stream.Read(buffer, 0, buffer.Length)) != 0)
+                {
+                    Program.Assert(buffer.Take(read).SequenceEqual(Data(file, offset, read)),
+                        "output must match every source byte at " + offset);
+                    offset += read;
+                }
+            }
+        }
+
         private sealed class Updates : IProgress<JobUpdate>
         {
+            private readonly HashSet<DownloadJob> _running = new HashSet<DownloadJob>();
+            internal int PeakJobs;
             internal readonly ConcurrentDictionary<DownloadJob, byte> Completed =
                 new ConcurrentDictionary<DownloadJob, byte>();
             internal readonly ConcurrentQueue<string> Errors = new ConcurrentQueue<string>();
             public void Report(JobUpdate value)
             {
+                lock (_running)
+                {
+                    if (value.State == JobState.Downloading) _running.Add(value.Job);
+                    else _running.Remove(value.Job);
+                    PeakJobs = Math.Max(PeakJobs, _running.Count);
+                }
                 if (value.State == JobState.Completed) Completed.TryAdd(value.Job, 0);
                 if (value.State == JobState.Failed || value.State == JobState.Cancelled)
                     Errors.Enqueue(value.Job.Name + ": " + value.Error);
@@ -272,8 +317,17 @@ namespace ResumeRegression
             private readonly TaskCompletionSource<bool> _ready =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             private readonly ConcurrentBag<Task> _handlers = new ConcurrentBag<Task>();
-            private readonly int[] _active = new int[FileCount];
-            private readonly int[] _peak = new int[FileCount];
+            private readonly int[] _active;
+            private readonly int[] _peak;
+            private readonly int _readyCount;
+            private readonly int _workers;
+            private readonly TaskCompletionSource<bool>[] _bodyGates;
+            private bool _autoRelease;
+            private readonly bool _fresh;
+            private readonly bool _throttle;
+            private int _throttled;
+            private readonly ConcurrentDictionary<string, byte> _attempted =
+                new ConcurrentDictionary<string, byte>();
             private readonly object _lock = new object();
             private readonly Task _accept;
             private volatile bool _stopping;
@@ -283,8 +337,18 @@ namespace ResumeRegression
             private readonly bool _failSegments;
             internal readonly ConcurrentQueue<string> Errors = new ConcurrentQueue<string>();
 
-            internal RangeServer(bool hold = true, bool failSegments = false)
+            internal RangeServer(bool hold = true, bool failSegments = false,
+                int fileCount = FileCount, int workers = Workers, int concurrent = FileCount,
+                bool fresh = false, bool throttle = false)
             {
+                _fresh = fresh;
+                _throttle = throttle;
+                _active = new int[fileCount];
+                _peak = new int[fileCount];
+                _readyCount = workers * concurrent;
+                _workers = workers;
+                _bodyGates = Enumerable.Range(0, fileCount).Select(_ =>
+                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
                 _hold = hold;
                 _failSegments = failSegments;
                 if (!hold) _release.TrySetResult(true);
@@ -297,7 +361,18 @@ namespace ResumeRegression
             internal int Active => Volatile.Read(ref _totalActive);
             internal int[] Peaks { get { lock (_lock) return _peak.ToArray(); } }
             internal long Served => Interlocked.Read(ref _served);
+            internal int Throttled => Volatile.Read(ref _throttled);
+            internal long TotalFor(int file) => _fresh ? (256L * 1024 * 1024 + file * 512L * 1024) : Total;
             internal void Release() => _release.TrySetResult(true);
+            internal void ReleaseDownloads()
+            {
+                lock (_lock)
+                {
+                    _autoRelease = true;
+                    for (int i = 0; i < _active.Length; i++)
+                        if (_active[i] >= _workers) _bodyGates[i].TrySetResult(true);
+                }
+            }
 
             private async Task AcceptAsync()
             {
@@ -335,6 +410,15 @@ namespace ResumeRegression
                         long start = long.Parse(bounds[0], CultureInfo.InvariantCulture);
                         long end = long.Parse(bounds[1], CultureInfo.InvariantCulture);
                         bool probe = start == 0 && end == 0;
+                        if (!probe && _throttle && start < (MergedParts + _workers) * PartSize
+                            && _attempted.TryAdd(file + ":" + start, 0))
+                        {
+                            Interlocked.Increment(ref _throttled);
+                            byte[] failure = Encoding.ASCII.GetBytes(
+                                "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            await stream.WriteAsync(failure, 0, failure.Length).ConfigureAwait(false);
+                            return;
+                        }
                         if (!probe && _failSegments)
                         {
                             byte[] failure = Encoding.ASCII.GetBytes(
@@ -342,7 +426,7 @@ namespace ResumeRegression
                             await stream.WriteAsync(failure, 0, failure.Length).ConfigureAwait(false);
                             return;
                         }
-                        if (!probe && _hold)
+                        if (!probe && _hold && !_fresh)
                         {
                             Program.Assert(start >= MergedParts * PartSize
                                 && start % PartSize == CachedPrefix && end == start - CachedPrefix + PartSize - 1,
@@ -351,9 +435,8 @@ namespace ResumeRegression
                         int length = checked((int)(end - start + 1));
                         byte[] headers = Encoding.ASCII.GetBytes(
                             "HTTP/1.1 206 Partial Content\r\nContent-Length: " + length
-                            + "\r\nContent-Range: bytes " + start + "-" + end + "/" + Total
+                            + "\r\nContent-Range: bytes " + start + "-" + end + "/" + TotalFor(file)
                             + "\r\nConnection: close\r\n\r\n");
-                        await stream.WriteAsync(headers, 0, headers.Length).ConfigureAwait(false);
                         if (!probe)
                         {
                             lock (_lock)
@@ -362,12 +445,19 @@ namespace ResumeRegression
                                 _active[file]++;
                                 _totalActive++;
                                 _peak[file] = Math.Max(_peak[file], _active[file]);
-                                if (_totalActive == FileCount * Workers) _ready.TrySetResult(true);
+                                if (_totalActive == _readyCount) _ready.TrySetResult(true);
+                                if (_autoRelease && _active[file] >= _workers)
+                                    _bodyGates[file].TrySetResult(true);
                             }
-                            await _release.Task.ConfigureAwait(false);
+                            await Task.WhenAny(_release.Task, _bodyGates[file].Task).ConfigureAwait(false);
                         }
-                        byte[] data = Data(file, start, length);
-                        await stream.WriteAsync(data, 0, data.Length).ConfigureAwait(false);
+                        await stream.WriteAsync(headers, 0, headers.Length).ConfigureAwait(false);
+                        for (int sent = 0; sent < length;)
+                        {
+                            byte[] data = Data(file, start + sent, Math.Min(65536, length - sent));
+                            await stream.WriteAsync(data, 0, data.Length).ConfigureAwait(false);
+                            sent += data.Length;
+                        }
                         if (!probe) Interlocked.Add(ref _served, length);
                     }
                 }
