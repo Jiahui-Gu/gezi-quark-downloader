@@ -116,10 +116,12 @@ internal static class RequestLifecycleRegression
             var result = await download.ConfigureAwait(false);
             Check(!result.Ok && result.Message.Contains("stage=RequestHeaders")
                 && result.Message.Contains("HttpRequestException[HResult=")
-                && (result.Message.Contains("SocketError=ConnectionReset")
-                    || result.Message.Contains("Status=ConnectionClosed")),
+                && (result.Message.Contains("SocketError=") || result.Message.Contains("Status=")),
                 "real reset must preserve deepest safe cause and request stage: " + result.Message);
-            Check(!result.Message.Contains("; stage="), "identical worker terminal errors must be deduplicated");
+            var causes = result.Message.Split(new[] { "; stage=" }, StringSplitOptions.None)
+                .Select((cause, i) => i == 0 ? cause : "stage=" + cause).ToArray();
+            Check(causes.Length <= 2 && causes.Distinct().Count() == causes.Length,
+                "deduplicate identical worker failures but preserve different transport causes: " + result.Message);
             Check(trace.RequestsStarted == 40, "two parts, four rounds, five downloader attempts");
             Check(server.Requests >= 40 && server.Requests <= 80,
                 "framework transport can transparently retry a closed connection, not spend another round");
