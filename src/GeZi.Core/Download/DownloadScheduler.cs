@@ -136,7 +136,8 @@ namespace GeZi.Core.Download
                     using (var dl = new SegmentedDownloader(threads: job.Threads, cookie: job.Cookie,
                                partsRoot: job.PartsRoot))
                     {
-                        dl.Log = Log;
+                        string logScope = "[" + Path.GetFileName(job.Dest) + "; job=" + job.Id + "] ";
+                        dl.Log = message => Log?.Invoke(logScope + message);
                         dl.Diagnostics = Diagnostics;
                         dl.LinkRefresher = job.LinkRefresher;
                         // 免转存任务：失败文案不能说"可续传"（stoken 过期就取不到新链）

@@ -20,6 +20,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Resources;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -903,6 +904,72 @@ namespace GeZi.Core.Download
 
         // ---------------- 探测 ----------------
 
+        private sealed class PartWorkQueue : IDisposable
+        {
+            private readonly ConcurrentQueue<int> _queue;
+            private readonly SemaphoreSlim _ready = new SemaphoreSlim(0);
+            private readonly object _sync = new object();
+            private readonly int _workers;
+            // Includes queued and claimed parts; a requeue keeps ownership, a split adds one.
+            private int _remaining;
+            private bool _finished;
+            internal int Count => _queue.Count;
+
+            internal PartWorkQueue(IEnumerable<int> parts, int workers)
+            {
+                _queue = new ConcurrentQueue<int>(parts);
+                _remaining = _queue.Count;
+                _workers = workers;
+                _finished = _remaining == 0;
+                _ready.Release(_finished ? workers : _remaining);
+            }
+
+            internal async Task<int> TakeAsync(CancellationToken cancel)
+            {
+                await _ready.WaitAsync(cancel).ConfigureAwait(false);
+                if (_queue.TryDequeue(out int idx)) return idx;
+                lock (_sync)
+                {
+                    if (_finished) return -1;
+                }
+                throw new InvalidOperationException("分片工作信号与队列不一致。");
+            }
+
+            internal void Add(int idx)
+            {
+                lock (_sync)
+                {
+                    if (_finished) throw new InvalidOperationException("分片规划已结束，不能追加工作。");
+                    _remaining++;
+                    _queue.Enqueue(idx);
+                    _ready.Release();
+                }
+            }
+
+            internal void Requeue(int idx)
+            {
+                lock (_sync)
+                {
+                    if (_finished) throw new InvalidOperationException("分片规划已结束，不能重入队。");
+                    _queue.Enqueue(idx);
+                    _ready.Release();
+                }
+            }
+
+            internal void CompletePart()
+            {
+                lock (_sync)
+                {
+                    if (_remaining <= 0) throw new InvalidOperationException("分片工作重复完成。");
+                    if (--_remaining != 0) return;
+                    _finished = true;
+                    _ready.Release(_workers);
+                }
+            }
+
+            public void Dispose() => _ready.Dispose();
+        }
+
         private static bool TryReserveRequeue(ref int total)
         {
             int current = Volatile.Read(ref total);
@@ -918,6 +985,27 @@ namespace GeZi.Core.Download
         private static string SummarizeErrors(IEnumerable<string> errors) =>
             string.Join("; ", errors.Distinct().Take(3));
 
+        private static readonly ResourceManager FrameworkMessages =
+            new ResourceManager("System", typeof(WebException).Assembly);
+
+        private static string DescribeIoOrigin(Exception error)
+        {
+            var frames = new System.Diagnostics.StackTrace(error, false).GetFrames();
+            if (frames != null)
+                foreach (var frame in frames)
+                {
+                    var method = frame.GetMethod();
+                    var type = method?.DeclaringType;
+                    if (type?.Assembly != typeof(WebException).Assembly
+                        || type.FullName != "System.Net.TlsStream") continue;
+                    if (method.Name == "Write" || method.Name == "BeginWrite" || method.Name == "EndWrite")
+                        return "TlsWrite";
+                    if (method.Name == "Read" || method.Name == "BeginRead" || method.Name == "EndRead")
+                        return "TlsRead";
+                }
+            return "Unknown";
+        }
+
         private static string DescribeFailure(Exception error)
         {
             var chain = new List<string>();
@@ -931,6 +1019,14 @@ namespace GeZi.Core.Download
                 if (current is SocketException socket)
                     detail += "; SocketError=" + socket.SocketErrorCode + "; NativeError="
                         + socket.NativeErrorCode.ToString(CultureInfo.InvariantCulture);
+                if (current is IOException)
+                {
+                    // Match only an exact framework resource; never emit arbitrary message/stack text.
+                    string template = current.Message == FrameworkMessages.GetString("net_auth_eof", CultureInfo.CurrentUICulture)
+                        || current.Message == FrameworkMessages.GetString("net_auth_eof", CultureInfo.InvariantCulture)
+                        ? "net_auth_eof" : "Unknown";
+                    detail += "; Template=" + template + "; Origin=" + DescribeIoOrigin(current);
+                }
                 chain.Add(detail + "]");
             }
             return string.Join(" -> ", chain);
@@ -1530,24 +1626,6 @@ namespace GeZi.Core.Download
             // 原来由构造参数 `writeMode` 决定的分支已全部解包，此常量仅为兼容
             // DiagnosticsSnapshot.MergeMode 字段而保留（现在恒为 true）。
 
-            // 把"实际切了几片"明明白白打出来。
-            // 用户调大线程数却只跑出 7 个连接时，这一行能让原因立刻可见。
-            if (parts.Count > 0)
-            {
-                long segBytes = parts[0].End - parts[0].Start + 1;
-                Log?.Invoke(string.Format(
-                    "分片规划: 文件 {0}，并发连接上限 {1}，切为 {2} 片，每片约 {3}",
-                    Fmt(total), _threads, parts.Count, Fmt(segBytes)));
-                if (parts.Count < _threads)
-                {
-                    // 片数少于线程数，说明文件还不够大，撑不起这么多连接。
-                    // 这不是 bug：此时每条连接都能吃满，速度已经到顶。
-                    Log?.Invoke(string.Format(
-                        "说明: 该文件只切出 {0} 片（少于上限 {1}），因为文件偏小；此时每条连接都能吃满，速度已接近该文件的上限。",
-                        parts.Count, _threads));
-                }
-            }
-
             var plan = LoadPlan(metaPath);
             // ⚠️ 这里加了一条保护：**已有进度的老任务绝不重建 plan**。
             // 原逻辑只要 `!PartsEqual(plan.Parts, parts)` 就重建 —— 那意味着"分片算法一变，
@@ -1623,6 +1701,15 @@ namespace GeZi.Core.Download
             }
             if (expectedStart != total)
                 return (false, "续传分片未完整覆盖目标文件，已保留原文件与断点，请先校验后恢复。");
+
+            Log?.Invoke(string.Format(
+                "分片规划: 文件 {0}，并发连接上限 {1}，切为 {2} 片，平均 {3}，范围 {4}-{5}（按实际续传规划）。",
+                Fmt(total), _threads, plan.Parts.Count, Fmt(total / plan.Parts.Count),
+                Fmt(plan.Parts.Min(p => p.E - p.S + 1)), Fmt(plan.Parts.Max(p => p.E - p.S + 1))));
+            if (plan.Parts.Count < _threads)
+                Log?.Invoke(string.Format("说明: 当前规划仅 {0} 片，少于并发上限 {1}；"
+                    + "实际可并行量还取决于未完成片数、可分裂余量和请求阶段。",
+                    plan.Parts.Count, _threads));
 
             int head = plan.Parts.FindIndex(p => p.S < have && have <= p.E);
             if (head >= 0)
@@ -1749,14 +1836,14 @@ namespace GeZi.Core.Download
             }
             catch { }
 
-            var queue = new ConcurrentQueue<int>();
-            for (int i = 0; i < plan.Parts.Count; i++)
-                if (plan.Parts[i].E >= have)
-                    queue.Enqueue(i);
+            using var queue = new PartWorkQueue(Enumerable.Range(0, plan.Parts.Count)
+                .Where(i => plan.Parts[i].E >= have),
+                Math.Min(_threads, Math.Min(plan.Parts.Count, MaxRealConcurrency)));
 
             long done = 0;
             foreach (var p in plan.Parts)
                 done += p.W;
+            long startingDone = done;
 
             var errors = new List<string>();
             var errLock = new object();
@@ -2592,7 +2679,21 @@ namespace GeZi.Core.Download
 
                         while (true)
                         {
-                            // 放在**每一次领片之前**（不是循环之外）：
+                            int idx;
+                            try
+                            {
+                                idx = await queue.TakeAsync(cancelToken).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                Interlocked.Exchange(ref cancelled, 1);
+                                if (cancel.IsCancellationRequested)
+                                    Interlocked.Exchange(ref userCancelled, 1);
+                                return;
+                            }
+                            if (idx < 0) break;
+
+                            // 每次取得工作信号后、发请求前复查暂停；等待期间也可能被暂停。
                             // 否则暂停那一刻正处于"两片之间"的 worker 还会再领一片、再建一条
                             // 连接，然后才在读闸门处卡住 —— 白占连接（诊断面板「活跃连接」
                             // 暂停期不降就是这个），恢复时还会一次性撞服务端并发风控。
@@ -2609,11 +2710,10 @@ namespace GeZi.Core.Download
                                     Interlocked.Exchange(ref cancelled, 1);
                                     if (cancel.IsCancellationRequested)
                                         Interlocked.Exchange(ref userCancelled, 1);
+                                    queue.CompletePart();
                                     return;
                                 }
                             }
-                            if (!queue.TryDequeue(out int idx))
-                                break;
                             try
                             {
                                 await gate.WaitAsync(cancelToken).ConfigureAwait(false);
@@ -2628,11 +2728,13 @@ namespace GeZi.Core.Download
                                 Interlocked.Exchange(ref cancelled, 1);
                                 if (cancel.IsCancellationRequested)
                                     Interlocked.Exchange(ref userCancelled, 1);
+                                queue.CompletePart();
                                 return;
                             }
                             bool gateTaken = true;
                             // 片级取消源：抢占只掐这一片，不牵连全局取消语义。
                             CancellationTokenSource pcts = null;
+                            bool requeued = false;
                             try
                             {
                                 var part = plan.Parts[idx];
@@ -2655,13 +2757,17 @@ namespace GeZi.Core.Download
                                     {
                                         long mid = part.S + part.W + remainHere / 2;
                                         long oldEnd = part.E;
-                                        part.E = mid - 1;          // 自己留前半
                                         lock (splitLock)
                                         {
-                                            plan.Parts.Add(new PartPlan { S = mid, E = oldEnd, W = 0 });
-                                            queue.Enqueue(plan.Parts.Count - 1);
+                                            // All simultaneous splitters must respect the preallocated arrays.
+                                            if (plan.Parts.Count < partCapacity)
+                                            {
+                                                part.E = mid - 1;
+                                                plan.Parts.Add(new PartPlan { S = mid, E = oldEnd, W = 0 });
+                                                queue.Add(plan.Parts.Count - 1);
+                                                Interlocked.Increment(ref splitCount);
+                                            }
                                         }
-                                        Interlocked.Increment(ref splitCount);
                                     }
                                 }
 
@@ -2692,6 +2798,7 @@ namespace GeZi.Core.Download
                                 // 尝试的性质去判断这一次（例如上次超时、这次 404 → 误回队）。
                                 bool lastErrTransient = false;
                                 int attemptsMade = 0;
+                                string lastAttemptContext = "";
                                 // 片内所有 I/O 走 partToken：看门狗抢占时只掐这一片，
                                 // 不影响其他 worker，也不污染全局取消语义。
                                 var partToken = pcts.Token;
@@ -2717,7 +2824,8 @@ namespace GeZi.Core.Download
                                             //      ② 尾部在飞的就是反复重试的慢片；
                                             //      ③ 重试越多 → 越可能正处于退避等待中。
                                             //    三者叠加 → 用户反馈的「下载到最后就停」（停在 99%）。
-                                            queue.Enqueue(idx);
+                                            queue.Requeue(idx);
+                                            requeued = true;
                                             Interlocked.Increment(ref preemptedCount);
                                             // 这片是"被抢占"不是"失败"：lastErr 是整片循环共享的局部变量，
                                             // 不清掉的话循环外那句 `if (lastErr != null) AddError(...)`
@@ -2748,6 +2856,7 @@ namespace GeZi.Core.Download
 
                                     bool fatal = false;   // true 表示重试无意义（取消/服务器不支持 Range）
                                     string failureStage = "RequestHeaders";
+                                    long attemptStart = NowMs();
                                     attemptsMade = attempt + 1;
                                     try
                                     {
@@ -2872,7 +2981,8 @@ namespace GeZi.Core.Download
                                     catch (OperationCanceledException)
                                         when (partToken.IsCancellationRequested && !cancelToken.IsCancellationRequested)
                                     {
-                                        queue.Enqueue(idx);
+                                        queue.Requeue(idx);
+                                        requeued = true;
                                         Interlocked.Increment(ref preemptedCount);
                                         // ⚠️ 必须把 lastErr 清掉再跳出。
                                         // 这片被抢占后会**重新入队、由别的 worker 接着下**，
@@ -2905,12 +3015,20 @@ namespace GeZi.Core.Download
                                         if (Volatile.Read(ref wHangRescued[workerNo]) != 0)
                                         {
                                             Volatile.Write(ref wHangRescued[workerNo], 0);
-                                            queue.Enqueue(idx);
+                                            queue.Requeue(idx);
+                                            requeued = true;
                                             lastErr = null;
                                             break;   // 跳出 attempt 循环，回去领下一片
                                         }
                                         lastErr = "stage=" + failureStage + "; " + DescribeFailure(ex);
                                         lastErrTransient = true;   // 网络层异常：可回队
+                                    }
+                                    finally
+                                    {
+                                        lastAttemptContext = string.Format(CultureInfo.InvariantCulture,
+                                            "attemptMs={0}, userCancelled={1}, taskCancelled={2}, partCancelled={3}",
+                                            NowMs() - attemptStart, cancel.IsCancellationRequested ? 1 : 0,
+                                            cancelToken.IsCancellationRequested ? 1 : 0, partToken.IsCancellationRequested ? 1 : 0);
                                     }
                                 }
 
@@ -2927,11 +3045,12 @@ namespace GeZi.Core.Download
                                         partRounds[idx]++;
                                         Log?.Invoke(string.Format(
                                             "分片 {0} 整轮重试 {1}/{2}：{3}；已写 {4} 字节保留，放回队列换连接重下。"
-                                            + " worker={5}, attempts={6}/{7}, requeues={8}/{9}",
+                                            + " worker={5}, attempts={6}/{7}, requeues={8}/{9}, {10}",
                                             idx, partRounds[idx], MaxPartRounds, lastErr, part.W,
                                             workerNo, attemptsMade, MaxSegmentRetries + 1,
-                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues));
-                                        queue.Enqueue(idx);
+                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues, lastAttemptContext));
+                                        queue.Requeue(idx);
+                                        requeued = true;
                                         lastErr = null;
                                         // 注意：这里**不能** break —— break 会跳出 worker 的领片循环、
                                         // 让 worker 退出（那正是原来"并发递减"的病根）。自然落到 finally
@@ -2940,10 +3059,10 @@ namespace GeZi.Core.Download
                                     else
                                     {
                                         Log?.Invoke(string.Format(
-                                            "分片 {0} 有界尝试结束：{1}；worker={2}, attempts={3}/{4}, round={5}/{6}, requeues={7}/{8}",
+                                            "分片 {0} 有界尝试结束：{1}；worker={2}, attempts={3}/{4}, round={5}/{6}, requeues={7}/{8}, {9}",
                                             idx, lastErr, workerNo, attemptsMade, MaxSegmentRetries + 1,
                                             partRounds[idx] + 1, MaxPartRounds + 1,
-                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues));
+                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues, lastAttemptContext));
                                         if (mayRequeue)
                                             AddError("整轮重试预算用尽（" + MaxTotalRequeues + " 次）：" + lastErr);
                                         else
@@ -2968,6 +3087,8 @@ namespace GeZi.Core.Download
                                 }
                                 if (gateTaken)
                                     gate.Release();
+                                if (!requeued)
+                                    queue.CompletePart();
                             }
                         }
                     }, cancelToken);
@@ -3131,23 +3252,19 @@ namespace GeZi.Core.Download
                 try
                 {
                     double secs = (DateTime.UtcNow - t0).TotalSeconds;
-                    double avgSpeed = secs > 0 ? total / secs : 0;
-                    long segBytes = plan.Parts.Count > 0 ? plan.Parts[0].E - plan.Parts[0].S + 1 : 0;
+                    long newBytes = Interlocked.Read(ref done) - startingDone;
+                    double avgSpeed = secs > 0 ? newBytes / secs : 0;
+                    long segBytes = total / plan.Parts.Count;
 
                     Log?.Invoke(string.Format(
-                        "本次实测: {0}，用时 {1:F1} 秒，平均 {2}/s；并发 {3} 路，分片 {4} 片（每片约 {5}）。",
-                        Fmt(total), secs, Fmt((long)avgSpeed), workerCount, plan.Parts.Count, Fmt(segBytes)));
+                        "本次实测: 文件 {0}，本次新增 {6}，用时 {1:F1} 秒，新增提交平均 {2}/s；并发上限 {3} 路，分片 {4} 片（平均 {5}）。",
+                        Fmt(total), secs, Fmt((long)avgSpeed), workerCount, plan.Parts.Count, Fmt(segBytes), Fmt(newBytes)));
 
-                    // 把"每条连接实际跑多快"算出来。这是判断瓶颈的关键：
-                    // 若单连接速度正常而总速度低 → 并发没铺满；
-                    // 若单连接就慢 → 是服务端限速，加并发也救不回来。
                     if (workerCount > 0)
                     {
                         double perConn = avgSpeed / workerCount;
                         Log?.Invoke(string.Format(
-                            "分连接: 平均每条 {0}/s。若这个值明显偏低（如低于 200 KB/s），" +
-                            "说明是夸克 CDN 在限单连接速度，此时加大并发收益有限；" +
-                            "若它很健康而总速度不理想，才说明还有并发空间。",
+                            "连接设置折算: 新增提交速率 / 并发上限 = {0}/s；不是实测单连接速度，不能据此判定 CDN 限速。",
                             Fmt((long)perConn)));
                     }
 

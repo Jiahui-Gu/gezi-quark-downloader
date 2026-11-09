@@ -1,11 +1,11 @@
 # 鸽子下载（GeZi）
 
-> **Jiahui 自维护版 v2.3.4**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
+> **Jiahui 自维护版 v2.3.5 候选**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
 > [huaotem-bot/gezi-quark-downloader](https://github.com/huaotem-bot/gezi-quark-downloader)。
 > 保留原作者 Yi Yuan 的署名、品牌、赞赏入口及 GPL-3.0-or-later / 第三方许可。
 
-> 当前分支新增的请求阶段保护、重试计数与失败诊断属于**未发布候选**，不是已安装 2.3.4 的公网提速承诺。
-> 候选交付保留数字版本 2.3.4，以独立的 `InformationalVersion`、提交和文件哈希区分，不自动安装或替换正式包。
+> 当前分支包含已安装候选 237d93d 的请求阶段保护，并修复尾部工作队列过早缩减、补充安全诊断及续传大小持久化。
+> 本候选数字版本 2.3.5，以独立的 `InformationalVersion`、提交和文件哈希区分；未发布 Release，不自动安装或保证公网提速。
 
 > 一个 Windows 桌面端的**夸克网盘下载器** —— 支持分享链接 / 网盘直链解析、
 > 多线程分片下载、边下边播、多账号管理、深色模式。
@@ -29,13 +29,16 @@
 - **两种写入方式**
   - `共写同一文件`：所有线程写同一个文件，**省磁盘空间**（默认）
   - `独立分片 + 顺序合并`：每个分片独立文件，**可边下边播**
-- **高并发分片下载**：片数按文件大小自动计算（≥ 有效并发 × 8，上限 4096）
+- **高并发分片下载**：按大小及设置计算基础片数，保留头部小片和有界尾部动态分裂；实际规划可超过 4096 片，小文件或收尾剩余工作不保证撑满设置
 - **连接数直接按设置**：每个文件独立使用设置的连接数（最高 512），同时下载数只控制几个文件一起跑；512 路 × 3 文件可各用 512 路，不共享总预算
 - **暂停 / 续传**：断点续传，重启后自动恢复未完成任务
 - **必要错误重试**：HTTP 429/503 等暂时错误保留逐请求退避，不自动降低连接数，也不分批错峰启动；实际活跃连接受剩余分片、非 Range 响应与网络限制
 - **慢连接采样只看响应体**：建连、等待响应头和错误退避不再误判为慢速/假死；响应体开始后重新计龄，保留真正慢连接的抢占与有界重试。诊断的活跃数仍只计响应体读写，不把等待中的请求算成有效传输
 - **请求阶段有界等待（候选修复）**：每次请求从发起到收到响应头最多等待 100 秒，超时进入既有失败/退避预算，不冒充用户取消或慢体抢占；响应头返回即结束该计时，不限制正常长时间读体。不会额外重叠补位或提高并发设置
 - **重试止损与脱敏诊断（候选修复）**：单文件本次执行的 500 次整轮回队额度采用原子预留，所有 worker 共享、成功不重置，不提高预算；每片仍最多首次加 3 次回队，每轮首次加 4 次重试。分片异常记录请求头/读体/写盘阶段与异常链类型、HResult、可用网络状态码，不记录异常原文、URL 或请求凭据；终态前三种错误先去重，不把多个 worker 同报错当成预算倍增
+- **尾部有工作就补位（候选修复）**：队列暂空但仍有在途片时，原 worker 异步等工作信号；分片回队或既有动态分裂新增子片后唤醒。全部工作成功或明确终态后收场，用户取消可中断等待；不忙轮询、不加额外连接、不重建原断点规划或扩大重试预算
+- **诊断不编造根因**：每卷核心日志带文件名和任务 ID；末次尝试另记耗时及用户/任务/分片取消标记。IO 异常只匹配固定框架模板键和受限框架来源标签，未知仍为 `Unknown`，不直接打印 Message/堆栈，也不把 `SendFailure` 等同于 TLS、RST 或特定 Socket 码
+- **续传大小与真实统计**：已知 Pending 大小传给初始任务，未知进度不清零；真实 Total 到达时触发一次持久化回填，不按每帧字节写盘。规划日志使用实际续传片数、平均/范围，不将首个 1 MiB 头片当平均；结束速率只计算本次新增提交字节，设置连接数的折算值不充当实测单连接速度
 - **取消即清理**：取消任务会立刻删除本地残留（想保留进度请用「暂停」）
 
 ### 解析与登录
@@ -73,7 +76,7 @@
 
 ### 方式一：下载发行版（推荐）
 
-1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.4-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
+1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.5-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
 2. 双击 `GeZi.exe` 即可运行
 3. 若系统缺少 .NET Framework 4.8，Windows 会弹窗提示，按引导安装即可
 
@@ -101,7 +104,7 @@ dotnet build .\src\GeZi\GeZi.csproj -c Release -p:Platform=x64
 - 合入上游 [PR #11](https://github.com/huaotem-bot/gezi-quark-downloader/pull/11)：主窗口与悬浮窗总速度不计本地分片合并吞吐。
 - 合入上游 [PR #12](https://github.com/huaotem-bot/gezi-quark-downloader/pull/12)：合并只读取已提交字节，重试覆盖未提交尾部；原 PR 保持独立，不在上游自动合并或关闭。
 - 纳入启动续传的 WPF Dispatcher / 可见错误修复，以及按逻辑 S/E 区间对账、动态分裂重启完整性修复。缺失 partial 缓存仍显式拒绝，不补零；不自动把 Failed 转成 Pending，不改变现有关闭退出设置。
-- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.4-win64.zip`。
+- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.5-win64.zip`。
 - 新任务、复用直链、免转存和启动续传统一采用设置的单文件连接数；移除按大小分配、隐藏总预算、启动分批错峰与自动缩减连接数。保留分片规划、窃取、必要错误退避及完整性校验。修改设置不打断正在运行的批次，续传使用当前设置。
 - `tools\Recovery` 保留非破坏性候选恢复和精确缺口获取工具，见 [使用说明](tools/Recovery/USAGE.md)；不随包附带任何账号、真实断点或下载数据。
 
@@ -125,6 +128,12 @@ dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj 
 
 # 保活/关闭补位、用户取消、脱敏异常链、并发预算边界、终态去重及真实发送失败止损
 .\tests\GeZi.Core.RegressionTests\bin\Release\net48\GeZi.Core.RegressionTests.exe --request-lifecycle
+
+# 实际慢体抢占后尾部补位、空队列终态、等工作时取消及 200 轮回队/最后完成竞争
+.\tests\GeZi.Core.RegressionTests\bin\Release\net48\GeZi.Core.RegressionTests.exe --tail-scheduling
+
+# 原 handler 下 TLS/HTTP FIN/RST、本地 cancel/dispose、双任务归属和未知异常脱敏
+.\tests\GeZi.Core.RegressionTests\bin\Release\net48\GeZi.Core.RegressionTests.exe --transport-failures
 ```
 
 仅使用本机回环 HTTP Range 服务和合成数据，不需要账号或真实下载链接。
@@ -157,6 +166,14 @@ dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj 
 SocketException/错误码；已经仅保存顶层文本的旧日志也无法恢复内层异常。失败worker只有在
 该片或本次总预算真正耗尽、或遇到不可恢复错误时退出；本候选不通过扩大预算或自动重启失败任务来维持连接数。
 
+尾部回归为 32 MiB/8 worker：其他片快速完成后，首片慢体被既有规则抢占；
+回队及分裂出来的可领取区间必须唤醒空闲 worker，并逐字节完成。队列为空不等于任务完成，
+终态依靠精确的未完成工作记账，不用响应体显示数判断。生命周期回归另验证最后一片 404、
+全部已缓存、等工作和 429 退避时取消、512 worker 真正耗尽 500 次共享回队后停止。
+TLS 回归中，对端在 ClientHello 后 FIN 和 RST 均可能被框架折叠成同一
+`SendFailure -> IOException[Template=net_auth_eof; Origin=TlsWrite]`；
+该标签不能区分两种关闭、不能推导不存在的 Socket 码，也不能从受控复现反推公网故障必然相同。
+
 ### 续传回归验证（Windows）
 
 ```powershell
@@ -175,6 +192,8 @@ SocketException/错误码；已经仅保存顶层文本的旧日志也无法恢�
 同时任务数为 1 时依次运行三文件，以及一整波 HTTP 429 后保留设置连接数并逐字节完成。
 新下载使用约 770 MiB 有界合成数据；测试不读取真实配置或进度。
 各入队路径还覆盖不同文件大小、未知大小、512 档位与配置保存后的读回。
+原样提取 `OnJobUpdate`/`SyncPending`，用仅捕获内存结果的持久化边界验证已知大小继承、
+同状态真实总长回填、后续逐帧不重写、同名不同任务身份；不读取或写入真实 state。
 同一测试入口还从两处生产源码提取速度汇总表达式，执行 8 场景 × 2 窗口共 16 个断言，
 并验证两程序集版本、个人 fork 的更新/源码入口及便携附件名解析。
 另覆盖动态窃取生成乱序分片后的失败/重启：`pNNNNNN` 的编号保持不变，

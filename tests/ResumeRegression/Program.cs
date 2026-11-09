@@ -83,6 +83,12 @@ namespace ResumeRegression
                 MaintenanceRegression.Speed, ref failures);
             Run("maintained fork version and release parsing",
                 MaintenanceRegression.Release, ref failures);
+            Run("known pending size survives queued and unknown progress",
+                PendingSizeRegression.PreserveKnown, ref failures);
+            Run("authoritative total backfills size without per-frame persistence",
+                PendingSizeRegression.Backfill, ref failures);
+            Run("pending signature distinguishes same-name destinations",
+                PendingSizeRegression.Identity, ref failures);
             Run("11 asynchronous share resumes stay on the WPF dispatcher", () =>
             {
                 var h = new ResumeHarness();
@@ -203,6 +209,7 @@ namespace ResumeRegression
         internal readonly System.ComponentModel.ICollectionView View;
         internal bool FailStart;
         internal string FailedFid;
+        private string _pendingSig;
 
         internal ResumeHarness()
         {
@@ -215,6 +222,11 @@ namespace ResumeRegression
             && DownloadAllBtn.IsEnabled && DriveRefreshBtn.IsEnabled
             && DriveUpBtn.IsEnabled && FetchLinksBtn.IsEnabled;
         internal Task Resume(List<PendingTask> tasks) => ResumePendingBatchAsync(tasks);
+        internal void Add(TaskItem item) => _tasks.Add(item);
+        internal void Remove(TaskItem item) => _tasks.Remove(item);
+        internal void Sync() => SyncPending();
+        internal void Update(JobUpdate update) => OnJobUpdate(update);
+        private void UpdatePauseAllButton() { }
         internal void Configure(int threads, int concurrent)
         {
             _settings.Threads = threads;

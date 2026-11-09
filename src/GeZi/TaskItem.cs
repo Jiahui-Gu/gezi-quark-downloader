@@ -30,6 +30,7 @@ namespace GeZi
         {
             Job = job;
             Name = name;
+            Total = Math.Max(0, job?.Pending?.Size ?? 0);
         }
 
         private JobState _state = JobState.Queued;

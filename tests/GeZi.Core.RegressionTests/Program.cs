@@ -19,7 +19,11 @@ internal static class Program
         if (args.Contains("--utilization"))
             return ConnectionUtilizationRegression.RunAsync(args).GetAwaiter().GetResult();
         if (args.Contains("--request-lifecycle"))
-            return RequestLifecycleRegression.RunAsync().GetAwaiter().GetResult();
+            return RequestLifecycleRegression.RunAsync(args.Contains("--budget-only")).GetAwaiter().GetResult();
+        if (args.Contains("--transport-failures"))
+            return TransportFailureRegression.RunAsync().GetAwaiter().GetResult();
+        if (args.Contains("--tail-scheduling"))
+            return TailSchedulingRegression.RunAsync().GetAwaiter().GetResult();
         int failures = 0;
         foreach (var test in new Func<Task>[]
         {

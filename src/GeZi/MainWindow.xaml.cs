@@ -3939,7 +3939,8 @@ namespace GeZi
                 // 进度（Percent/Done）照常更新：那是真实已下载字节，且暂停后本来就不再增长。
                 if (!keepPaused) item.Speed = u.Progress.Speed;
                 item.Done = u.Progress.Done;
-                item.Total = u.Progress.Total;
+                if (u.Progress.Total > 0)
+                    item.Total = u.Progress.Total;
                 // 阶段说明（如「正在合并分片」）。非下载态一律清空，
                 // 免得完成/失败后还挂着「正在合并分片」这种残留文案。
                 item.Phase = u.State == JobState.Downloading ? u.Progress.Phase : null;
@@ -3970,7 +3971,7 @@ namespace GeZi
         /// <summary>
         /// 把当前"未完成"的任务（排队/下载/暂停）写进持久化记录，
         /// 已完成的从记录里移除。供下次启动提示"有 N 个未完成任务"。
-        /// 节流：只有"未完成任务的名字 + 状态"组合变了才真正写盘 ——
+        /// 节流：只有"任务身份 + 状态 + 已知总大小"组合变了才真正写盘 ——
         /// OnJobUpdate 每 500ms 就来一次，无条件写盘等于持续小额 IO。
         /// </summary>
         private void SyncPending()
@@ -3987,8 +3988,9 @@ namespace GeZi
                     if (t.State == JobState.Queued || t.State == JobState.Downloading
                         || t.State == JobState.Paused)
                     {
-                        sb.Append(t.Name).Append('|').Append(t.State).Append(';');
                         var pi = t.Job.Pending;
+                        long size = t.Total > 0 ? t.Total : Math.Max(0, pi?.Size ?? 0);
+                        sb.Append(t.Job.Id).Append('|').Append(t.State).Append('|').Append(size).Append(';');
                         list.Add(new PendingTask
                         {
                             Name = t.Name,
@@ -3997,7 +3999,7 @@ namespace GeZi
                             Fid = pi?.Fid,
                             Token = pi?.Token,
                             FromShare = pi?.FromShare ?? false,
-                            Size = t.Total,
+                            Size = size,
                             StreamPlay = true,      // 共写模式已删除，恒可边下边播
                             StreamPlayMode = true,
                             Status = t.StatusText,

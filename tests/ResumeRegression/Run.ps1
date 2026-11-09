@@ -12,6 +12,8 @@ function Get-Method([string] $start, [string] $end) {
 # Compile the unmodified production orchestration with deterministic API/UI edges.
 # Never construct MainWindow/App: their startup touches real configuration and UI.
 $resume = Get-Method 'private async Task ResumePendingBatchAsync(' 'private async Task<string> RefreshLinkAsyncForPending('
+$syncPending = Get-Method 'private void SyncPending()' '// ---------------- 任务管理 ----------------'
+$jobUpdate = Get-Method 'private void OnJobUpdate(' 'private string _pendingSig;'
 $busy = Get-Method 'private void SetBusy(bool busy)' 'private readonly HashSet<Button> _busyButtons'
 $threadAssignments = [regex]::Matches($source, 'Threads = ([^\r\n,]+),')
 if ($threadAssignments.Count -ne 3) { throw 'Expected exactly three production job creation entries' }
@@ -39,6 +41,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using GeZi;
@@ -52,6 +55,8 @@ namespace ResumeRegression
     internal partial class ResumeHarness
     {
         $resume
+        $syncPending
+        $jobUpdate
         $busy
         $allocator
         $($policyMethods -join "`n")
