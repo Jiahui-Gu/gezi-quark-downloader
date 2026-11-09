@@ -18,6 +18,8 @@ internal static class Program
     {
         if (args.Contains("--utilization"))
             return ConnectionUtilizationRegression.RunAsync(args).GetAwaiter().GetResult();
+        if (args.Contains("--request-lifecycle"))
+            return RequestLifecycleRegression.RunAsync().GetAwaiter().GetResult();
         int failures = 0;
         foreach (var test in new Func<Task>[]
         {

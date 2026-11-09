@@ -22,14 +22,15 @@ internal static class ConnectionUtilizationRegression
     {
         NetworkConfig.Apply(512);
         int workers = args.Contains("--512") ? 512 : 32;
-        var modes = args.Contains("--headers-only")
-            ? new[] { "headers" } : new[] { "headers", "paced", "slow-body", "429", "429-long" };
+        var modes = args.Contains("--header-waits") ? new[] { "mixed-headers" }
+            : args.Contains("--headers-only") ? new[] { "headers" }
+            : new[] { "headers", "paced", "slow-body", "429", "429-long" };
         int failures = 0;
         foreach (string mode in modes)
         {
             try
             {
-                await MeasureAsync(mode, workers).ConfigureAwait(false);
+                await MeasureAsync(mode, workers, args.Contains("--observe-only")).ConfigureAwait(false);
                 Console.WriteLine("PASS utilization " + mode);
             }
             catch (Exception ex)
@@ -41,18 +42,19 @@ internal static class ConnectionUtilizationRegression
         return failures == 0 ? 0 : 1;
     }
 
-    private static async Task MeasureAsync(string mode, int workers)
+    private static async Task MeasureAsync(string mode, int workers, bool observeOnly)
     {
+        int partSize = mode == "mixed-headers" ? 256 * 1024 : PartSize;
         string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
             "utilization-fixture-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         string dest = Path.Combine(root, "synthetic.bin");
         Directory.CreateDirectory(dest + ".qparts");
-        var meta = new List<string> { ((long)workers * PartSize).ToString(), workers.ToString() };
+        var meta = new List<string> { ((long)workers * partSize).ToString(), workers.ToString() };
         for (int i = 0; i < workers; i++)
         {
-            long start = (long)i * PartSize;
-            meta.Add(start + "," + ((long)(i + 1) * PartSize - 1) + ",1");
+            long start = (long)i * partSize;
+            meta.Add(start + "," + ((long)(i + 1) * partSize - 1) + ",1");
             File.WriteAllBytes(Path.Combine(dest + ".qparts", "p" + i.ToString("D6")),
                 new[] { Value(start) });
         }
@@ -60,19 +62,48 @@ internal static class ConnectionUtilizationRegression
         bool passed = false;
         try
         {
-            using (var server = new Server(mode, workers))
+            using (var server = new Server(mode, workers, partSize))
             using (var downloader = new SegmentedDownloader(workers))
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110)))
+            using (var trace = mode == "mixed-headers" ? RequestStageTrace.Attach(downloader) : null)
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(mode == "mixed-headers" ? 280 : 110)))
             {
                 var logs = new ConcurrentQueue<string>();
                 var snapshots = new ConcurrentQueue<DiagnosticsSnapshot>();
                 downloader.Log = logs.Enqueue;
                 downloader.Diagnostics = snapshots.Enqueue;
                 var clock = Stopwatch.StartNew();
-                var result = await downloader.DownloadAsync(server.Url, dest, cancel: timeout.Token)
-                    .ConfigureAwait(false);
+                var download = downloader.DownloadAsync(server.Url, dest, cancel: timeout.Token);
+                int requestsBeforeRelease = 0, pendingBeforeRelease = 0, bodiesBeforeRelease = 0;
+                long windowBytes = 0;
+                double windowSeconds = 0;
+                if (mode == "mixed-headers")
+                {
+                    var ready = await Task.WhenAny(server.FirstWaveReady, download,
+                        Task.Delay(15000)).ConfigureAwait(false);
+                    Check(ready == server.FirstWaveReady, "all configured workers must send their initial request");
+                    await Task.Delay(TimeSpan.FromSeconds(110)).ConfigureAwait(false);
+                    var before = snapshots.LastOrDefault();
+                    await Task.Delay(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                    var after = snapshots.LastOrDefault();
+                    requestsBeforeRelease = server.Requests;
+                    pendingBeforeRelease = server.PendingHeaders;
+                    bodiesBeforeRelease = after?.ActiveConnections ?? 0;
+                    windowBytes = (after?.DoneBytes ?? 0) - (before?.DoneBytes ?? 0);
+                    windowSeconds = before != null && after != null
+                        ? (after.Timestamp - before.Timestamp).TotalSeconds : 0;
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "HEADER-WAIT workers={0} requestsAt125s={1} pendingHeaders={2} bodyActive={3} "
+                        + "windowBytes={4} windowSeconds={5:F3} windowKiBps={6:F3} completedBeforeRelease={7} "
+                        + "openTcp={8} peakTcp={9}",
+                        workers, requestsBeforeRelease, pendingBeforeRelease, bodiesBeforeRelease,
+                        windowBytes, windowSeconds, windowSeconds > 0 ? windowBytes / 1024.0 / windowSeconds : 0,
+                        download.IsCompleted, server.OpenTcp, server.PeakTcp));
+                    Console.WriteLine("STAGES at125s " + trace.Describe());
+                    if (observeOnly) server.ReleasePending();
+                }
+                var result = await download.ConfigureAwait(false);
                 clock.Stop();
-                bool identical = result.Ok && Verify(dest, (long)workers * PartSize);
+                bool identical = result.Ok && Verify(dest, (long)workers * partSize);
                 int preemptions = logs.Where(l => l.StartsWith("慢连接抢占:", StringComparison.Ordinal))
                     .Sum(l => int.Parse(l.Split(' ')[2], CultureInfo.InvariantCulture));
                 double bodySlots = snapshots.Where(s => s.DoneBytes < s.TotalBytes)
@@ -82,7 +113,7 @@ internal static class ConnectionUtilizationRegression
                     + "bodySlotSamples={6:P2} preemptions={7} served={8} identical={9} peakBodies={10} "
                     + "throttled={11} minRetryMs={12:F1} firstWaveMs={13}",
                     mode, workers, clock.Elapsed.TotalSeconds,
-                    workers * (double)PartSize / 1048576 / clock.Elapsed.TotalSeconds,
+                    workers * (double)partSize / 1048576 / clock.Elapsed.TotalSeconds,
                     server.Requests, server.Requests / clock.Elapsed.TotalSeconds,
                     bodySlots, preemptions, server.Served, identical, server.PeakBodies,
                     server.Throttled, server.MinRetryMs, server.FirstWaveMs));
@@ -114,12 +145,30 @@ internal static class ConnectionUtilizationRegression
                     Check(server.MinRetryMs >= 250, "per-request 429 backoff must remain");
                     Check(preemptions == 0, "retry waits must not be preempted");
                 }
-                else
+                else if (mode == "429-long")
                 {
                     Check(server.Throttled >= 10, "long 429 episode must exhaust a full attempt round");
                     Check(logs.Any(l => l.Contains("整轮重试")),
                         "attempt exhaustion must still use the bounded part-round budget");
                     Check(preemptions == 0, "waiting/backoff must not bypass bounded error retries");
+                }
+                else
+                {
+                    Check(!logs.Any(l => l.Contains("下载停滞")),
+                        "normal body progress must prevent the global no-progress watchdog");
+                    Check(requestsBeforeRelease == workers + workers * 3 / 4,
+                        "never-returning first headers must be retried before the 125s observation ends");
+                    Check(pendingBeforeRelease == 0 && bodiesBeforeRelease == workers,
+                        "bounded header waits must restore all body slots while normal streams keep progressing");
+                    Check(preemptions == 0, "header deadlines must use failure/backoff, not body preemption");
+                    Check(trace.CancelledHeaders == workers * 3 / 4,
+                        "one cancelled header attempt per permanently silent first request");
+                    Check(trace.MinRetryAfterCancelMs >= 250, "header timeouts must retain normal failure backoff");
+                    Check(server.Requests == workers + workers * 3 / 4,
+                        "80-second healthy headers and long-lived bodies must not be restarted");
+                    Check(server.PeakTcp <= workers, "expired header requests must close before replacements open");
+                    Check(!observeOnly, "the fixed client must finish without the server releasing silent requests");
+                    Console.WriteLine("STAGES final " + trace.Describe());
                 }
                 passed = true;
             }
@@ -164,9 +213,15 @@ internal static class ConnectionUtilizationRegression
         private readonly ConcurrentDictionary<int, double> _throttleTimes = new ConcurrentDictionary<int, double>();
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private readonly Task _accept;
+        private readonly TaskCompletionSource<bool> _firstWave = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _release = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly string _mode;
         private readonly int _workers;
+        private readonly int _partSize;
         private int _requests, _bodies, _peakBodies, _throttled;
+        private int _firstRequests, _pendingHeaders, _openTcp, _peakTcp;
         private long _served;
         private long _firstWaveMs;
         private double _minRetryMs = double.MaxValue;
@@ -177,13 +232,19 @@ internal static class ConnectionUtilizationRegression
         public long Served => Interlocked.Read(ref _served);
         public int PeakBodies => _peakBodies;
         public int Throttled => _throttled;
+        public int PendingHeaders => Volatile.Read(ref _pendingHeaders);
+        public int OpenTcp => Volatile.Read(ref _openTcp);
+        public int PeakTcp => Volatile.Read(ref _peakTcp);
+        public Task FirstWaveReady => _firstWave.Task;
+        public void ReleasePending() => _release.TrySetResult(true);
         public long FirstWaveMs => Interlocked.Read(ref _firstWaveMs);
         public double MinRetryMs => _minRetryMs == double.MaxValue ? 0 : _minRetryMs;
 
-        public Server(string mode, int workers)
+        public Server(string mode, int workers, int partSize)
         {
             _mode = mode;
             _workers = workers;
+            _partSize = partSize;
             _listener.Start();
             Url = "http://127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port + "/synthetic";
             _accept = Task.Run(async () =>
@@ -191,7 +252,13 @@ internal static class ConnectionUtilizationRegression
                 try
                 {
                     while (!_stop.IsCancellationRequested)
-                        _clients.Add(ServeAsync(await _listener.AcceptTcpClientAsync().ConfigureAwait(false)));
+                    {
+                        var client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                        int current = Interlocked.Increment(ref _openTcp), peak;
+                        do { peak = Volatile.Read(ref _peakTcp); }
+                        while (current > peak && Interlocked.CompareExchange(ref _peakTcp, current, peak) != peak);
+                        _clients.Add(ServeAsync(client));
+                    }
                 }
                 catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
                 catch (SocketException) when (_stop.IsCancellationRequested) { }
@@ -208,7 +275,7 @@ internal static class ConnectionUtilizationRegression
                 using (var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true))
                 {
                     string request = await reader.ReadLineAsync().ConfigureAwait(false);
-                    long total = (long)_workers * PartSize, start = 0, end = total - 1;
+                    long total = (long)_workers * _partSize, start = 0, end = total - 1;
                     bool range = false;
                     string line;
                     while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false)))
@@ -221,7 +288,7 @@ internal static class ConnectionUtilizationRegression
                     }
                     bool head = request.StartsWith("HEAD ", StringComparison.Ordinal);
                     bool probe = head || (start == 0 && end == 0);
-                    int part = (int)(start / PartSize), attempt = 0;
+                    int part = (int)(start / _partSize), attempt = 0;
                     if (!probe)
                     {
                         Interlocked.Increment(ref _requests);
@@ -231,9 +298,27 @@ internal static class ConnectionUtilizationRegression
                             long now = _clock.ElapsedMilliseconds, previous;
                             do { previous = Interlocked.Read(ref _firstWaveMs); }
                             while (now > previous && Interlocked.CompareExchange(ref _firstWaveMs, now, previous) != previous);
+                            if (Interlocked.Increment(ref _firstRequests) == _workers)
+                                _firstWave.TrySetResult(true);
                         }
+                        if (_mode == "mixed-headers" && attempt == 1 && part < _workers * 3 / 4)
+                        {
+                            Interlocked.Increment(ref _pendingHeaders);
+                            try
+                            {
+                                // The first request never sends headers. Finish only on peer close
+                                // or explicit test teardown, so cancellation is visible at the server.
+                                var closed = stream.ReadAsync(new byte[1], 0, 1, _stop.Token);
+                                if (await Task.WhenAny(_release.Task, closed).ConfigureAwait(false) == closed)
+                                    return;
+                            }
+                            finally { Interlocked.Decrement(ref _pendingHeaders); }
+                        }
+                        if (_mode == "mixed-headers" && attempt == 1
+                            && part >= _workers * 3 / 4 && part < _workers * 13 / 16)
+                            await Task.Delay(80000, _stop.Token).ConfigureAwait(false);
                         if (_mode == "slow-body" && part < 2 && attempt > 1
-                            && start <= (long)part * PartSize + 1)
+                            && start <= (long)part * _partSize + 1)
                             ResumedOffsetsOkay = false;
                         if (_mode == "429-long" && part < 2)
                         {
@@ -279,7 +364,8 @@ internal static class ConnectionUtilizationRegression
                     bool paced = !probe && (_mode == "paced"
                         || (_mode == "headers" && part >= Math.Max(2, _workers / 16))
                         || (_mode == "429-long" && part >= 2));
-                    var buffer = new byte[slow ? 1024 : BlockSize];
+                    bool mixed = !probe && _mode == "mixed-headers";
+                    var buffer = new byte[slow || mixed ? 1024 : BlockSize];
                     for (long offset = start; offset <= end;)
                     {
                         int count = (int)Math.Min(buffer.Length, end - offset + 1);
@@ -289,13 +375,19 @@ internal static class ConnectionUtilizationRegression
                         offset += count;
                         if (offset <= end && (slow || paced))
                             await Task.Delay(slow ? 250 : 1000, _stop.Token).ConfigureAwait(false);
+                        if (offset <= end && mixed && !_release.Task.IsCompleted)
+                            await Task.Delay(500, _stop.Token).ConfigureAwait(false);
                     }
                 }
             }
             catch (IOException) { /* Expected when the client preempts a synthetic request. */ }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (Exception ex) { Errors.Enqueue(ex.ToString()); }
-            finally { if (body) Interlocked.Decrement(ref _bodies); }
+            finally
+            {
+                if (body) Interlocked.Decrement(ref _bodies);
+                Interlocked.Decrement(ref _openTcp);
+            }
         }
 
         private static async Task WriteHeaders(NetworkStream stream, string status, long length, string range)
@@ -310,6 +402,7 @@ internal static class ConnectionUtilizationRegression
         public void Dispose()
         {
             _stop.Cancel();
+            _release.TrySetResult(true);
             _listener.Stop();
             _accept.GetAwaiter().GetResult();
             Task.WhenAll(_clients.ToArray()).GetAwaiter().GetResult();

@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -163,6 +164,10 @@ namespace GeZi.Core.Download
         /// <summary>单个分片的最大重试次数（首次尝试之外）。</summary>
         private const int MaxSegmentRetries = 4;
 
+        // Match HttpClient's conservative default, but stop the clock at response headers.
+        // Body reads have separate slow/hung handling and must not inherit this deadline.
+        private const int RequestHeadersTimeoutSeconds = 100;
+
         /// <summary>
         /// 单个分片最多被"整轮重试"几次。
         /// 背景：一个分片把 <see cref="MaxSegmentRetries"/> 次尝试用完（网络抖动、
@@ -172,13 +177,13 @@ namespace GeZi.Core.Download
         /// 整包下载直接失败，报错只有一句没有上下文的 HttpRequestException。
         /// 现在改成把这片**放回队列**（换条连接、多半换到别的 CDN 节点），
         /// worker 留在池子里继续干活（并发不再递减）。
-        /// 3 轮 ≈ 最多 15 次请求/片，足够跨过"某个节点持续坏一段时间"，
+        /// 首轮 + 最多 3 次回队，每轮 1 + 4 次尝试，即最多 20 次请求/片，
         /// 又不至于在一颗永久坏掉的树上吊死。
         /// </summary>
         private const int MaxPartRounds = 3;
 
         /// <summary>
-        /// 全局"整轮重试"总预算（跨所有分片累计）。
+        /// 单文件本次分片执行的"整轮回队"总预算，所有 worker 共享，成功不重置。
         /// 第二道闸：几百个分片都在反复失败，说明问题不在个别节点
         /// （很可能是整条链路/账号层面出事），继续重试只是空转，
         /// 应当尽快收场并把真实原因告诉用户。
@@ -898,6 +903,59 @@ namespace GeZi.Core.Download
 
         // ---------------- 探测 ----------------
 
+        private static bool TryReserveRequeue(ref int total)
+        {
+            int current = Volatile.Read(ref total);
+            while (current < MaxTotalRequeues)
+            {
+                int previous = Interlocked.CompareExchange(ref total, current + 1, current);
+                if (previous == current) return true;
+                current = previous;
+            }
+            return false;
+        }
+
+        private static string SummarizeErrors(IEnumerable<string> errors) =>
+            string.Join("; ", errors.Distinct().Take(3));
+
+        private static string DescribeFailure(Exception error)
+        {
+            var chain = new List<string>();
+            for (Exception current = error; current != null; current = current.InnerException)
+            {
+                // Messages, stack traces and response/request objects may contain signed URLs or credentials.
+                string detail = current.GetType().Name + "[HResult=0x"
+                    + current.HResult.ToString("X8", CultureInfo.InvariantCulture);
+                if (current is WebException web)
+                    detail += "; Status=" + web.Status;
+                if (current is SocketException socket)
+                    detail += "; SocketError=" + socket.SocketErrorCode + "; NativeError="
+                        + socket.NativeErrorCode.ToString(CultureInfo.InvariantCulture);
+                chain.Add(detail + "]");
+            }
+            return string.Join(" -> ", chain);
+        }
+
+        private async Task<HttpResponseMessage> SendForHeadersAsync(HttpRequestMessage request,
+            CancellationToken cancel)
+        {
+            using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancel))
+            {
+                deadline.CancelAfter(TimeSpan.FromSeconds(RequestHeadersTimeoutSeconds));
+                try
+                {
+                    return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+                        deadline.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex)
+                    when (deadline.IsCancellationRequested && !cancel.IsCancellationRequested)
+                {
+                    throw new TimeoutException("等待 HTTP 响应头超时（"
+                        + RequestHeadersTimeoutSeconds + " 秒）", ex);
+                }
+            }
+        }
+
         private async Task<(long total, bool supports)> ProbeAsync(string url, Dictionary<string, string> headers,
             CancellationToken cancel)
         {
@@ -905,7 +963,7 @@ namespace GeZi.Core.Download
             {
                 var h = new Dictionary<string, string>(headers) { ["Range"] = "bytes=0-0" };
                 using (var req = BuildRequest(HttpMethod.Get, url, h))
-                using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false))
+                using (var resp = await SendForHeadersAsync(req, cancel).ConfigureAwait(false))
                 {
                     if ((int)resp.StatusCode == 206)
                     {
@@ -973,7 +1031,7 @@ namespace GeZi.Core.Download
                     h["Range"] = "bytes=" + existing + "-";
 
                 using (var req = BuildRequest(HttpMethod.Get, url, h))
-                using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false))
+                using (var resp = await SendForHeadersAsync(req, cancel).ConfigureAwait(false))
                 {
                     bool resume = existing > 0 && (int)resp.StatusCode == 206;
                     if (existing > 0 && (int)resp.StatusCode != 206)
@@ -1001,7 +1059,7 @@ namespace GeZi.Core.Download
             CancellationToken cancel, PauseToken pause)
         {
             using (var req = BuildRequest(HttpMethod.Get, url, headers))
-            using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false))
+            using (var resp = await SendForHeadersAsync(req, cancel).ConfigureAwait(false))
             {
                 return await ReadSingleBodyFromResponseAsync(resp, dest, initialDone, total, progress, cancel, pause).ConfigureAwait(false);
             }
@@ -2633,6 +2691,7 @@ namespace GeZi.Core.Download
                                 // 必须在**每一个** lastErr 赋值点同步刷新，否则会拿上一次
                                 // 尝试的性质去判断这一次（例如上次超时、这次 404 → 误回队）。
                                 bool lastErrTransient = false;
+                                int attemptsMade = 0;
                                 // 片内所有 I/O 走 partToken：看门狗抢占时只掐这一片，
                                 // 不影响其他 worker，也不污染全局取消语义。
                                 var partToken = pcts.Token;
@@ -2688,10 +2747,12 @@ namespace GeZi.Core.Download
                                     };
 
                                     bool fatal = false;   // true 表示重试无意义（取消/服务器不支持 Range）
+                                    string failureStage = "RequestHeaders";
+                                    attemptsMade = attempt + 1;
                                     try
                                     {
                                         using (var req = BuildRequest(HttpMethod.Get, url, h))
-                                        using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, partToken).ConfigureAwait(false))
+                                        using (var resp = await SendForHeadersAsync(req, partToken).ConfigureAwait(false))
                                         {
                                             int code = (int)resp.StatusCode;
                                             if (code == 200 && !(reqStart == 0 && part.E >= total - 1))
@@ -2712,6 +2773,7 @@ namespace GeZi.Core.Download
                                                 continue;
                                             }
 
+                                            failureStage = "OpenBody";
                                             using (var stream = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
                                             {
                                                 // 每次尝试独立开流，禁用托管写缓冲（bufferSize=1）：
@@ -2727,6 +2789,7 @@ namespace GeZi.Core.Download
                                                 // 于是 NetworkConfig 里不得不 SetMinThreads(512)，
                                                 // 上下文切换 + GC 暂停被放大 → CPU 飙高。
                                                 // 加了之后走 overlapped IO，写盘不再占线程。
+                                                failureStage = "OpenPart";
                                                 wfs = new FileStream(PartPath(partsDir, idx), FileMode.OpenOrCreate,
                                                           FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 1,
                                                           FileOptions.SequentialScan | FileOptions.Asynchronous);
@@ -2735,6 +2798,7 @@ namespace GeZi.Core.Download
                                                 {
                                                     // 每次重试也要对账：失败/取消的异步写可能已经扩长文件，
                                                     // 但没有推进 W。只能从已提交偏移覆盖，不能追加到物理尾部。
+                                                    failureStage = "PreparePart";
                                                     wfs.SetLength(written);
                                                     wfs.Seek(written, SeekOrigin.Begin);
                                                     // 慢速/假死采样从响应体开始，而不是从领片开始。
@@ -2753,6 +2817,7 @@ namespace GeZi.Core.Download
                                                             cancelToken.ThrowIfCancellationRequested();
                                                             if (pause != null)
                                                                 await pause.WaitIfPausedAsync(cancelToken).ConfigureAwait(false);
+                                            failureStage = "BodyRead";
                                             int n = await stream.ReadAsync(buf, 0, buf.Length, partToken).ConfigureAwait(false);
                                             if (n <= 0)
                                                 break;
@@ -2763,6 +2828,7 @@ namespace GeZi.Core.Download
                                             // 已读到的数据留在 buf 里，恢复后原样写入：不丢、不重复。
                                             if (pause != null)
                                                 await pause.WaitIfPausedAsync(cancelToken).ConfigureAwait(false);
+                                            failureStage = "PartWrite";
                                             await wfs.WriteAsync(buf, 0, n, partToken).ConfigureAwait(false);
                                                             written += n;
                                                             part.W = written;
@@ -2774,6 +2840,7 @@ namespace GeZi.Core.Download
                                                         Volatile.Write(ref wResp[workerNo], null);
                                                         Interlocked.Decrement(ref activeConns);
                                                     }
+                                                    failureStage = "ClosePart";
                                                 }
 
                                                 if (written < segSize)
@@ -2784,6 +2851,7 @@ namespace GeZi.Core.Download
                                                     lastErrTransient = true;   // 连接被掐断：可回队
                                                     continue;
                                                 }
+                                                failureStage = "CloseBody";
                                             }
 
                                             // 本分片完整落盘、且文件流已关闭 → 通知合并线程可以取走了。
@@ -2841,7 +2909,7 @@ namespace GeZi.Core.Download
                                             lastErr = null;
                                             break;   // 跳出 attempt 循环，回去领下一片
                                         }
-                                        lastErr = ex.GetType().Name + ": " + ex.Message;
+                                        lastErr = "stage=" + failureStage + "; " + DescribeFailure(ex);
                                         lastErrTransient = true;   // 网络层异常：可回队
                                     }
                                 }
@@ -2853,15 +2921,16 @@ namespace GeZi.Core.Download
                                     // 原行为是 AddError + return —— 一片取不到就干掉一个 worker，
                                     // 几片同时坏掉时整个任务失败（fork 故障注入实测：64 片里
                                     // 56 片连一次都没被试过，报错只有一句 HttpRequestException）。
-                                    if (lastErrTransient
-                                        && partRounds[idx] < MaxPartRounds
-                                        && totalRequeues < MaxTotalRequeues)
+                                    bool mayRequeue = lastErrTransient && partRounds[idx] < MaxPartRounds;
+                                    if (mayRequeue && TryReserveRequeue(ref totalRequeues))
                                     {
                                         partRounds[idx]++;
-                                        totalRequeues++;
                                         Log?.Invoke(string.Format(
-                                            "分片 {0} 整轮重试 {1}/{2}：{3}；已写 {4} 字节保留，放回队列换连接重下。",
-                                            idx, partRounds[idx], MaxPartRounds, lastErr, part.W));
+                                            "分片 {0} 整轮重试 {1}/{2}：{3}；已写 {4} 字节保留，放回队列换连接重下。"
+                                            + " worker={5}, attempts={6}/{7}, requeues={8}/{9}",
+                                            idx, partRounds[idx], MaxPartRounds, lastErr, part.W,
+                                            workerNo, attemptsMade, MaxSegmentRetries + 1,
+                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues));
                                         queue.Enqueue(idx);
                                         lastErr = null;
                                         // 注意：这里**不能** break —— break 会跳出 worker 的领片循环、
@@ -2870,7 +2939,12 @@ namespace GeZi.Core.Download
                                     }
                                     else
                                     {
-                                        if (totalRequeues >= MaxTotalRequeues)
+                                        Log?.Invoke(string.Format(
+                                            "分片 {0} 有界尝试结束：{1}；worker={2}, attempts={3}/{4}, round={5}/{6}, requeues={7}/{8}",
+                                            idx, lastErr, workerNo, attemptsMade, MaxSegmentRetries + 1,
+                                            partRounds[idx] + 1, MaxPartRounds + 1,
+                                            Volatile.Read(ref totalRequeues), MaxTotalRequeues));
+                                        if (mayRequeue)
                                             AddError("整轮重试预算用尽（" + MaxTotalRequeues + " 次）：" + lastErr);
                                         else
                                             AddError(lastErr);
@@ -2977,7 +3051,7 @@ namespace GeZi.Core.Download
                             return (false, "下载中断（已保留断点与已下载部分，重试可续传）");
                         }
                     }
-                    string msg = string.Join("; ", errors.Take(3));
+                    string msg = SummarizeErrors(errors);
                     if (msg.Contains("range-not-supported"))
                     {
                         ClearPartial(dest);
