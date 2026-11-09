@@ -1740,7 +1740,7 @@ namespace GeZi.Core.Download
             var wLastW = new long[MaxRealConcurrency];       // 上次采样时的 part.W
             var wLastIdx = new int[MaxRealConcurrency];      // 上次采样时的片索引（换片则重置基线）
             var wCts = new CancellationTokenSource[MaxRealConcurrency];   // 片级取消源
-            // 本 worker 当前在飞的那个 HTTP 响应对象。
+            // 本 worker 当前正在读取的成功 HTTP 响应；建连、等响应头和退避期间为 null。
             // 为什么必须留着它：.NET Framework 下 HttpClient **一旦收到响应头**，
             // 之后对内容流的读取就不再受 CancellationToken 约束 —— 连接"被接了但
             // 一个字节都不发"时，取消令牌完全无效，worker 永远卡在 ReadAsync 上
@@ -1910,6 +1910,11 @@ namespace GeZi.Core.Download
                 {
                     int idx = Volatile.Read(ref wCurPart[i]);
                     if (idx < 0) { wInstBps[i] = -1; continue; }
+                    if (Volatile.Read(ref wResp[i]) == null)
+                    {
+                        wInstBps[i] = -1;
+                        continue;
+                    }
 
                     long w = plan.Parts[idx].W;
 
@@ -2015,6 +2020,7 @@ namespace GeZi.Core.Download
                 {
                     int idx = Volatile.Read(ref wCurPart[i]);
                     if (idx < 0) continue;
+                    if (Volatile.Read(ref wResp[i]) == null) continue;
 
                     long instBps = wInstBps[i];
                     if (instBps < 0 || instBps >= threshold) continue;   // 本轮无样本 / 不慢
@@ -2099,11 +2105,8 @@ namespace GeZi.Core.Download
                 long lastProgressBytes = 0;
                 int stalledFlag = 0;
 
-                // 诊断用：当前有多少条连接正真在传数据。
-                // 速度上不去时，问题无非两种：
-                //   a) 连接数够但每条都很慢  → 服务端/CDN 限速，客户端无解
-                //   b) 连接数根本不够        → 客户端侧有问题，能优化
-                // 没有这个数字就只能猜，所以必须能观测。
+                // 仅统计响应体读写阶段；不含建连、等待响应头和必要错误退避。
+                // 因此低于 worker 数不等于客户端少发了请求。
                 int activeConns = 0;
 
                 // workerCount 要等分片规划完成后才知道，但诊断日志在 reporter 里就要用，
@@ -2180,9 +2183,7 @@ namespace GeZi.Core.Download
                         }
 
                         // 每 5 秒采一次样（结构化快照给诊断面板用）。
-                        // 关键是看 活跃连接数：
-                        //  - 活跃数接近并发上限而速度仍低 → 服务端限速，客户端无解
-                        //  - 活跃数明显偏低            → 客户端侧没把连接发出去，能优化
+                        // 活跃数只描述响应体阶段，不能单独据此归因客户端或服务端。
                         if ((now - lastDiag).TotalSeconds >= 5.0)
                         {
                             lastDiag = now;
@@ -2692,10 +2693,6 @@ namespace GeZi.Core.Download
                                         using (var req = BuildRequest(HttpMethod.Get, url, h))
                                         using (var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, partToken).ConfigureAwait(false))
                                         {
-                                            // 登记在飞响应：抢救线程需要
-                                            // Dispose 它才能真正断掉 socket（net48 下 Cancel 令牌
-                                            // 唤不醒卡在内容流读取里的 worker）。
-                                            Volatile.Write(ref wResp[workerNo], resp);
                                             int code = (int)resp.StatusCode;
                                             if (code == 200 && !(reqStart == 0 && part.E >= total - 1))
                                             {
@@ -2740,6 +2737,14 @@ namespace GeZi.Core.Download
                                                     // 但没有推进 W。只能从已提交偏移覆盖，不能追加到物理尾部。
                                                     wfs.SetLength(written);
                                                     wfs.Seek(written, SeekOrigin.Begin);
+                                                    // 慢速/假死采样从响应体开始，而不是从领片开始。
+                                                    // 等响应头和 429 退避没有体速率，不能被当成慢连接抢占。
+                                                    long bodyStart = NowMs();
+                                                    Volatile.Write(ref wStart[workerNo], bodyStart);
+                                                    Volatile.Write(ref wLastTick[workerNo], bodyStart);
+                                                    Volatile.Write(ref wLastW[workerNo], written);
+                                                    Volatile.Write(ref wLastGainMs[workerNo], bodyStart);
+                                                    Volatile.Write(ref wResp[workerNo], resp);
                                                     Interlocked.Increment(ref activeConns);
                                                     try
                                                     {
@@ -2766,6 +2771,7 @@ namespace GeZi.Core.Download
                                                     }
                                                     finally
                                                     {
+                                                        Volatile.Write(ref wResp[workerNo], null);
                                                         Interlocked.Decrement(ref activeConns);
                                                     }
                                                 }

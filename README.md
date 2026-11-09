@@ -1,6 +1,6 @@
 # 鸽子下载（GeZi）
 
-> **Jiahui 自维护版 v2.3.3**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
+> **Jiahui 自维护版 v2.3.4**：[维护仓库](https://github.com/Jiahui-Gu/gezi-quark-downloader) fork 自
 > [huaotem-bot/gezi-quark-downloader](https://github.com/huaotem-bot/gezi-quark-downloader)。
 > 保留原作者 Yi Yuan 的署名、品牌、赞赏入口及 GPL-3.0-or-later / 第三方许可。
 
@@ -30,6 +30,7 @@
 - **连接数直接按设置**：每个文件独立使用设置的连接数（最高 512），同时下载数只控制几个文件一起跑；512 路 × 3 文件可各用 512 路，不共享总预算
 - **暂停 / 续传**：断点续传，重启后自动恢复未完成任务
 - **必要错误重试**：HTTP 429/503 等暂时错误保留逐请求退避，不自动降低连接数，也不分批错峰启动；实际活跃连接受剩余分片、非 Range 响应与网络限制
+- **慢连接采样只看响应体**：建连、等待响应头和错误退避不再误判为慢速/假死；响应体开始后重新计龄，保留真正慢连接的抢占与有界重试。诊断的活跃数仍只计响应体读写，不把等待中的请求算成有效传输
 - **取消即清理**：取消任务会立刻删除本地残留（想保留进度请用「暂停」）
 
 ### 解析与登录
@@ -67,7 +68,7 @@
 
 ### 方式一：下载发行版（推荐）
 
-1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.3-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
+1. 从[个人维护版 Releases](https://github.com/Jiahui-Gu/gezi-quark-downloader/releases) 下载 `GeZi-v2.3.4-win64.zip` 并解压到任意目录（需维护者另行发布；本次整合不创建 Release）
 2. 双击 `GeZi.exe` 即可运行
 3. 若系统缺少 .NET Framework 4.8，Windows 会弹窗提示，按引导安装即可
 
@@ -95,7 +96,7 @@ dotnet build .\src\GeZi\GeZi.csproj -c Release -p:Platform=x64
 - 合入上游 [PR #11](https://github.com/huaotem-bot/gezi-quark-downloader/pull/11)：主窗口与悬浮窗总速度不计本地分片合并吞吐。
 - 合入上游 [PR #12](https://github.com/huaotem-bot/gezi-quark-downloader/pull/12)：合并只读取已提交字节，重试覆盖未提交尾部；原 PR 保持独立，不在上游自动合并或关闭。
 - 纳入启动续传的 WPF Dispatcher / 可见错误修复，以及按逻辑 S/E 区间对账、动态分裂重启完整性修复。缺失 partial 缓存仍显式拒绝，不补零；不自动把 Failed 转成 Pending，不改变现有关闭退出设置。
-- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.3-win64.zip`。
+- 更新检查、手动下载和关于页源码入口仅指向个人 fork；无个人 Release 时不会退回上游更新。版本保持数字格式，便携附件名为 `GeZi-v2.3.4-win64.zip`。
 - 新任务、复用直链、免转存和启动续传统一采用设置的单文件连接数；移除按大小分配、隐藏总预算、启动分批错峰与自动缩减连接数。保留分片规划、窃取、必要错误退避及完整性校验。修改设置不打断正在运行的批次，续传使用当前设置。
 - `tools\Recovery` 保留非破坏性候选恢复和精确缺口获取工具，见 [使用说明](tools/Recovery/USAGE.md)；不随包附带任何账号、真实断点或下载数据。
 
@@ -110,6 +111,9 @@ SDK 8 请直接构建上述 csproj；较新 SDK 也可使用 `GeZi.slnx`。
 ```powershell
 dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj -c Release
 .\tests\GeZi.Core.RegressionTests\bin\Release\net48\GeZi.Core.RegressionTests.exe
+
+# 512 路真实请求：延迟响应头、稳定慢流、真正慢片抢占、整波及长时间 HTTP 429
+.\tests\GeZi.Core.RegressionTests\bin\Release\net48\GeZi.Core.RegressionTests.exe --utilization --512
 ```
 
 仅使用本机回环 HTTP Range 服务和合成数据，不需要账号或真实下载链接。
@@ -118,6 +122,12 @@ dotnet build .\tests\GeZi.Core.RegressionTests\GeZi.Core.RegressionTests.csproj 
 不需要填满磁盘或强杀进程。分片的可信进度只在无托管写缓冲的写入成功后更新；
 合并和重试不再把物理文件长度当作提交点。这不等同于断电后的硬件级持久性保证，
 也不能检测或修复旧版本已经完成并清理断点的损坏文件。
+
+连接利用率回归使用 384 MiB 合成续传数据，分别统计完成时间、总吞吐、实际 Range 请求数/秒、
+5 秒快照的响应体槽位占比、抢占次数及逐字节一致性。延迟响应头场景前 45 秒内的特定请求
+每次需等 22 秒，错误重连会重新等待；长时间 429 场景验证不会借抢占绕过每片尝试/回队预算。
+稳定慢流是对照组：占满 512 个响应体也不会突破服务端设定的发送速率。该测试不是互联网测速，
+不能据此承诺真实 CDN 更快或所有环境恒定 512 路。
 
 ### 续传回归验证（Windows）
 

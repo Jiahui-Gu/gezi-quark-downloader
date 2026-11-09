@@ -14,8 +14,10 @@ internal static class Program
 {
     private const int PartSize = 256 * 1024;
 
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.Contains("--utilization"))
+            return ConnectionUtilizationRegression.RunAsync(args).GetAwaiter().GetResult();
         int failures = 0;
         foreach (var test in new Func<Task>[]
         {
