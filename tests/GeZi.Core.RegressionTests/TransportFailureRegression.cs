@@ -86,8 +86,9 @@ internal static class TransportFailureRegression
             else if (cancelled)
                 Check(failure is OperationCanceledException, "local cancellation must not be relabelled TLS EOF");
             else
-                Check(text.Contains("Status=ConnectionClosed") && !text.Contains("Template=net_auth_eof"),
-                    "plain HTTP peer close must not be labelled TLS authentication EOF");
+                Check((text.Contains("Status=ConnectionClosed") || text.Contains("Status=RequestCanceled"))
+                    && !cancel.IsCancellationRequested && !text.Contains("Template=net_auth_eof"),
+                    "plain HTTP peer close can be framework-cancelled without caller cancellation, but is not TLS EOF");
         }
     }
 
